@@ -99,6 +99,10 @@ Klart när **Inställningar → Modeller** visar 6 av 6.
 
 ## Uppdateringar
 
+**Redan installerad med 12 GB på översättningsmotorn?** Öppna `subsynq-translate-engine` i Docker-fliken, välj **Edit**
+(slå på Advanced View) och ändra i **Extra Parameters** `--memory=12g` till `--memory=16g`. Lägg till två variabler:
+`OLLAMA_NUM_PARALLEL` = `1` och `OLLAMA_MAX_LOADED_MODELS` = `1`. Tryck **Apply**. Modellerna ligger kvar.
+
 Unraid visar "update ready" när nya images finns på Docker Hub. Uppdatera i den ordningen som ovan.
 Nya versioner av **modellerna** (inte appen) visas under **Inställningar → Modeller** med en uppdateringsknapp.
 Inget uppdateras av sig självt.
