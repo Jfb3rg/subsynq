@@ -14,7 +14,7 @@
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/unraid/subsynq-translate-engine.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/app/icons/gemma.png</Icon>
-  <ExtraParams>--init --read-only --tmpfs /tmp --security-opt=no-new-privileges:true --memory=12g --cpus=6</ExtraParams>
+  <ExtraParams>--init --read-only --tmpfs /tmp --security-opt=no-new-privileges:true --memory=16g --cpus=6</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
@@ -24,4 +24,6 @@
   <Config Name="Ollamas modellmapp (/root/.ollama)" Target="/root/.ollama" Default="/mnt/user/appdata/subsynq/models/ollama" Mode="rw" Description="Gemma-modellerna. Ska ligga i undermappen ollama i samma modellmapp som SubSynq (appdata/subsynq/models/ollama)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models/ollama</Config>
   <Config Name="Ingen molnanslutning" Target="OLLAMA_NO_CLOUD" Default="1" Mode="" Description="1 = Ollama använder bara lokala modeller." Type="Variable" Display="advanced" Required="true" Mask="false">1</Config>
   <Config Name="Lyssnaradress" Target="OLLAMA_HOST" Default="0.0.0.0:11434" Mode="" Description="Adress Ollama lyssnar på inne i Docker-nätverket. Porten publiceras inte utåt." Type="Variable" Display="advanced" Required="true" Mask="false">0.0.0.0:11434</Config>
+  <Config Name="En körning i taget" Target="OLLAMA_NUM_PARALLEL" Default="1" Mode="" Description="1 = Ollama svarar på en begäran i taget, vilket håller minnesbehovet nere." Type="Variable" Display="advanced" Required="true" Mask="false">1</Config>
+  <Config Name="En modell i minnet" Target="OLLAMA_MAX_LOADED_MODELS" Default="1" Mode="" Description="1 = bara en Gemma-modell ligger i minnet åt gången." Type="Variable" Display="advanced" Required="true" Mask="false">1</Config>
 </Container>

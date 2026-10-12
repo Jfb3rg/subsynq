@@ -13,7 +13,7 @@ Alla fyra ligger på samma Docker-nätverk, `subsynq`, och hittar varandra på n
 ## Före du börjar
 
 - **Cirka 30 GB ledigt** på disken där `appdata` ligger (AI-modellerna är ungefär 28 GB) och internet första gången.
-- **Ledigt RAM** för modellerna utöver andra appar. Översättningsmotorn är satt till högst 12 GB och Qwen till 11 GB.
+- **Ledigt RAM** för modellerna utöver andra appar. Översättningsmotorn är satt till högst 16 GB och Qwen till 11 GB (Qwen lämnar minnet när den är ledig). Servern bör därför ha minst 32 GB RAM; med mindre kan Linux döda översättningsmotorn mitt i ett jobb, och jobbet misslyckas med "HTTP 500 unexpected EOF".
 - Dina mediamappar (filmer, serier, klipp). De måste vara **skrivbara**: SubSynq skriver undertextfilerna där, och fliken
   Städa undertexter kan flytta `.srt`-filer till en papperskorg. Videofiler rörs aldrig. Containrarna körs som
   Unraids vanliga användare `nobody:users` (99:100), som normalt äger Unraids delade mappar.

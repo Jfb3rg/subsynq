@@ -134,9 +134,11 @@ services:
     environment:
       OLLAMA_NO_CLOUD: "1"
       OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
     volumes:
       - ./data/models/ollama:/root/.ollama
-    mem_limit: 12g
+    mem_limit: 16g
     cpus: 6
     read_only: true
     tmpfs:
