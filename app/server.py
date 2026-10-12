@@ -27,7 +27,7 @@ import models_card
 import scan_state
 import subtitle_cleanup
 
-VERSION = "0.8.213"
+VERSION = "0.8.216"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1013,6 +1013,11 @@ def render_settings_content(theme, accent, hardware, preference, token, saved,
     )
 
 
+def webhook_code(path):
+    """A webhook address. The page script completes it with the address this page was opened from."""
+    return f"<code data-webhook-path='{escape(path, quote=True)}'>{escape(path)}</code>"
+
+
 def render_media_settings_content(token, webhook_token, radarr_root_prefix, sonarr_root_prefix,
                                    jellyfin_movies_root_prefix="", jellyfin_tv_root_prefix="",
                                    emby_movies_root_prefix="", emby_tv_root_prefix="",
@@ -1040,9 +1045,12 @@ def render_media_settings_content(token, webhook_token, radarr_root_prefix, sona
         "<div class='card'><h2>Radarr &amp; Sonarr</h2>"
         "<p class='muted'>Lägg till SubSynq som en \"Webhook\"-anslutning i Radarr respektive "
         "Sonarr (Settings → Connect), en per verktyg, för händelsen \"On Import\"/\"On Upgrade\". "
-        "Fyll i din SubSynq-adress följt av sökvägen nedan.</p>"
-        "<p class='muted'>Radarr: <code>" + escape(radarr_path) + "</code><br>"
-        "Sonarr: <code>" + escape(sonarr_path) + "</code></p>"
+        "Använd hela adressen nedan. Den börjar med samma adress som du öppnade den här sidan med "
+        "(Unraids IP-adress och port, till exempel <code>http://192.168.1.10:8765</code>). Använd inte "
+        "containernamnet <code>subsynq</code>: Radarr, Sonarr, Jellyfin och Emby ligger oftast på ett annat "
+        "Docker-nätverk och hittar inte det namnet.</p>"
+        "<p class='muted'>Radarr: " + webhook_code(radarr_path) + "<br>"
+        "Sonarr: " + webhook_code(sonarr_path) + "</p>"
         "<form action='/settings/media' method='post'>"
         f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
         + saved_notice +
@@ -1065,7 +1073,7 @@ def render_media_settings_content(token, webhook_token, radarr_root_prefix, sona
         "webhook-plugin — dess mall måste skicka med filsökvägen, t.ex. som fältet <code>Path</code>. "
         "Exakt mallsyntax kan skilja mellan plugin-versioner; kontrollera din egen installations "
         "mallredigerare.</p>"
-        "<p class='muted'>Jellyfin: <code>" + escape(jellyfin_path) + "</code></p>"
+        "<p class='muted'>Jellyfin: " + webhook_code(jellyfin_path) + "</p>"
         "<form action='/settings/media' method='post'>"
         f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
         "<label>Jellyfin filmer-rotmapp (Jellyfins egen sökväg till filmbiblioteket, jämfört med "
@@ -1084,7 +1092,7 @@ def render_media_settings_content(token, webhook_token, radarr_root_prefix, sona
         "<div class='card'><h2>Emby</h2>"
         "<p class='muted'>Settings → Notifications → Webhooks (kräver Emby Premiere), händelsen "
         "\"Library – New content\".</p>"
-        "<p class='muted'>Emby: <code>" + escape(emby_path) + "</code></p>"
+        "<p class='muted'>Emby: " + webhook_code(emby_path) + "</p>"
         "<form action='/settings/media' method='post'>"
         f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
         "<label>Emby filmer-rotmapp (Embys egen sökväg till filmbiblioteket, jämfört med "

@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.216
+
+- **Ingen AMD-varning på en CPU-installation.** Texten "AMD Radeon RX 9070 XT svarade inte när jobbet startade" visades i gult under en körning även på servrar utan GPU-tjänst (till exempel Unraid med CPU). Den visas nu bara om en GPU-tjänst faktiskt är konfigurerad (AMD-tjänst eller NVIDIA CUDA).
+- **Modellsidan laddar inte längre om sig själv.** Märket "ny version finns" använde samma stilklass som ett pågående jobb, vilket fick sidan att ladda om var tionde sekund och släcka ikryssade modeller. Märket har egen klass, och ikryssade modeller håller dessutom tillbaka automatiska omladdningar.
+- **Webhook-adresserna visas som hela adresser.** Under Inställningar → Media visas Radarr-, Sonarr-, Jellyfin- och Emby-adressen nu med samma adress som sidan öppnades från (Unraids IP och port), med en tydlig anvisning att inte använda containernamnet `subsynq`.
+
 ## 0.8.213
 
 - **Skanna ett bibliotek i taget.** Varje biblioteksflik (Filmer, Serier, Extra) har nu en egen skanningsknapp som bara läser den mappen (`/movies`, `/tv` eller `/extra`), och en separat knapp "Skanna allt". Resultatet från de andra biblioteken behålls, och sidan visar när varje mapp senast skannades.

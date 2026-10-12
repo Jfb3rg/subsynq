@@ -94,7 +94,7 @@ _REQUEST_NOTICE = {"1": "models_remove_requested", "remove": "models_remove_requ
 def _version_text(model, lang):
     update = model.get("update") or ""
     if update == "available":
-        return f"<span class='subtitle-status working'>{escape(t('models_version_available', lang))}</span>"
+        return f"<span class='subtitle-status update'>{escape(t('models_version_available', lang))}</span>"
     if update == "current":
         return escape(t("models_version_current", lang))
     return f"<span class='muted'>{escape(t('models_version_unknown', lang))}</span>"

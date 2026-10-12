@@ -191,7 +191,7 @@ td, th { padding: 10px 0; border-bottom: 1px solid var(--bd); }
 .subtitle-status { display: inline-block; border-radius: 20px; padding: 3px 9px; white-space: nowrap; font-size: 14px; }
 .subtitle-status.missing { color: var(--dg); background: var(--dgb); border: 1px solid var(--dg); }
 .subtitle-status.available { color: var(--ok); background: var(--okb); border: 1px solid var(--ok); }
-.subtitle-status.working { color: var(--ac); background: var(--acb); border: 1px solid var(--ac); }
+.subtitle-status.working, .subtitle-status.update { color: var(--ac); background: var(--acb); border: 1px solid var(--ac); }
 .subtitle-status.failed { color: var(--dg); background: var(--dgb); border: 1px solid var(--dg); }
 .job-message { display: block; margin: 6px 0; }
 .job-hardware { display: block; margin: 6px 0; color: var(--sec); }
@@ -314,7 +314,7 @@ const hardwarePanel=document.querySelector('.hardware[data-hardware-signature]')
 function hardwareChoicePending(){
   // Also holds back the automatic reloads while library rows are ticked, so a
   // job status change never wipes a selection that is being made.
-  if(document.querySelector('.bulk-check:checked'))return true;
+  if(document.querySelector('.bulk-check:checked, form[action="/models/update"] input[type="checkbox"]:checked'))return true;
   const form=document.querySelector('.hardware-form');
   const select=form&&form.querySelector('[name="preference"]');
   return !!(form&&(form.dataset.saving==='1'||(select&&Array.from(select.options).some(
@@ -419,6 +419,10 @@ if(modelsCard)setInterval(async()=>{
     });
   }catch(error){/* Try again at the next interval. */}
 },3000);
+document.querySelectorAll('[data-webhook-path]').forEach(code=>{
+  // Show the full address (the one this page was opened from), ready to paste into Radarr, Sonarr, Jellyfin or Emby.
+  code.textContent=location.origin+code.dataset.webhookPath;
+});
 const scanCard=document.querySelector('[data-scan-card]');
 if(scanCard&&scanCard.dataset.state==='running')setInterval(async()=>{
   // Live status while the library is being scanned; reload when the scan has ended.

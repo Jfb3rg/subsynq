@@ -1129,7 +1129,9 @@ def set_hardware(running, error=None, device='cpu', health=None, fallback_reason
                                       'verified': gpu_ready, 'available': gpu_ready})
         data['recommended'] = (native_whisper.DEVICE_ID if NATIVE_CUDA_ENABLED else
                                'amd-rx-9070-xt') if gpu_ready else 'cpu'
-        if fallback_reason is None and running and device == 'cpu' and preference != 'cpu':
+        # A server without any GPU service (the normal Unraid CPU install) runs on the CPU by design: no warning.
+        gpu_expected = NATIVE_CUDA_ENABLED or bool(GPU_ASR_ENABLED and GPU_ASR_URL)
+        if fallback_reason is None and running and device == 'cpu' and preference != 'cpu' and gpu_expected:
             fallback_reason = ('AMD Radeon RX 9070 XT svarade inte när jobbet startade; '
                                'CPU används öppet som säker reserv.')
             if NATIVE_CUDA_ENABLED:
