@@ -43,5 +43,21 @@ class BulkBarExplainsGreyButtonsTests(unittest.TestCase):
         self.assertIn("hint.hidden=!(chosen.length>0&&!anyUsable)", INDEX)
 
 
+class BulkConfirmationIsOnThePageTests(unittest.TestCase):
+    """A browser can block confirm() dialogs for a site without any sign, which made the bulk button look dead."""
+
+    def test_the_bar_asks_inline_instead_of_with_a_browser_dialog(self):
+        bar = server.render_bulk_bar("movie", "tok", "sv")
+        self.assertIn("data-bulk-ask hidden", bar)
+        self.assertIn("data-bulk-yes", bar)
+        self.assertIn("data-bulk-no", bar)
+        self.assertIn("Ja, fortsätt", bar)
+        self.assertIn("Yes, continue", server.render_bulk_bar("movie", "tok", "en"))
+        script = INDEX[INDEX.index("const bulkBar="):]
+        self.assertNotIn("confirm(submitter", script)
+        self.assertIn("bulkBar.requestSubmit(submitter)", script)
+        self.assertIn("bulkBar.dataset.confirmed", script)
+
+
 if __name__ == "__main__":
     unittest.main()

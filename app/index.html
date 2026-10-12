@@ -119,6 +119,8 @@ small { color: var(--sec); }
 .meter-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--sec); }
 .meter-track { height: 6px; border-radius: 4px; background: var(--hi); overflow: hidden; }
 .meter-fill { height: 100%; }
+.bulk-ask { padding: 10px 12px; border: 1px solid var(--ac); border-radius: 8px; background: var(--acb); }
+.bulk-ask[hidden] { display: none; }
 .scan-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
 button.secondary-button { background: var(--hi); color: var(--tx); border: 1px solid var(--bd); }
 button:disabled { opacity: .5; cursor: not-allowed; }
@@ -462,11 +464,38 @@ if(bulkBar){
     refresh();
   }));
   document.addEventListener('change',event=>{if(event.target.matches('.bulk-check'))refresh();});
+  const ask=bulkBar.querySelector('[data-bulk-ask]');
+  let pending=null;
+  const closeAsk=()=>{pending=null;if(ask)ask.hidden=true;};
   bulkBar.addEventListener('submit',event=>{
+    if(bulkBar.dataset.confirmed==='1'){bulkBar.dataset.confirmed='';return;}
+    event.preventDefault();
     const submitter=event.submitter;
+    if(!submitter||!ask)return;
+    // Ask on the page itself instead of with a browser dialog: browsers can block dialogs for a site without a sound.
     const chosen=boxes().filter(box=>box.checked&&box.dataset[submitter.value]==='1').length;
-    if(!confirm(submitter.dataset.confirm.replace('{n}',chosen)))event.preventDefault();
+    pending=submitter;
+    ask.querySelector('[data-bulk-ask-text]').textContent=submitter.dataset.confirm.replace('{n}',chosen);
+    ask.hidden=false;
+    const yes=ask.querySelector('[data-bulk-yes]');
+    if(yes)yes.focus();
   });
+  if(ask){
+    ask.querySelector('[data-bulk-yes]').addEventListener('click',()=>{
+      const submitter=pending;
+      closeAsk();
+      if(!submitter)return;
+      bulkBar.dataset.confirmed='1';
+      if(bulkBar.requestSubmit){bulkBar.requestSubmit(submitter);}
+      else{
+        const field=document.createElement('input');
+        field.type='hidden';field.name='action';field.value=submitter.value;
+        bulkBar.appendChild(field);bulkBar.submit();
+      }
+    });
+    ask.querySelector('[data-bulk-no]').addEventListener('click',closeAsk);
+    document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAsk();});
+  }
   refresh();
 }
 </script>

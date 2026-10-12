@@ -27,7 +27,7 @@ import models_card
 import scan_state
 import subtitle_cleanup
 
-VERSION = "0.8.219"
+VERSION = "0.8.220"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -473,7 +473,10 @@ def render_bulk_bar(selected, token, lang="sv"):
         "<button type='submit' name='action' value='delete' class='small-button danger' "
         f"data-confirm='{confirm_delete}'>{escape(t('bulk_delete', lang))} (<span data-usable>0</span>)</button> "
         "<button type='submit' name='action' value='recreate' class='small-button danger' "
-        f"data-confirm='{confirm_recreate}'>{escape(t('bulk_recreate', lang))} (<span data-usable>0</span>)</button></p></form>")
+        f"data-confirm='{confirm_recreate}'>{escape(t('bulk_recreate', lang))} (<span data-usable>0</span>)</button></p>"
+        "<p class='bulk-ask' data-bulk-ask hidden><strong data-bulk-ask-text></strong> "
+        f"<button type='button' class='small-button' data-bulk-yes>{escape(t('bulk_ask_yes', lang))}</button> "
+        f"<button type='button' class='small-button' data-bulk-no>{escape(t('bulk_ask_no', lang))}</button></p></form>")
 
 
 def render_library(items, selected, token="", jobs=None, ignore_existing=False, lang="sv"):

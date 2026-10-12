@@ -432,6 +432,8 @@ STRINGS = {
     "bulk_start": {"sv": "Skapa undertext för markerade", "en": "Create subtitles for selected"},
     "bulk_delete": {"sv": "Ta bort AI-undertext för markerade", "en": "Delete AI subtitle for selected"},
     "bulk_recreate": {"sv": "Skapa om undertext för markerade", "en": "Recreate subtitles for selected"},
+    "bulk_ask_yes": {"sv": "Ja, fortsätt", "en": "Yes, continue"},
+    "bulk_ask_no": {"sv": "Avbryt", "en": "Cancel"},
     "bulk_confirm_recreate": {
         "sv": "Ta bort den nuvarande AI-undertexten för {n} filer och skapa nya från grunden? De gamla tas bort först. Videofilerna rörs inte.",
         "en": "Delete the current AI subtitle for {n} files and create new ones from scratch? The old ones are deleted first. The video files are not touched."},

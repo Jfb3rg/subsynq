@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.220
+
+- **"Skapa undertext för markerade" frågar på sidan i stället för med en webbläsardialog.** Webbläsare kan blockera dialogrutor (`confirm`) för en webbplats utan att visa något, och då såg knapparna döda ut: ingenting hände och ingen förfrågan nådde servern. Bekräftelsen ("Köa N undertextjobb?" med Ja/Avbryt) visas nu som en rad i flervalsstapeln. Gäller alla tre flervalsknapparna (skapa, ta bort, skapa om).
+
 ## 0.8.219
 
 Bättre hantering av tilltal, förlorade repliker och översättningsfel. Allt är allmänna regler som gäller alla filer; inget är knutet till en viss film, serie eller trailer.
