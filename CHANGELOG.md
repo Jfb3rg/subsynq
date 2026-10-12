@@ -10,11 +10,15 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.212
+
+- **Rättat vid nyinstallation på Unraid.** Workern väntar nu på att `subsynq` skapar databasen i stället för att krascha med `no such table: metadata` när den startas först. Installationsguiden (`unraid/README.md`) har ett nytt steg 1b: skapa mapparna och ge `models` ägare 99:100, annars får modellhämtningen `PermissionError` i `/models`.
+- **Tydligt felmeddelande om modellmappen inte går att skriva i.** I stället för `PermissionError` visar Inställningar → Modeller vad som ska göras (`chown` på mappen som är kopplad till `/models`), och hämtningen provar igen av sig själv.
+
 ## 0.8.211
 
 - **"Ny version finns" och uppdateringsknapp.** Modellhanteraren kontrollerar var 12:e timme (och på "Kontrollera nu") om de listade modellerna har en nyare version (Hugging Face: senaste commit; Gemma: registrets manifest jämfört med lokal digest). Kontrollen tittar bara. Under Inställningar → Modeller visas kolumnen Version, och för modeller med ny version ett formulär "Uppdatera markerade": den nya versionen hämtas och den gamla tas bort (Gemma: Ollama rensar gamla filer vid nästa omstart). Uppdateringen väntar tills inget undertextjobb körs och en misslyckad uppdatering lämnar den gamla versionen orörd. `POST /models/update`. 16 nya tester.
 - Webbgränssnittets adress kan väljas (`SUBSYNQ_BIND_IP`, standard `127.0.0.1`).
-- **Rättat vid nyinstallation på Unraid.** Workern väntar nu på att `subsynq` skapar databasen i stället för att krascha med `no such table: metadata` när den startas först. Installationsguiden (`unraid/README.md`) har ett nytt steg 1b: skapa mapparna och ge `models` ägare 99:100, annars får modellhämtningen `PermissionError` i `/models`.
 
 ## 0.8.210
 

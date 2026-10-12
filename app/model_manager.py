@@ -685,6 +685,20 @@ class ModelManager:
         self._write()
         return self._ready
 
+    def _permission_text(self, error=None):
+        """Plain-language fix for the usual Unraid first-install problem: a models folder owned by root."""
+        who = f"{os.getuid()}:{os.getgid()}"
+        where = f" ({error.filename})" if getattr(error, "filename", None) else ""
+        return (f"Modellmappen{where} går inte att skriva i för användaren {who}. Ge mappen som är kopplad till "
+                f"/models den ägaren i Unraids terminal: chown {who} <mappen> (bara den mappen, inte -R). "
+                "Hämtningen provar igen av sig själv.")
+
+    def _models_dir_problem(self):
+        """Empty when the models folder can be written to, otherwise the explanation shown in the interface."""
+        if os.access(self.models_dir, os.W_OK | os.X_OK):
+            return ""
+        return self._permission_text()
+
     def _download_one(self, spec):
         needed = spec.size_gb * GIB * DISK_MARGIN
         try:
@@ -697,6 +711,13 @@ class ModelManager:
             self._set(spec, state="error", detail=message)
             self._message = message
             self.log(message)
+            self._write()
+            return False
+        problem = self._models_dir_problem()
+        if problem:
+            self._set(spec, state="error", detail=problem)
+            self._message = problem
+            self.log(problem)
             self._write()
             return False
         self._set(spec, state="downloading", percent=0, detail="startar")
@@ -713,6 +734,8 @@ class ModelManager:
                 raise RuntimeError("nedladdningen blev inte komplett")
         except Exception as error:  # noqa: BLE001 - network, disk, registry: report and retry later
             text = f"{type(error).__name__}: {error}"[:300]
+            if isinstance(error, PermissionError):
+                text = self._permission_text(error)
             self._set(spec, state="error", detail=text)
             self._message = f"Kunde inte hämta {spec.label}: {text}"
             self.log(self._message)

@@ -5,6 +5,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 import model_manager as mm
@@ -244,6 +245,29 @@ class ManagerTests(unittest.TestCase):
             self.assertEqual((status["state"], status["ready"], status["done"], status["total"]),
                              ("ready", True, 2, 2))
             self.assertEqual(status["source"], str(Path(folder) / "models.json"))
+
+    def test_a_models_folder_that_cannot_be_written_to_gives_a_clear_message_and_downloads_nothing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend = FakeBackend(present=set())
+            manager = self.manager(backend, folder)
+            with patch("model_manager.os.access", return_value=False):
+                self.assertFalse(manager.run_once())
+            self.assertEqual(backend.downloads, [])
+            status = self.status(folder)
+            self.assertEqual(status["state"], "error")
+            self.assertIn("chown", status["message"])
+            self.assertIn("/models", status["message"])
+            self.assertTrue(all(m["state"] == "error" and "chown" in m["detail"] for m in status["models"]))
+            self.assertTrue(manager.run_once(), "när mappen går att skriva i hämtas allt av sig själv")
+
+    def test_a_permission_error_during_download_is_explained_in_plain_language(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend = FakeBackend(fail={"a"})
+            manager = self.manager(backend, folder)
+            with patch.object(FakeBackend, "download", side_effect=PermissionError(13, "Permission denied", "/models/x")):
+                self.assertFalse(manager.run_once())
+            self.assertIn("chown", manager._models["a"]["detail"])
+            self.assertIn("/models/x", manager._models["a"]["detail"])
 
     def test_missing_models_are_downloaded_and_then_ready(self):
         with tempfile.TemporaryDirectory() as folder:
