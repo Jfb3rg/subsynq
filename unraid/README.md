@@ -42,6 +42,16 @@ chown 99:100 /mnt/user/appdata/subsynq /mnt/user/appdata/subsynq/config /mnt/use
 
 Ollama-mappen `models/ollama` ska inte ändras: Ollama körs som root och sköter den själv.
 
+**Modellerna utanför appdata.** Mapparna i mallarna är bara förslag. Modellerna är cirka 28 GB, och ligger de i `appdata`
+blir snapshots och säkerhetskopior av appdata onödigt stora. Då väljer du en egen mapp, till exempel
+`/mnt/user/subsynq-ai-models/models`. Sätt den som `/models` i alla tre mallarna `subsynq`, `subsynq-worker` och
+`subsynq-qwen-asr`, och `<den mappen>/ollama` som Ollamas mapp i `subsynq-translate-engine`. Kör sedan `chown 99:100`
+på just den modellmappen i stället för raden ovan:
+
+```
+chown 99:100 /mnt/user/subsynq-ai-models/models
+```
+
 ## 2. Lägg in mallarna
 
 **Via Community Apps** (kommer senare, när SubSynq är inskickat): sök efter SubSynq och installera. Då är allt ifyllt utan
