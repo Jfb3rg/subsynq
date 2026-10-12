@@ -2471,7 +2471,13 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
                           'with exact source and target quotes.')
     if not blocks:
         raise SourceQualityError(f'Den {swedish_label} undertexten är tom; ingen SRT skrevs.')
-    for block_index, sample in enumerate(blocks):
+    # A reviewer that cannot give one valid, self-consistent answer about a whole block is asked about each half
+    # instead (smaller question, same strict validation). Only a single cue that still gets no valid answer fails.
+    pending_blocks = [(block, {'size': len(block), 'bad': set(), 'reasons': []}) for block in blocks]
+    block_index = -1
+    while pending_blocks:
+        sample, group = pending_blocks.pop(0)
+        block_index += 1
         # CPU mmap weights compete with Ollama's retained prompt checkpoints for RAM.
         # A real 38-cue review slowed from ~10 to 0.4 tokens/s after four blocks.
         # Each block already contains its own complete context; release checkpoints
@@ -2537,6 +2543,7 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
             for row in sample
         ]}, ensure_ascii=False)
         rejection = None
+        split_block = False
         for review_attempt in range(2):
             verdict = None
             try:
@@ -2568,9 +2575,20 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
                                   'attempt': review_attempt + 1, 'reason': str(error),
                                   'verdict': verdict})
                 if review_attempt == 1:
+                    if len(sample) >= 2:
+                        middle = len(sample) // 2
+                        pending_blocks[0:0] = [(sample[:middle], group), (sample[middle:], group)]
+                        if audit is not None:
+                            audit.append({'ids': sample_ids, 'status': 'split',
+                                          'reason': 'Granskaren gav inget giltigt svar om hela blocket; '
+                                                    'varje halva granskas för sig.'})
+                        split_block = True
+                        break
                     raise RuntimeError(
                         f'Den {swedish_label} slutkontrollen gav inget giltigt svar '
                         'med belägg från rätt textrad.') from error
+        if split_block:
+            continue
         try:
             # The model sometimes echoes its own correct answer a second time
             # to fill out the maxItems budget instead of stopping cleanly --
@@ -2608,11 +2626,16 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
                           **({'comparisons': verdict['comparisons']} if FOCUSED_REVIEW else {}),
                           'reasons': [{'id': row_id, 'reason': text} for row_id, text in per_id_reason.items()],
                           'reason': reason})
-        if len(bad_ids) >= max(2, (len(sample) + 3) // 4):
+        # Halves of a split block count towards the ORIGINAL block's limit, so splitting never lets a broken block through.
+        group['bad'].update(bad_ids)
+        if reason:
+            group['reasons'].append(reason)
+        if len(group['bad']) >= max(2, (group['size'] + 3) // 4):
+            joined = '; '.join(dict.fromkeys(group['reasons']))
             raise SourceQualityError(
                 f'Den {swedish_label} undertexten underkändes innan någon SRT skrevs: '
-                f'{len(bad_ids)} av {len(sample)} repliker är tydligt trasiga '
-                f'({reason or "otydlig översättning"}).')
+                f'{len(group["bad"])} av {group["size"]} repliker är tydligt trasiga '
+                f'({joined or "otydlig översättning"}).')
     return True
 
 

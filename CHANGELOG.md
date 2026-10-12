@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.222
+
+- **Slutgranskningen gör inte längre att hela jobbet faller när granskaren motsäger sig själv.** Gav granskaren inget giltigt, självkonsekvent svar om ett helt block (till exempel en anmärkning på en replik medan jämförelsen säger att betydelsen är bevarad) föll jobbet som `failed`, och andra försöket gav exakt samma svar. Nu ställs frågan i stället om varje halva av blocket, ner till en enda replik om det behövs. Svaren valideras lika strängt som förut (belägg från rätt textrad krävs), och delarna räknas mot det ursprungliga blockets gräns för trasiga repliker, så att uppdelningen aldrig släpper igenom ett trasigt block. En enskild replik som inte får något giltigt svar stoppar fortfarande jobbet, och motorfel (till exempel HTTP 500) delas inte upp.
+
 ## 0.8.221
 
 - **Frivilligt lösenord och inloggningssida.** Under Inställningar → Lösenord kan du slå på ett lösenord (minst 8 tecken). Då visas en inloggningssida före allt annat; lösenordet sparas bara som en saltad PBKDF2-hash, sessionen är en signerad cookie (HttpOnly, SameSite, `Secure` över https) som gäller i 14 dagar, och efter fem felaktiga försök spärras klienten i fem minuter. Byte och borttagning kräver nuvarande lösenord, och att byta eller ta bort lösenordet avslutar alla sessioner. Av som standard, så befintliga installationer fungerar som förut.

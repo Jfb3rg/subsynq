@@ -113,7 +113,7 @@ class TranslationEvidenceTests(unittest.TestCase):
                 'response': json.dumps({'flags': [invalid]})}) as model:
             with self.assertRaises(RuntimeError):
                 worker.assess_translation_quality(self.rows)
-        self.assertEqual(model.call_count, 2)
+        self.assertEqual(model.call_count, 6)  # whole block, first half, first cue: two tries each, nothing approved
 
     def test_empty_reason_unknown_category_and_wrong_id_are_invalid(self):
         for overrides in ({'reason': ''}, {'category': 'bad'}, {'id': 99}):
@@ -149,7 +149,8 @@ class TranslationEvidenceTests(unittest.TestCase):
                     worker.review_and_save_translation({'id': 9}, self.rows)
             saved = json.loads((Path(folder) / 'job-9.json').read_text())
         self.assertEqual(saved['status'], 'error')
-        self.assertEqual(len(saved['reviews']), 2)
+        self.assertEqual(len(saved['reviews']), 8)  # 2 invalid answers + a split note per level, down to one cue
+        self.assertEqual([review.get('status') for review in saved['reviews']].count('split'), 2)
         self.assertEqual(saved['reviews'][0]['verdict']['flags'], flags)
         self.assertNotIn('repair_attempts', saved)
 
@@ -428,7 +429,7 @@ class UntranslatedQuoteTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as raised:
                 worker.assess_translation_quality(self.ROWS)
         self.assertNotIsInstance(raised.exception, worker.SourceQualityError)
-        self.assertEqual(model.call_count, 2)  # still exactly two tries, nothing approved
+        self.assertEqual(model.call_count, 4)  # two tries for the pair, then two for its first cue; nothing approved
 
     def test_the_rejection_message_does_not_leak_into_the_next_block(self):
         rows = [{'id': n, 'start': n, 'end': n + .5, 'source': f'Line {n}.', 'sv': f'Rad {n}.'}
