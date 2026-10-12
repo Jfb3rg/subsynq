@@ -1,0 +1,428 @@
+"""Minimal UI-language catalog for the interface chrome (navigation, page
+titles, top bar) -- svenska (default) and engelska. Deeper text such as
+error messages, quality-gate reasoning and settings card copy stays Swedish
+only for now; see the internal status log for the phased rollout.
+"""
+
+LANGUAGES = ("sv", "en")
+
+STRINGS = {
+    "running": {"sv": "Igång", "en": "Running"},
+    "nav_overview": {"sv": "Översikt", "en": "Overview"},
+    "nav_queue": {"sv": "Kö", "en": "Queue"},
+    "nav_cleanup": {"sv": "Städa undertexter", "en": "Clean up subtitles"},
+    "nav_library_heading": {"sv": "Bibliotek", "en": "Library"},
+    "nav_settings_heading": {"sv": "Inställningar", "en": "Settings"},
+    "nav_settings_general": {"sv": "Allmänt", "en": "General"},
+    "nav_settings_theme": {"sv": "Tema", "en": "Theme"},
+    "nav_settings_media": {"sv": "Mediasystem", "en": "Media systems"},
+    "nav_settings_cloud": {"sv": "Moln-GPU", "en": "Cloud GPU"},
+    "nav_settings_log": {"sv": "Logg", "en": "Log"},
+    "kind_movie": {"sv": "Filmer", "en": "Movies"},
+    "kind_episode": {"sv": "Serier", "en": "Series"},
+    "kind_media": {"sv": "Extra", "en": "Extra"},
+    "page_title_overview": {"sv": "Översikt", "en": "Overview"},
+    "page_title_settings_general": {"sv": "Inställningar · Allmänt", "en": "Settings · General"},
+    "page_title_settings_theme": {"sv": "Inställningar · Tema", "en": "Settings · Theme"},
+    "page_title_settings_media": {"sv": "Inställningar · Mediasystem", "en": "Settings · Media systems"},
+    "page_title_settings_cloud": {"sv": "Inställningar · Moln-GPU", "en": "Settings · Cloud GPU"},
+    "page_title_settings_log": {"sv": "Inställningar · Logg", "en": "Settings · Log"},
+    "page_title_queue": {"sv": "Kö", "en": "Queue"},
+    "page_title_cleanup": {"sv": "Städa undertexter", "en": "Clean up subtitles"},
+    "ui_language_label": {"sv": "Gränssnittsspråk", "en": "Interface language"},
+    "ui_language_note": {
+        "sv": "Översätter menyn, sidtitlarna och toppraden. Djupare texter (felmeddelanden, "
+              "kvalitetskontroller, inställningskort) är fortfarande bara på svenska.",
+        "en": "Translates the navigation, page titles and top bar. Deeper text (error messages, "
+              "quality checks, settings cards) is still Swedish only.",
+    },
+    "language_saved": {"sv": "✓ Språkvalet är sparat.", "en": "✓ Language preference saved."},
+    "episode_fallback": {"sv": "Avsnitt", "en": "Episode"},
+    "status_ai_exists": {"sv": "AI-undertext finns", "en": "AI subtitle exists"},
+    "status_embedded_exists": {"sv": "Svensk originalundertext finns", "en": "Original Swedish subtitle exists"},
+    "status_missing": {"sv": "Svensk undertext saknas", "en": "Swedish subtitle missing"},
+    "status_failed": {"sv": "Jobbet misslyckades", "en": "Job failed"},
+    "status_unknown_error": {"sv": "Okänt fel", "en": "Unknown error"},
+    "status_ai_created": {"sv": "AI-undertext skapad", "en": "AI subtitle created"},
+    "status_rejected": {"sv": "Underkänd – använd inte", "en": "Rejected – do not use"},
+    "status_cancelled": {"sv": "Avbruten · ingen fil skapad", "en": "Cancelled · no file created"},
+    "embedded_subtitle_note": {"sv": "Inbäddad svensk undertext", "en": "Embedded Swedish subtitle"},
+    "skip_note_forced": {"sv": "Körs trots inbäddad svensk undertext (inställning aktiv).",
+                          "en": "Runs anyway despite the embedded Swedish subtitle (setting enabled)."},
+    "skip_note_default": {"sv": "AI-körning hoppas över som standard.",
+                          "en": "AI processing is skipped by default."},
+    "queue_queued": {"sv": "Köad", "en": "Queued"},
+    "queue_transcribing": {"sv": "Lyssnar och skriver av", "en": "Listening and transcribing"},
+    "queue_translating": {"sv": "Översätter till svenska", "en": "Translating to Swedish"},
+    "queue_verifying": {"sv": "Kvalitetskontrollerar tider", "en": "Checking quality and timing"},
+    "queue_writing": {"sv": "Sparar undertext", "en": "Saving subtitle"},
+    "queue_cancel_requested": {"sv": "Avbryter jobb", "en": "Cancelling job"},
+    "queue_delete_queued": {"sv": "Borttagning köad", "en": "Deletion queued"},
+    "queue_deleting": {"sv": "Tar bort AI-undertext", "en": "Deleting AI subtitle"},
+    "queue_restart_queued": {"sv": "Omkörning köad", "en": "Re-run queued"},
+    "queue_restarting": {"sv": "Tar bort gammal undertext före omkörning",
+                         "en": "Removing old subtitle before re-run"},
+    "action_cancel_job": {"sv": "Avbryt jobb", "en": "Cancel job"},
+    "confirm_cancel_job": {"sv": "Avbryt det här undertextjobbet? Ingen ny SRT sparas.",
+                           "en": "Cancel this subtitle job? No new SRT will be saved."},
+    "completed_scan_hint": {"sv": "Skanna biblioteket för att uppdatera filstatusen.",
+                            "en": "Scan the library to refresh the file status."},
+    "completed_missing_file": {"sv": "Ett tidigare jobb blev klart, men undertextfilen saknas nu. "
+                               "En ny körning kan startas.",
+                               "en": "An earlier job finished, but the subtitle file is missing now. "
+                               "A new run can be started."},
+    "deleted_hint": {"sv": "AI-undertexten är borttagen. En ny körning kan startas.",
+                     "en": "The AI subtitle has been deleted. A new run can be started."},
+    "used_hardware_model": {"sv": "Använd hårdvara/modell", "en": "Hardware/model used"},
+    "stale_video_note": {"sv": "Videofilen verkar ha ändrats sedan den här undertexten skapades "
+                         "(annan filstorlek/tidsstämpel).",
+                         "en": "The video file seems to have changed since this subtitle was created "
+                         "(different file size/timestamp)."},
+    "confirm_restart": {"sv": "Ta bort den gamla undertexten och köra om från grunden?",
+                        "en": "Delete the old subtitle and run it again from scratch?"},
+    "action_rerun": {"sv": "Kör igen", "en": "Run again"},
+    "action_retry_failed": {"sv": "Kör om", "en": "Retry"},
+    "confirm_delete": {"sv": "Ta bort den här AI-undertexten helt? Du kan skapa en ny efteråt.",
+                       "en": "Delete this AI subtitle completely? You can create a new one afterwards."},
+    "action_delete": {"sv": "Ta bort AI-undertext", "en": "Delete AI subtitle"},
+    "action_view_subtitle": {"sv": "Visa undertexten", "en": "View subtitle"},
+    "action_view_english_subtitle": {"sv": "Visa engelsk undertext", "en": "View English subtitle"},
+    "action_create_subtitle": {"sv": "Skapa svensk AI-undertext", "en": "Create Swedish AI subtitle"},
+    "kind_label_episode": {"sv": "Avsnitt", "en": "Episode"},
+    "kind_label_movie": {"sv": "Film", "en": "Movie"},
+    "kind_label_media": {"sv": "Media", "en": "Media"},
+    "table_header_file": {"sv": "Film / fil", "en": "Movie / file"},
+    "table_header_episode": {"sv": "Avsnitt", "en": "Episode"},
+    "table_header_subtitle": {"sv": "Svensk AI-undertext", "en": "Swedish AI subtitle"},
+    "no_video_files": {"sv": "Inga videofiler i listan ännu.", "en": "No video files in the list yet."},
+    "no_episodes": {"sv": "Inga serieavsnitt i listan ännu.", "en": "No episodes in the list yet."},
+    "unknown_series": {"sv": "Okänd serie", "en": "Unknown series"},
+    "no_season": {"sv": "Utan säsong", "en": "No season"},
+    "seasons_count": {"sv": "säsonger", "en": "seasons"},
+    "episodes_count": {"sv": "avsnitt", "en": "episodes"},
+    "missing_subtitle_suffix": {"sv": "saknar svensk undertext", "en": "missing a Swedish subtitle"},
+    "all_have_subtitle": {"sv": "alla har svensk undertext", "en": "all have a Swedish subtitle"},
+    "queue_completed": {"sv": "Klar", "en": "Done"},
+    "queue_failed": {"sv": "Misslyckades", "en": "Failed"},
+    "queue_quality_failed": {"sv": "Underkänd", "en": "Rejected"},
+    "queue_deleted": {"sv": "Borttagen", "en": "Deleted"},
+    "queue_cancelled": {"sv": "Avbruten", "en": "Cancelled"},
+    "action_cancel_short": {"sv": "Avbryt", "en": "Cancel"},
+    "no_active_jobs": {"sv": "Inga aktiva jobb just nu.", "en": "No active jobs right now."},
+    "no_queued_jobs": {"sv": "Inga köade jobb just nu.", "en": "No queued jobs right now."},
+    "no_history_yet": {"sv": "Ingen historik ännu.", "en": "No history yet."},
+    "active_jobs_heading": {"sv": "Aktiva jobb", "en": "Active jobs"},
+    "queue_heading": {"sv": "Kö", "en": "Queue"},
+    "recent_events_heading": {"sv": "Senaste händelser", "en": "Recent events"},
+    "pagination_previous": {"sv": "← Föregående", "en": "← Previous"},
+    "pagination_next": {"sv": "Nästa →", "en": "Next →"},
+    "pagination_page_of": {"sv": "Sida {page} av {total}", "en": "Page {page} of {total}"},
+    "log_heading": {"sv": "Logg", "en": "Log"},
+    "log_intro": {"sv": "De senaste jobbhändelserna, senaste överst.",
+                 "en": "The latest job events, newest first."},
+    "no_jobs_run_yet": {"sv": "Inga jobb har körts ännu.", "en": "No jobs have run yet."},
+    "live_heading": {"sv": "Live", "en": "Live"},
+    "live_intro": {"sv": "Rå ström av det som händer just nu, uppdateras var 3:e sekund.",
+                  "en": "Raw stream of what's happening right now, updates every 3 seconds."},
+    "waiting_for_events": {"sv": "Väntar på händelser…", "en": "Waiting for events…"},
+    "stat_has_subtitle": {"sv": "{count} av {total} har svensk AI-undertext",
+                          "en": "{count} of {total} have a Swedish AI subtitle"},
+    "coverage_heading": {"sv": "Undertexttäckning", "en": "Subtitle coverage"},
+    "coverage_intro": {
+        "sv": "Räknar inbäddade spår, externa undertextfiler bredvid videon (t.ex. .sv.srt) "
+              "och SubSynqs egna AI-undertexter. PGS/bild är bildbaserade undertexter som inte "
+              "går att läsa som text.",
+        "en": "Counts embedded tracks, external subtitle files next to the video (e.g. .sv.srt) "
+              "and SubSynq's own AI subtitles. PGS/image subtitles are picture-based and cannot "
+              "be read as text."},
+    "coverage_col_total": {"sv": "Totalt", "en": "Total"},
+    "coverage_col_sv": {"sv": "Svensk", "en": "Swedish"},
+    "coverage_col_en": {"sv": "Engelsk", "en": "English"},
+    "coverage_col_image": {"sv": "PGS / bild", "en": "PGS / image"},
+    "coverage_col_no_sv": {"sv": "Saknar svensk", "en": "No Swedish"},
+    "coverage_unprobed": {
+        "sv": "{count} filer är inte analyserade än och räknas som saknande. Skanna biblioteket.",
+        "en": "{count} files have not been analysed yet and count as missing. Scan the library."},
+    "queue_label": {"sv": "I KÖ", "en": "IN QUEUE"},
+    "jobs_queued_now": {"sv": "{count} jobb köade just nu", "en": "{count} jobs queued right now"},
+    "no_jobs_queued_now": {"sv": "Inga jobb köade just nu", "en": "No jobs queued right now"},
+    "pipeline_transcribing": {"sv": "Lyssnar och skriver av", "en": "Listening and transcribing"},
+    "pipeline_transcribing_desc": {"sv": "Whisper + Qwen3-ASR läser av ljudet",
+                                   "en": "Whisper + Qwen3-ASR reads the audio"},
+    "pipeline_translating": {"sv": "Översätter till svenska", "en": "Translating to Swedish"},
+    "pipeline_translating_desc": {"sv": "Gemma 3 12B", "en": "Gemma 3 12B"},
+    "pipeline_verifying": {"sv": "Kvalitetskontrollerar", "en": "Checking quality"},
+    "pipeline_verifying_desc": {"sv": "Slutlig kontroll av den svenska texten",
+                                "en": "Final check of the Swedish text"},
+    "pipeline_writing": {"sv": "Sparar undertext", "en": "Saving subtitle"},
+    "pipeline_writing_desc": {"sv": "Skriver .ai.sv.srt bredvid videon", "en": "Writes .ai.sv.srt next to the video"},
+    "step_done": {"sv": "Klar", "en": "Done"},
+    "step_active": {"sv": "Pågår", "en": "In progress"},
+    "step_waiting": {"sv": "Väntar", "en": "Waiting"},
+    "ongoing_job_heading": {"sv": "Pågående jobb", "en": "Ongoing job"},
+    "no_active_jobs_worker_waiting": {"sv": "Inga aktiva jobb. Workern väntar på nästa fil i kön.",
+                                      "en": "No active jobs. The worker is waiting for the next file in the queue."},
+    "local_engine_heading": {"sv": "Lokal motor", "en": "Local engine"},
+    "working": {"sv": "Arbetar", "en": "Working"},
+    "idle": {"sv": "Ledig", "en": "Idle"},
+    "coming_later": {"sv": "Kommer senare", "en": "Coming later"},
+    "paused": {"sv": "Pausad", "en": "Paused"},
+    "none_found": {"sv": "Ingen hittad", "en": "None found"},
+    "no_gpu_block_detected": {"sv": "Inget GPU-block upptäckt i containern.",
+                              "en": "No GPU block detected in the container."},
+    "cpu_active_for": {"sv": "Lokal CPU: {cpu} · {gpu}", "en": "Local CPU: {cpu} · {gpu}"},
+    "ai_hardware_heading": {"sv": "AI-hårdvara", "en": "AI hardware"},
+    "active_now": {"sv": "Aktiv just nu", "en": "Active right now"},
+    "no_ai_processing_active": {"sv": "Ingen AI-bearbetning pågår", "en": "No AI processing active"},
+    "saved_choice_for_next_job": {"sv": "Sparat val för nästa jobb", "en": "Saved choice for the next job"},
+    "usable_by_next_job": {"sv": "Kan användas av nästa jobb", "en": "Usable by the next job"},
+    "none": {"sv": "Inga", "en": "None"},
+    "verified_not_connected_yet": {"sv": "Verifierad men ännu inte ansluten",
+                                   "en": "Verified but not connected yet"},
+    "asr_model": {"sv": "ASR-modell", "en": "ASR model"},
+    "clear_fallback_reason": {"sv": "Tydlig reservorsak", "en": "Clear fallback reason"},
+    "latest_job_error": {"sv": "Senaste jobbfel", "en": "Latest job error"},
+    "state_not_connected": {"sv": "Ingen AI-motor", "en": "No AI engine"},
+    "state_waiting_for_job": {"sv": "Väntar på jobb", "en": "Waiting for job"},
+    "state_error": {"sv": "Fel", "en": "Error"},
+    "hardware_saved": {"sv": "✓ Hårdvaruvalet är sparat.", "en": "✓ Hardware choice saved."},
+    "desired_device": {"sv": "Önskad enhet", "en": "Desired device"},
+    "save_choice": {"sv": "Spara val", "en": "Save choice"},
+    "automatic": {"sv": "Automatiskt", "en": "Automatic"},
+    "automatic_recommends": {"sv": "Automatiskt (rekommenderar {name})", "en": "Automatic (recommends {name})"},
+    "automatic_arrow": {"sv": "Automatiskt → {name}", "en": "Automatic → {name}"},
+    "verified_suffix": {"sv": "verifierad", "en": "verified"},
+    "not_verified_suffix": {"sv": "ej verifierad", "en": "not verified"},
+    "cloud_gpu_vast_missing": {"sv": "Moln-GPU · Vast.ai (anslutning saknas)",
+                               "en": "Cloud GPU · Vast.ai (no connection)"},
+    "cloud_cpu_vast_missing": {"sv": "Moln-CPU · Vast.ai (anslutning saknas)",
+                               "en": "Cloud CPU · Vast.ai (no connection)"},
+    "cloud_cpu_runpod_missing": {"sv": "Moln-CPU · Runpod.io (anslutning saknas)",
+                                 "en": "Cloud CPU · Runpod.io (no connection)"},
+    "cloud_gpu_runpod_missing": {"sv": "Moln-GPU · Runpod.io (anslutning saknas)",
+                                 "en": "Cloud GPU · Runpod.io (no connection)"},
+    "cloud_gpu_option_label": {"sv": "Moln-GPU · {gpu} · {provider} (kostar)",
+                               "en": "Cloud GPU · {gpu} · {provider} (costs)"},
+    "cloud_cpu_option_label": {
+        "sv": "Moln-CPU · hela AI-kedjan · {provider} (kostar)",
+        "en": "Cloud CPU · whole AI chain · {provider} (costs)"},
+    "cloud_cpu_confirm": {
+        "sv": "Nästa jobb hyr en riktig CPU-server och kör Whisper, Qwen och Gemma där. Ljud, dialogtext och filnamn "
+              "skickas krypterat (HTTPS) till servern, och det kostar pengar tills jobbet är klart. "
+              "Om servern inte duger stoppas jobbet utan att något körs lokalt. Fortsätta?",
+        "en": "The next job rents a real CPU server and runs Whisper, Qwen and Gemma there. Audio, dialogue text and file name "
+              "are sent encrypted (HTTPS) to the server and it costs money until the job "
+              "finishes. If the server is unsuitable the job stops without anything running locally. "
+              "Continue?"},
+    "cloud_gpu_runpod_auto": {"sv": "billigaste lediga NVIDIA-kort (minst 16 GB)",
+                              "en": "cheapest available NVIDIA card (16 GB or more)"},
+    "cloud_gpu_generic": {"sv": "okänt GPU-val", "en": "unspecified GPU"},
+    "cloud_gpu_confirm": {
+        "sv": "Nästa jobb hyr en riktig moln-GPU-server och kör Whisper, Qwen och Gemma där. Ljud, dialogtext och filnamn "
+              "skickas krypterat (HTTPS) till servern, och det kostar pengar per minut tills det är "
+              "klart. Fortsätta?",
+        "en": "The next job rents a real cloud GPU server and runs Whisper, Qwen and Gemma there. Audio, dialogue text and file name "
+              "are sent encrypted (HTTPS) to the server and it costs money per minute until it "
+              "finishes. Continue?"},
+    "hardware_form_note": {
+        "sv": "Att spara byter mål för nästa undertextjobb, men startar inget jobb. Automatiskt väntar på "
+              "en verifierad GPU som håller på att starta och faller inte tyst tillbaka till ett långt "
+              "CPU-jobb. Välj CPU uttryckligen om du vill använda den. Testad hårdvara som ännu inte är "
+              "kopplad till heljobben visas separat.",
+        "en": "Saving changes the target for the next subtitle job, but doesn't start one. Automatic waits "
+              "for a verified GPU that's starting up instead of silently falling back to a long CPU job. "
+              "Choose CPU explicitly if you want to use it. Tested hardware not yet wired into full jobs "
+              "is shown separately.",
+    },
+    "nav_settings_models": {"sv": "Modeller", "en": "Models"},
+    "page_title_settings_models": {"sv": "Inställningar · Modeller", "en": "Settings · Models"},
+    "models_page_heading": {"sv": "AI-modeller", "en": "AI models"},
+    "models_page_intro": {
+        "sv": "Så här vet SubSynq vilka modeller som behövs: de står i en egen fil, models.json. Vill du byta eller "
+              "uppgradera en modell lägger du en egen kopia av filen som /config/models.json och ändrar raden. "
+              "Då hämtas den nya modellen automatiskt, och den gamla kan tas bort här nedan.",
+        "en": "This is how SubSynq knows which models it needs: they are listed in a file of their own, models.json. "
+              "To swap or upgrade a model, put your own copy of the file at /config/models.json and change the "
+              "line. The new model is then downloaded automatically, and the old one can be removed below."},
+    "models_page_source": {"sv": "Aktuell lista: {path}", "en": "Current list: {path}"},
+    "models_page_no_status": {
+        "sv": "Workern har inte rapporterat modellstatus än. Vänta en minut och ladda om sidan.",
+        "en": "The worker has not reported model status yet. Wait a minute and reload the page."},
+    "models_col_model": {"sv": "Modell", "en": "Model"},
+    "models_col_used_by": {"sv": "Används av", "en": "Used by"},
+    "models_col_size": {"sv": "Storlek", "en": "Size"},
+    "models_col_state": {"sv": "Status", "en": "Status"},
+    "models_obsolete_heading": {"sv": "Gamla modeller som inte längre står i listan",
+                                "en": "Old models no longer in the list"},
+    "models_obsolete_intro": {
+        "sv": "De ligger kvar på disken och tar plats (ungefär {gb} GB) tills du själv tar bort dem. SubSynq tar "
+              "aldrig bort något av sig själv.",
+        "en": "They stay on disk and take up space (about {gb} GB) until you remove them yourself. SubSynq never "
+              "removes anything by itself."},
+    "models_obsolete_none": {"sv": "Inga gamla modeller att ta bort.", "en": "No old models to remove."},
+    "models_remove_button": {"sv": "Ta bort markerade", "en": "Remove selected"},
+    "models_remove_confirm": {"sv": "Ta bort de markerade modellerna från disken? Det går inte att ångra.",
+                              "en": "Remove the selected models from disk? This cannot be undone."},
+    "models_remove_requested": {"sv": "✓ Begäran skickad. Workern tar bort modellerna inom någon minut.",
+                                "en": "✓ Request sent. The worker removes the models within a minute or so."},
+    "models_catalogue_error": {
+        "sv": "Modellfilen har ett fel: {error}. SubSynq använder en annan giltig lista tills det är rättat.",
+        "en": "The model file has an error: {error}. SubSynq uses another valid list until it is fixed."},
+    "models_col_version": {"sv": "Version", "en": "Version"},
+    "models_version_current": {"sv": "senaste", "en": "latest"},
+    "models_version_available": {"sv": "ny version finns", "en": "new version available"},
+    "models_version_unknown": {"sv": "okänt", "en": "unknown"},
+    "models_update_heading": {"sv": "Nya versioner", "en": "New versions"},
+    "models_update_intro": {
+        "sv": "SubSynq kontrollerar var 12:e timme om det finns en nyare version av modellerna i listan. Inget "
+              "uppdateras av sig självt: när du trycker på knappen hämtas den nya versionen och den gamla tas bort. "
+              "Kvalitetskontrollerna är avstämda mot nuvarande versioner, så kör ett prov efter en uppdatering.",
+        "en": "SubSynq checks every 12 hours whether newer versions of the listed models exist. Nothing updates by "
+              "itself: when you press the button the new version is downloaded and the old one is removed. The "
+              "quality checks are tuned to the current versions, so run a test after an update."},
+    "models_update_checked": {"sv": "Senast kontrollerat: {when}", "en": "Last checked: {when}"},
+    "models_update_never": {"sv": "ännu inte", "en": "not yet"},
+    "models_update_none": {"sv": "Alla modeller i listan är på senaste version.",
+                           "en": "All listed models are on the latest version."},
+    "models_update_button": {"sv": "Uppdatera markerade", "en": "Update selected"},
+    "models_update_confirm": {
+        "sv": "Hämta den nya versionen och ta bort den gamla för de markerade modellerna? Det kan ändra hur översättningarna blir.",
+        "en": "Download the new version and remove the old one for the selected models? It can change how the translations turn out."},
+    "models_update_ollama_note": {
+        "sv": "För Gemma rensar Ollama de gamla filerna när den startar om nästa gång.",
+        "en": "For Gemma, Ollama clears the old files the next time it restarts."},
+    "models_check_button": {"sv": "Kontrollera nu", "en": "Check now"},
+    "models_update_requested": {"sv": "✓ Uppdateringen är begärd. Den startar när inga undertextjobb körs.",
+                                "en": "✓ Update requested. It starts when no subtitle job is running."},
+    "models_check_requested": {"sv": "✓ Kontroll begärd. Resultatet visas inom någon minut.",
+                               "en": "✓ Check requested. The result appears within a minute or so."},
+    # --- AI model download banner (shown on every page while models are fetched) ---
+    "models_title_downloading": {"sv": "AI-modellerna laddas ner", "en": "Downloading the AI models"},
+    "models_title_error": {"sv": "AI-modeller saknas", "en": "AI models are missing"},
+    "models_count": {"sv": "{done} av {total} klara", "en": "{done} of {total} ready"},
+    "models_intro": {
+        "sv": "Första gången SubSynq startar hämtas modellerna automatiskt (ungefär {gb} GB kvar). Undertextjobb "
+              "startar när alla är klara. Du behöver inte göra något, men starta inte om containrarna under tiden.",
+        "en": "The first time SubSynq starts, the models are downloaded automatically (about {gb} GB left). "
+              "Subtitle jobs start when all are ready. You do not need to do anything, but do not restart the "
+              "containers meanwhile."},
+    "models_state_present": {"sv": "klar", "en": "ready"},
+    "models_state_pending": {"sv": "väntar", "en": "waiting"},
+    "models_state_downloading": {"sv": "hämtas", "en": "downloading"},
+    "models_state_error": {"sv": "fel", "en": "error"},
+    "models_retry": {"sv": "Försöker igen automatiskt.", "en": "Trying again automatically."},
+    "models_stale": {
+        "sv": "Ingen uppdatering från workern på över 15 minuter. Kontrollera att worker-containern kör.",
+        "en": "No update from the worker for over 15 minutes. Check that the worker container is running."},
+    # --- Clean up subtitles (/cleanup) and library multi-select ---
+    # No apostrophes in any text that ends up inside a confirm('...') call.
+    "cleanup_heading": {"sv": "Städa undertexter", "en": "Clean up subtitles"},
+    "cleanup_intro": {
+        "sv": "Hitta .srt-filer i /movies, /tv och /extra och flytta dem till en papperskorg (i /config/trash). "
+              "Inget raderas direkt; omgångar kan återställas tills du tömmer papperskorgen (eller den töms "
+              "automatiskt, om du valt det). Videofiler berörs aldrig.",
+        "en": "Find .srt files in /movies, /tv and /extra and move them to a trash (in /config/trash). "
+              "Nothing is deleted directly; batches can be restored until you empty the trash (or it is "
+              "emptied automatically, if you chose that). Video files are never touched."},
+    "cleanup_filter_type": {"sv": "Typ", "en": "Type"},
+    "cleanup_type_other": {"sv": "Andra undertexter (inte SubSynq)", "en": "Other subtitles (not SubSynq)"},
+    "cleanup_type_ai": {"sv": "SubSynqs egna (.ai)", "en": "Made by SubSynq (.ai)"},
+    "cleanup_type_all": {"sv": "Alla", "en": "All"},
+    "cleanup_orphan": {"sv": "Saknar videofil", "en": "No matching video file"},
+    "cleanup_stale": {"sv": "Videon bytt sedan SubSynq skapade undertexten ({n})",
+                      "en": "Video replaced since SubSynq made the subtitle ({n})"},
+    "cleanup_broken": {"sv": "Trasiga: tomma, utan repliker eller fel teckenkodning ({n})",
+                       "en": "Broken: empty, no cues or wrong text encoding ({n})"},
+    "cleanup_dupes": {"sv": "Dubbletter: flera undertexter på samma språk för samma video ({n})",
+                      "en": "Duplicates: several subtitles in the same language for one video ({n})"},
+    "cleanup_badge_dupe": {"sv": "dubblett (en av {n})", "en": "duplicate (one of {n})"},
+    "cleanup_older_than": {"sv": "Äldre än", "en": "Older than"},
+    "cleanup_days": {"sv": "dagar", "en": "days"},
+    "cleanup_search": {"sv": "Sökord", "en": "Search"},
+    "cleanup_filter_btn": {"sv": "Filtrera", "en": "Filter"},
+    "cleanup_rescan_btn": {"sv": "Skanna om mapparna", "en": "Rescan folders"},
+    "cleanup_badge_orphan": {"sv": "saknar video", "en": "no video"},
+    "cleanup_badge_stale": {"sv": "videon bytt", "en": "video replaced"},
+    "cleanup_problem_unreadable": {"sv": "kan inte läsas", "en": "cannot be read"},
+    "cleanup_problem_empty": {"sv": "tom fil", "en": "empty file"},
+    "cleanup_problem_bad_encoding": {"sv": "fel teckenkodning", "en": "wrong text encoding"},
+    "cleanup_problem_mojibake": {"sv": "trasiga tecken", "en": "garbled characters"},
+    "cleanup_problem_no_cues": {"sv": "inga repliker", "en": "no cues"},
+    "cleanup_problem_empty_cues": {"sv": "tomma repliker", "en": "empty cues"},
+    "cleanup_age_days": {"sv": "{n} dagar", "en": "{n} days"},
+    "cleanup_select_all_aria": {"sv": "Markera alla på sidan", "en": "Select all on this page"},
+    "cleanup_select_aria": {"sv": "Markera {name}", "en": "Select {name}"},
+    "cleanup_col_file": {"sv": "Fil", "en": "File"},
+    "cleanup_col_lang": {"sv": "Språk", "en": "Language"},
+    "cleanup_col_size": {"sv": "Storlek", "en": "Size"},
+    "cleanup_col_changed": {"sv": "Ändrad", "en": "Changed"},
+    "cleanup_view": {"sv": "Visa", "en": "View"},
+    "cleanup_none_match": {"sv": "Inga undertexter matchar filtret.", "en": "No subtitles match the filter."},
+    "cleanup_none_match_scanned": {
+        "sv": " Skanningen innehåller {n} undertexter. Välj <b>Alla</b> under Typ för att se dem.",
+        "en": " The scan contains {n} subtitles. Choose <b>All</b> under Type to see them."},
+    "cleanup_none_match_unscanned": {"sv": " Kör en skanning först.", "en": " Run a scan first."},
+    "cleanup_prev": {"sv": "← Föregående", "en": "← Previous"},
+    "cleanup_next": {"sv": "Nästa →", "en": "Next →"},
+    "cleanup_page_of": {"sv": "Sida {page} av {total}", "en": "Page {page} of {total}"},
+    "cleanup_move_selected": {"sv": "Flytta markerade till papperskorgen", "en": "Move selected to trash"},
+    "cleanup_confirm_selected": {"sv": "Flytta de markerade undertexterna till papperskorgen?",
+                                 "en": "Move the selected subtitles to the trash?"},
+    "cleanup_move_all": {"sv": "Flytta alla {n} träffar", "en": "Move all {n} matches"},
+    "cleanup_confirm_all": {"sv": "Flytta ALLA {n} träffar ({size}) till papperskorgen?",
+                            "en": "Move ALL {n} matches ({size}) to the trash?"},
+    "cleanup_matches_heading": {"sv": "{n} träffar · {size}", "en": "{n} matches · {size}"},
+    "cleanup_last_scan": {
+        "sv": "Senaste skanning: {when} · {other} andra undertexter, {ai} från SubSynq",
+        "en": "Last scan: {when} · {other} other subtitles, {ai} from SubSynq"},
+    "cleanup_no_scan_yet": {"sv": "Ingen skanning ännu", "en": "No scan yet"},
+    "cleanup_trash_heading": {"sv": "Papperskorg", "en": "Trash"},
+    "cleanup_col_batch": {"sv": "Omgång", "en": "Batch"},
+    "cleanup_col_count": {"sv": "Antal", "en": "Count"},
+    "cleanup_col_expires": {"sv": "Töms", "en": "Emptied on"},
+    "cleanup_files_count": {"sv": "{n} filer", "en": "{n} files"},
+    "cleanup_restore": {"sv": "Återställ", "en": "Restore"},
+    "cleanup_empty_btn": {"sv": "Töm papperskorgen", "en": "Empty trash"},
+    "cleanup_confirm_empty": {"sv": "Radera papperskorgen för alltid? Det går inte att ångra.",
+                              "en": "Delete the trash permanently? This cannot be undone."},
+    "cleanup_trash_empty": {"sv": "Papperskorgen är tom.", "en": "The trash is empty."},
+    "cleanup_retention_label": {"sv": "Töm automatiskt efter", "en": "Empty automatically after"},
+    "cleanup_save": {"sv": "Spara", "en": "Save"},
+    "cleanup_retention_hint": {"sv": "0 = töm aldrig automatiskt", "en": "0 = never empty automatically"},
+    "cleanup_notice_moved": {"sv": "✓ {n} undertexter flyttades till papperskorgen.",
+                             "en": "✓ {n} subtitles were moved to the trash."},
+    "cleanup_notice_restored": {
+        "sv": "✓ {n} undertexter återställdes och finns i listan igen.",
+        "en": "✓ {n} subtitles were restored and are back in the list."},
+    "cleanup_notice_emptied": {"sv": "✓ Papperskorgen tömdes ({n} filer).",
+                               "en": "✓ The trash was emptied ({n} files)."},
+    "cleanup_notice_retention": {
+        "sv": "✓ Sparat: papperskorgen töms efter {n} dagar (0 = aldrig).",
+        "en": "✓ Saved: the trash is emptied after {n} days (0 = never)."},
+    "cleanup_notice_extra": {"sv": "{n} kunde inte hanteras (se Logg).",
+                             "en": "{n} could not be handled (see Log)."},
+    "bulk_selected": {"sv": "markerade", "en": "selected"},
+    "bulk_select_missing": {"sv": "Markera alla som saknar undertext", "en": "Select all missing a subtitle"},
+    "bulk_select_ai": {"sv": "Markera alla med AI-undertext", "en": "Select all with an AI subtitle"},
+    "bulk_select_none": {"sv": "Avmarkera alla", "en": "Clear selection"},
+    "bulk_start": {"sv": "Skapa undertext för markerade", "en": "Create subtitles for selected"},
+    "bulk_delete": {"sv": "Ta bort AI-undertext för markerade", "en": "Delete AI subtitle for selected"},
+    "bulk_confirm_start": {"sv": "Köa {n} undertextjobb?", "en": "Queue {n} subtitle jobs?"},
+    "bulk_confirm_delete": {
+        "sv": "Ta bort AI-undertexten för {n} filer? Videofilerna rörs inte.",
+        "en": "Delete the AI subtitle for {n} files? The video files are not touched."},
+    "bulk_notice_started": {
+        "sv": "✓ {done} filer köade; {skipped} hoppades över (redan jobb, ingen undertext att ta bort eller inte aktuell).",
+        "en": "✓ {done} files queued; {skipped} skipped (already has a job, nothing to delete or no longer eligible)."},
+    "bulk_notice_deleted": {
+        "sv": "✓ {done} filer köade för borttagning av AI-undertext; {skipped} hoppades över (redan jobb, ingen undertext att ta bort eller inte aktuell).",
+        "en": "✓ {done} files queued for AI subtitle removal; {skipped} skipped (already has a job, nothing to delete or no longer eligible)."},
+}
+
+
+def t(key, lang):
+    """Look up a UI string; unknown keys or languages fall back to Swedish."""
+    entry = STRINGS.get(key)
+    if not entry:
+        return key
+    return entry.get(lang) or entry["sv"]

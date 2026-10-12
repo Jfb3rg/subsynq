@@ -1,0 +1,14 @@
+{
+  "rows": [
+    {"id": 0, "start": 0, "end": 1, "source": "No!", "sv": "Nej!"},
+    {"id": 1, "start": 3, "end": 5, "source": "Tack för hjälpen.", "sv": "Tack för hjälpen."},
+    {"id": 2, "start": 7, "end": 9, "source": "She helped me yesterday.", "sv": "Hon hjälpte mig i går."},
+    {"id": 3, "start": 11, "end": 13, "source": "Three tickets, please.", "sv": "Tre biljetter, tack."},
+    {"id": 4, "start": 15, "end": 17, "source": "The train leaves on April twelfth.", "sv": "Tåget avgår den trettonde april."},
+    {"id": 5, "start": 19, "end": 21, "source": "You must not touch it.", "sv": "Du måste röra den."},
+    {"id": 6, "start": 23, "end": 25, "source": "This is my sister.", "sv": "Det här är mitt syster."},
+    {"id": 7, "start": 27, "end": 29, "source": "No quiero ir.", "sv": "No quiero ir."}
+  ],
+  "expected_good_ids": [0, 1, 2, 3],
+  "expected_bad_ids": [4, 5, 6, 7]
+}

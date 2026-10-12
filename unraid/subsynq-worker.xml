@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>subsynq-worker</Name>
+  <Repository>fb3rg/subsynq-worker</Repository>
+  <Registry>https://hub.docker.com/r/fb3rg/subsynq-worker</Registry>
+  <Network>subsynq</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Jfb3rg/subsynq/issues</Support>
+  <Project>https://github.com/Jfb3rg/subsynq</Project>
+  <Overview>Jobbmotorn i SubSynq: lyssnar med Whisper, kontrollerar med Qwen, översätter med Gemma och skriver undertextfilen bredvid videon. Hämtar också AI-modellerna automatiskt första gången den startar (cirka 28 GB). Måste ligga på Docker-nätverket subsynq tillsammans med de andra SubSynq-containrarna och ha samma /config, /models och mediamappar som subsynq.</Overview>
+  <Category>MediaApp:Video Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/unraid/subsynq-worker.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/app/icons/whisper.png</Icon>
+  <ExtraParams>--init --user 99:100 --read-only --tmpfs /tmp --cap-drop=ALL --security-opt=no-new-privileges:true --no-healthcheck --entrypoint python</ExtraParams>
+  <PostArgs>-u /ai/worker.py</PostArgs>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Docker-nätverket subsynq samt containrarna subsynq-translate-engine och subsynq-qwen-asr.</Requires>
+  <Config Name="Inställningar och databas (/config)" Target="/config" Default="/mnt/user/appdata/subsynq/config" Mode="rw" Description="Samma mapp som i subsynq." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/config</Config>
+  <Config Name="AI-modeller (/models)" Target="/models" Default="/mnt/user/appdata/subsynq/models" Mode="rw" Description="Samma mapp som i subsynq. Här hämtas modellerna." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models</Config>
+  <Config Name="Filmer (/movies)" Target="/movies" Default="/mnt/user/media/film" Mode="rw" Description="Samma filmmapp som i subsynq. Skrivbar: här skrivs undertextfilerna." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/film</Config>
+  <Config Name="Serier (/tv)" Target="/tv" Default="/mnt/user/media/serier" Mode="rw" Description="Samma seriemapp som i subsynq." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/serier</Config>
+  <Config Name="Klipp och övrigt (/extra)" Target="/extra" Default="/mnt/user/media/extra" Mode="rw" Description="Samma mapp som i subsynq." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/extra</Config>
+  <Config Name="Adress till översättningsmotorn" Target="SUBSYNQ_TRANSLATE_URL" Default="http://subsynq-translate-engine:11434/api/generate" Mode="" Description="Ändra bara om du döpt translate-engine-containern till något annat." Type="Variable" Display="advanced" Required="true" Mask="false">http://subsynq-translate-engine:11434/api/generate</Config>
+  <Config Name="Adress till Qwen-tjänsten" Target="SUBSYNQ_QWEN_ASR_URL" Default="http://subsynq-qwen-asr:8091" Mode="" Description="Ändra bara om du döpt qwen-asr-containern till något annat." Type="Variable" Display="advanced" Required="true" Mask="false">http://subsynq-qwen-asr:8091</Config>
+  <Config Name="Qwen-kontroll på" Target="SUBSYNQ_QWEN_ASR_ENABLED" Default="1" Mode="" Description="1 = Qwen kontrollerar osäker dialog och ordtider." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Slutgranskning på" Target="SUBSYNQ_FOCUSED_REVIEW" Default="1" Mode="" Description="1 = fokuserad slutgranskning av översättningen." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Whisper large-v2 dubbelkontroll på" Target="SUBSYNQ_WHISPER_V2_FRAGMENT_ENABLED" Default="1" Mode="" Description="1 = Whisper large-v2 dubbelkontrollerar osäkra fragment." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Tidszon (TZ)" Target="TZ" Default="Europe/Stockholm" Mode="" Description="Tidszon för loggar." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Stockholm</Config>
+</Container>

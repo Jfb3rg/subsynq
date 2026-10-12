@@ -1,0 +1,8 @@
+*
+!app/
+!app/**
+!Dockerfile
+!Dockerfile.ai
+!ai/
+!ai/**
+app/__pycache__/

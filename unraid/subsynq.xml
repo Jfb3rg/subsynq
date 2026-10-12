@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>subsynq</Name>
+  <Repository>fb3rg/subsynq</Repository>
+  <Registry>https://hub.docker.com/r/fb3rg/subsynq</Registry>
+  <Network>subsynq</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Jfb3rg/subsynq/issues</Support>
+  <Project>https://github.com/Jfb3rg/subsynq</Project>
+  <Overview>SubSynq skapar svenska AI-undertexter till dina filmer, serier och klipp. Det här är webbgränssnittet: bibliotek, jobbkö, inställningar och Städa undertexter. SubSynq består av fyra containrar (subsynq, subsynq-worker, subsynq-qwen-asr och subsynq-translate-engine) som alla måste ligga på Docker-nätverket subsynq. Skapa nätverket en gång med: docker network create subsynq. Första gången workern startar hämtas AI-modellerna automatiskt (cirka 28 GB). English: creates Swedish AI subtitles for your library; install all four containers on the docker network named subsynq.</Overview>
+  <Category>MediaApp:Video Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/unraid/subsynq.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/app/icons/subsynq.png</Icon>
+  <ExtraParams>--init --user 99:100 --read-only --tmpfs /tmp --cap-drop=ALL --security-opt=no-new-privileges:true</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Skapa först Docker-nätverket subsynq (docker network create subsynq) och installera de andra tre SubSynq-containrarna.</Requires>
+  <Config Name="Webbgränssnitt (port)" Target="8080" Default="8765" Mode="tcp" Description="Porten du öppnar i webbläsaren. Det finns ingen inloggning, så exponera den aldrig mot internet." Type="Port" Display="always" Required="true" Mask="false">8765</Config>
+  <Config Name="Inställningar och databas (/config)" Target="/config" Default="/mnt/user/appdata/subsynq/config" Mode="rw" Description="Databas, inställningar, kvalitetsrapporter och papperskorgen för Städa undertexter. Måste vara samma mapp i subsynq och subsynq-worker." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/config</Config>
+  <Config Name="AI-modeller (/models)" Target="/models" Default="/mnt/user/appdata/subsynq/models" Mode="rw" Description="Modellfilerna (cirka 28 GB). Måste vara samma mapp i subsynq, subsynq-worker och subsynq-qwen-asr." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models</Config>
+  <Config Name="Filmer (/movies)" Target="/movies" Default="/mnt/user/media/film" Mode="rw" Description="Din filmmapp. Skrivbar, så att Städa undertexter kan flytta .srt-filer till papperskorgen. Videofiler rörs aldrig." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/film</Config>
+  <Config Name="Serier (/tv)" Target="/tv" Default="/mnt/user/media/serier" Mode="rw" Description="Din seriemapp." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/serier</Config>
+  <Config Name="Klipp och övrigt (/extra)" Target="/extra" Default="/mnt/user/media/extra" Mode="rw" Description="Klipp och övriga videofiler." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/extra</Config>
+  <Config Name="Tidszon (TZ)" Target="TZ" Default="Europe/Stockholm" Mode="" Description="Tidszon för loggar och klockslag." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Stockholm</Config>
+</Container>

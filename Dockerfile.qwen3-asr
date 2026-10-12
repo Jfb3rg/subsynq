@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+COPY ai/constraints-qwen.txt /tmp/constraints-qwen.txt
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libsndfile1 sox \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir torch==2.9.1 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -c /tmp/constraints-qwen.txt qwen-asr==0.0.6
+
+COPY ai/qwen3_asr_compare.py /ai/qwen3_asr_compare.py
+COPY ai/qwen_asr_service.py /ai/qwen_asr_service.py
+
+ENV HF_HOME=/models/huggingface \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    TOKENIZERS_PARALLELISM=false
+
+ENTRYPOINT ["python", "-u", "/ai/qwen3_asr_compare.py"]

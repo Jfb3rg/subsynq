@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>subsynq-translate-engine</Name>
+  <Repository>ollama/ollama:latest</Repository>
+  <Registry>https://hub.docker.com/r/ollama/ollama</Registry>
+  <Network>subsynq</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Jfb3rg/subsynq/issues</Support>
+  <Project>https://github.com/Jfb3rg/subsynq</Project>
+  <Overview>Översättningsmotorn i SubSynq: Ollama kör Gemma 3 12B (översättning) och Gemma 4 12B (granskning). Det är Ollamas egen färdiga image, inte en SubSynq-image. Måste ligga på Docker-nätverket subsynq. Gemma-modellerna hämtas av subsynq-worker första gången den startar. Har du redan en Ollama i Unraid för annat bruk ska du ändå ha en egen för SubSynq.</Overview>
+  <Category>MediaApp:Video Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/unraid/subsynq-translate-engine.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/app/icons/gemma.png</Icon>
+  <ExtraParams>--init --read-only --tmpfs /tmp --security-opt=no-new-privileges:true --memory=12g --cpus=6</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Docker-nätverket subsynq.</Requires>
+  <Config Name="Ollamas modellmapp (/root/.ollama)" Target="/root/.ollama" Default="/mnt/user/appdata/subsynq/models/ollama" Mode="rw" Description="Gemma-modellerna. Ska ligga i undermappen ollama i samma modellmapp som SubSynq (appdata/subsynq/models/ollama)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models/ollama</Config>
+  <Config Name="Ingen molnanslutning" Target="OLLAMA_NO_CLOUD" Default="1" Mode="" Description="1 = Ollama använder bara lokala modeller." Type="Variable" Display="advanced" Required="true" Mask="false">1</Config>
+  <Config Name="Lyssnaradress" Target="OLLAMA_HOST" Default="0.0.0.0:11434" Mode="" Description="Adress Ollama lyssnar på inne i Docker-nätverket. Porten publiceras inte utåt." Type="Variable" Display="advanced" Required="true" Mask="false">0.0.0.0:11434</Config>
+</Container>

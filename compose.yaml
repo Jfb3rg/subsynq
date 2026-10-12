@@ -1,0 +1,150 @@
+name: subsynq
+services:
+  subsynq:
+    build: .
+    image: subsynq:local
+    restart: unless-stopped
+    init: true
+    user: "${SUBSYNQ_UID:-1000}:${SUBSYNQ_GID:-1000}"
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+    ports:
+      - "${SUBSYNQ_BIND_IP:-127.0.0.1}:${SUBSYNQ_PORT:-8765}:8080"
+    volumes:
+      - ./data/config:/config
+      # Skrivbara så att fliken "Städa undertexter" kan flytta .srt-filer till
+      # papperskorgen (/config/trash). Inget raderas direkt och videofiler rörs inte.
+      - type: bind
+        source: ${SUBSYNQ_MOVIES_PATH:-./data/movies}
+        target: /movies
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SUBSYNQ_TV_PATH:-./data/tv}
+        target: /tv
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SUBSYNQ_EXTRA_PATH:-./data/extra}
+        target: /extra
+        bind:
+          create_host_path: false
+      - ./data/models:/models
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.ai
+    image: subsynq-ai:local
+    restart: unless-stopped
+    init: true
+    user: "${SUBSYNQ_UID:-1000}:${SUBSYNQ_GID:-1000}"
+    entrypoint: ["python", "-u", "/ai/worker.py"]
+    environment:
+      SUBSYNQ_TRANSLATE_URL: http://translate-engine:11434/api/generate
+      SUBSYNQ_CLOUD_IMAGE: ${SUBSYNQ_CLOUD_IMAGE:-}
+      SUBSYNQ_FOCUSED_REVIEW: "1"
+      SUBSYNQ_GPU_ASR_ENABLED: "1"
+      SUBSYNQ_GPU_ASR_URL: http://host.docker.internal:8766
+      SUBSYNQ_QWEN_ASR_ENABLED: "1"
+      SUBSYNQ_WHISPER_V2_FRAGMENT_ENABLED: "1"
+      SUBSYNQ_QWEN_ASR_URL: http://qwen-asr:8091
+    volumes:
+      - ./data/config:/config
+      - type: bind
+        source: ${SUBSYNQ_MOVIES_PATH:-./data/movies}
+        target: /movies
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SUBSYNQ_TV_PATH:-./data/tv}
+        target: /tv
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SUBSYNQ_EXTRA_PATH:-./data/extra}
+        target: /extra
+        read_only: false
+        bind:
+          create_host_path: false
+      - ./data/models:/models
+    read_only: true
+    healthcheck:
+      disable: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      - translate-engine
+      - qwen-asr
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  qwen-asr:
+    build:
+      context: .
+      dockerfile: Dockerfile.qwen3-asr
+    image: subsynq-qwen3-asr:0.8.135
+    restart: unless-stopped
+    init: true
+    entrypoint: ["python", "-u", "/ai/qwen_asr_service.py"]
+    environment:
+      SUBSYNQ_QWEN_DEVICE: cpu
+      SUBSYNQ_QWEN_DTYPE: float32
+      SUBSYNQ_QWEN_IDLE_SECONDS: "60"
+      NUMBA_CACHE_DIR: /tmp/numba
+    volumes:
+      - ./data/models:/models
+    mem_limit: 11g
+    cpus: 6
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  translate-engine:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    init: true
+    environment:
+      OLLAMA_NO_CLOUD: "1"
+      OLLAMA_HOST: 0.0.0.0:11434
+    volumes:
+      - ./data/models/ollama:/root/.ollama
+    mem_limit: 12g
+    cpus: 6
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

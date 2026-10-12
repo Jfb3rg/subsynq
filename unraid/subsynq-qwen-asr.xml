@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>subsynq-qwen-asr</Name>
+  <Repository>fb3rg/subsynq-qwen-asr</Repository>
+  <Registry>https://hub.docker.com/r/fb3rg/subsynq-qwen-asr</Registry>
+  <Network>subsynq</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Jfb3rg/subsynq/issues</Support>
+  <Project>https://github.com/Jfb3rg/subsynq</Project>
+  <Overview>Qwen3-ASR i SubSynq: en andra taligenkänning som kontrollerar osäker dialog och ordtider. Används bara av subsynq-worker och behöver ingen port ut mot nätverket. Måste ligga på Docker-nätverket subsynq och dela /models med subsynq-worker. Modellerna hämtas av subsynq-worker.</Overview>
+  <Category>MediaApp:Video Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/unraid/subsynq-qwen-asr.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Jfb3rg/subsynq/main/app/icons/qwen.png</Icon>
+  <ExtraParams>--init --read-only --tmpfs /tmp --cap-drop=ALL --security-opt=no-new-privileges:true --memory=11g --cpus=6 --entrypoint python</ExtraParams>
+  <PostArgs>-u /ai/qwen_asr_service.py</PostArgs>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Docker-nätverket subsynq.</Requires>
+  <Config Name="AI-modeller (/models)" Target="/models" Default="/mnt/user/appdata/subsynq/models" Mode="rw" Description="Samma mapp som i subsynq och subsynq-worker." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models</Config>
+  <Config Name="Enhet" Target="SUBSYNQ_QWEN_DEVICE" Default="cpu" Mode="" Description="cpu. GPU-stöd finns inte i den här versionen." Type="Variable" Display="advanced" Required="true" Mask="false">cpu</Config>
+  <Config Name="Talformat" Target="SUBSYNQ_QWEN_DTYPE" Default="float32" Mode="" Description="float32 på CPU." Type="Variable" Display="advanced" Required="true" Mask="false">float32</Config>
+  <Config Name="Tomgångstid (sekunder)" Target="SUBSYNQ_QWEN_IDLE_SECONDS" Default="60" Mode="" Description="Efter så här många sekunder utan arbete lämnar modellen minnet." Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
+  <Config Name="Numba-cache" Target="NUMBA_CACHE_DIR" Default="/tmp/numba" Mode="" Description="Ska ligga i /tmp (containerns rotfilsystem är skrivskyddat)." Type="Variable" Display="advanced" Required="false" Mask="false">/tmp/numba</Config>
+</Container>

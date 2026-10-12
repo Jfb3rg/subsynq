@@ -1,0 +1,158 @@
+name: "SubSynq: bygg, testa och publicera (main)"
+run-name: "SubSynq main: bygg, testa och publicera på Docker Hub"
+
+# När main uppdateras: kör testerna, bygg de tre SubSynq-imagerna och lägg dem på Docker Hub.
+# Ollama (översättningsmotorn) är Ollamas egen image och byggs inte här.
+#
+# Förutsättningar i GitHub (Settings > Secrets and variables > Actions > Secrets):
+#   DOCKERHUB_USERNAME  ditt Docker Hub-användarnamn (valfri; saknas den används fb3rg)
+#   DOCKERHUB_TOKEN     en åtkomstnyckel från Docker Hub (Account settings > Personal access tokens)
+# Nyckeln lagras bara i GitHub och syns aldrig i koden eller i loggarna.
+
+on:
+  push:
+    branches: [main]
+    # Bara ändringar i mallar och dokument bygger inga nya images.
+    paths-ignore:
+      - "unraid/**"
+      - "**/*.md"
+      - "LICENSE"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-images
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: "SubSynq: bygg och testa"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bygg webb- och worker-image för testning
+        run: |
+          docker build -t subsynq:ci .
+          docker build -f Dockerfile.ai --build-arg SUBSYNQ_BASE_IMAGE=subsynq:ci -t subsynq-ai:ci .
+
+      - name: Kontrollera Unraid-mallarna och den här arbetsgången
+        run: |
+          docker run --rm --entrypoint python -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD:/w:ro" -w /w \
+            subsynq-ai:ci -m unittest tests.test_unraid_templates -v
+
+      - name: Kör alla tester i worker-imagen
+        run: |
+          mkdir -p app/ai app/tests
+          docker run --rm --entrypoint python -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$PWD/app:/app:ro" -v "$PWD/ai:/ai:ro" -v "$PWD/ai:/app/ai:ro" -v "$PWD/tests:/app/tests:ro" \
+            -w /app subsynq-ai:ci -m unittest discover -s tests
+
+  publish:
+    name: "SubSynq: publicera på Docker Hub"
+    needs: test
+    permissions:
+      contents: write        # behövs för att skapa en GitHub-release; resten av arbetsgången får bara läsa
+    runs-on: ubuntu-latest
+    env:
+      # Användarnamnet är inte hemligt: hemlighet eller variabel används om den finns, annars fb3rg.
+      HUB_USER: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME || 'fb3rg' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Läs versionen ur koden
+        id: version
+        run: echo "number=$(grep -oP 'VERSION = "\K[^"]+' app/server.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Kontrollera att Docker Hub-nyckeln når fram
+        env:
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          SECRET_NAMES: ${{ toJSON(secrets) }}
+          VARIABLE_NAMES: ${{ toJSON(vars) }}
+        run: |
+          # Visar bara OM och hur långt värdet är, aldrig själva värdet.
+          echo "Användarnamn som används: $HUB_USER (${#HUB_USER} tecken)"
+          problem=""
+          if [ -z "$HUB_TOKEN" ]; then
+            problem="DOCKERHUB_TOKEN saknas eller är tom."
+          else
+            echo "DOCKERHUB_TOKEN finns (${#HUB_TOKEN} tecken)"
+            case "$HUB_TOKEN" in *[[:space:]]*) problem="DOCKERHUB_TOKEN innehåller mellanslag eller radbrytning.";; esac
+          fi
+          case "$HUB_USER" in *[[:space:]]*) problem="$problem DOCKERHUB_USERNAME innehåller mellanslag.";; esac
+          if [ -n "$problem" ]; then
+            echo "::error::$problem Lägg in nyckeln som Repository secret under Settings > Secrets and variables > Actions (inte Variables, Dependabot eller Codespaces) och kör om."
+            echo "Hemligheter roboten kan se (bara namn):"
+            printf '%s' "$SECRET_NAMES" | jq -r 'keys[]' | sed 's/^/  - /'
+            echo "Variabler roboten kan se (bara namn):"
+            printf '%s' "$VARIABLE_NAMES" | jq -r 'keys[]' | sed 's/^/  - /'
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.HUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: subsynq (webbgränssnittet)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ env.HUB_USER }}/subsynq:latest
+            ${{ env.HUB_USER }}/subsynq:${{ steps.version.outputs.number }}
+          cache-from: type=gha,scope=subsynq
+          cache-to: type=gha,mode=max,scope=subsynq
+
+      - name: subsynq-worker (bygger på webbimagen ovan)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ai
+          build-args: |
+            SUBSYNQ_BASE_IMAGE=${{ env.HUB_USER }}/subsynq:${{ steps.version.outputs.number }}
+          push: true
+          tags: |
+            ${{ env.HUB_USER }}/subsynq-worker:latest
+            ${{ env.HUB_USER }}/subsynq-worker:${{ steps.version.outputs.number }}
+          cache-from: type=gha,scope=subsynq-worker
+          cache-to: type=gha,mode=max,scope=subsynq-worker
+
+      - name: subsynq-qwen-asr
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.qwen3-asr
+          push: true
+          tags: |
+            ${{ env.HUB_USER }}/subsynq-qwen-asr:latest
+            ${{ env.HUB_USER }}/subsynq-qwen-asr:${{ steps.version.outputs.number }}
+          cache-from: type=gha,scope=subsynq-qwen-asr
+          cache-to: type=gha,mode=max,scope=subsynq-qwen-asr
+
+      - name: Skapa GitHub-release för versionen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.number }}
+          HUB: ${{ env.HUB_USER }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Releasen $tag finns redan; ingen ny skapas."
+            exit 0
+          fi
+          {
+            echo "Installation på Unraid: se [unraid/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/unraid/README.md)."
+            echo
+            echo "Docker-bilder (finns även som \`latest\`): \`$HUB/subsynq:$VERSION\`, \`$HUB/subsynq-worker:$VERSION\` och \`$HUB/subsynq-qwen-asr:$VERSION\`."
+            echo
+            echo "## Ändringar i den här versionen"
+            awk -v v="$VERSION" '$0=="## " v {p=1; next} /^## /{p=0} p' CHANGELOG.md
+          } > notes.md
+          gh release create "$tag" --target "$GITHUB_SHA" --title "SubSynq $VERSION" --notes-file notes.md

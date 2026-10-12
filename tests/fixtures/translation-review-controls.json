@@ -1,0 +1,16 @@
+{
+  "rows": [
+    {"id": 0, "start": 0, "end": 2, "source": "मैं वापस आऊंगा।", "sv": "Jag kommer tillbaka."},
+    {"id": 1, "start": 4, "end": 5, "source": "Two people?", "sv": "Två personer?"},
+    {"id": 2, "start": 7, "end": 9, "source": "Yesterday I walked home.", "sv": "I går gick jag hem."},
+    {"id": 3, "start": 11, "end": 12, "source": "ありがとう。", "sv": "Tack."},
+    {"id": 4, "start": 14, "end": 15, "source": "நன்றி", "sv": "Tack."},
+    {"id": 5, "start": 17, "end": 19, "source": "I come to the house.", "sv": "Till huset kommer jag."},
+    {"id": 6, "start": 21, "end": 23, "source": "I will not open the door.", "sv": "Jag öppnar dörren."},
+    {"id": 7, "start": 25, "end": 27, "source": "The red car hit the tree.", "sv": "Trädet träffade den röda bilen."},
+    {"id": 8, "start": 29, "end": 31, "source": "This is my story.", "sv": "Det här är mitt berättelse."},
+    {"id": 9, "start": 33, "end": 35, "source": "Je ne partirai pas.", "sv": "Je ne partirai pas."}
+  ],
+  "expected_good_ids": [0, 1, 2, 3, 4, 5],
+  "expected_bad_ids": [6, 7, 8, 9]
+}

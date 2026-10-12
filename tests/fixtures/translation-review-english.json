@@ -1,0 +1,10 @@
+{
+  "rows": [
+    {"id": 0, "start": 0, "end": 1, "source": "Thank you.", "en": "Thank you."},
+    {"id": 1, "start": 3, "end": 5, "source": "मैं वापस आऊंगा।", "en": "I will return."},
+    {"id": 2, "start": 7, "end": 9, "source": "Je ne partirai pas.", "en": "Je ne partirai pas."},
+    {"id": 3, "start": 11, "end": 13, "source": "I will not leave.", "en": "I will leave."}
+  ],
+  "expected_good_ids": [0, 1],
+  "expected_bad_ids": [2, 3]
+}

@@ -1,0 +1,17 @@
+ARG SUBSYNQ_BASE_IMAGE=subsynq:local
+FROM ${SUBSYNQ_BASE_IMAGE}
+USER root
+COPY ai/constraints-worker.txt /tmp/constraints-worker.txt
+RUN pip install --no-cache-dir -c /tmp/constraints-worker.txt \
+        faster-whisper==1.2.1 av==18.1.0 psutil \
+    && pip install --no-cache-dir nvidia-cublas-cu12==12.8.4.1 \
+        nvidia-cudnn-cu12==9.10.2.21 nvidia-cuda-runtime-cu12==12.8.90 \
+    && pip check
+COPY app/ /app/
+COPY ai/ /ai/
+USER subsynq
+# Runtime libraries only: no Torch/Qwen dependency in the Whisper worker.
+ENV HF_HOME=/models/huggingface \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    LD_LIBRARY_PATH=/usr/local/lib/python3.13/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/lib/python3.13/site-packages/nvidia/cuda_runtime/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+ENTRYPOINT ["python", "-u", "/ai/worker.py"]

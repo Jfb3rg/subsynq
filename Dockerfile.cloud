@@ -1,0 +1,28 @@
+# Build from the separately verified CUDA environments; keep their Python
+# dependencies separate. Model context is read-only and contains no app config.
+ARG QWEN_IMAGE=subsynq-qwen-cuda:local
+ARG WHISPER_IMAGE=subsynq-ai-cuda:local
+ARG OLLAMA_IMAGE=ollama/ollama:latest
+FROM ${QWEN_IMAGE} AS qwen
+FROM ${OLLAMA_IMAGE} AS ollama
+FROM ${WHISPER_IMAGE}
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 sox openssh-server curl \
+    && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_*key*
+COPY --from=qwen /usr/local/ /opt/qwen/
+COPY --from=ollama /usr/bin/ollama /usr/bin/ollama
+COPY --from=ollama /usr/lib/ollama/ /usr/lib/ollama/
+COPY --from=models /models--Systran--faster-whisper-large-v3/ /models/models--Systran--faster-whisper-large-v3/
+COPY --from=models /models--Systran--faster-whisper-large-v2/ /models/models--Systran--faster-whisper-large-v2/
+COPY --from=models /blobs/ /models/blobs/
+COPY --from=models /huggingface/hub/models--Qwen--Qwen3-ASR-1.7B/ /models/huggingface/hub/models--Qwen--Qwen3-ASR-1.7B/
+COPY --from=models /huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/ /models/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/
+COPY --from=models /ollama/models/ /models/ollama/models/
+COPY ai/ /ai/
+COPY app/ /app/
+ENV HF_HOME=/models/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 HF_HUB_DISABLE_XET=1 OLLAMA_MODELS=/models/ollama/models
+RUN python /ai/cloud_preflight.py && touch /opt/subsynq-prepared
+LABEL org.subsynq.cloud.prepared="1"
+ENTRYPOINT []
+CMD ["sleep", "infinity"]
