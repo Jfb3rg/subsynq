@@ -29,6 +29,19 @@ docker network create subsynq
 
 Containrar på ett eget nätverk kan nå varandra på namn. På Unraids vanliga nätverk `bridge` går det inte.
 
+## 1b. Skapa mapparna och ge dem rätt ägare (en gång)
+
+SubSynq körs som Unraids vanliga användare `nobody:users` (99:100). Skapar Docker modellmappen själv blir den ägd av
+root, och då får workern `PermissionError: Permission denied: '/models/...'` när den ska hämta Whisper och Qwen.
+Skapa mapparna först och ge dem rätt ägare (ändra sökvägarna om du valt andra i mallarna):
+
+```
+mkdir -p /mnt/user/appdata/subsynq/config /mnt/user/appdata/subsynq/models/ollama
+chown 99:100 /mnt/user/appdata/subsynq /mnt/user/appdata/subsynq/config /mnt/user/appdata/subsynq/models
+```
+
+Ollama-mappen `models/ollama` ska inte ändras: Ollama körs som root och sköter den själv.
+
 ## 2. Lägg in mallarna
 
 **Via Community Apps** (kommer senare, när SubSynq är inskickat): sök efter SubSynq och installera. Då är allt ifyllt utan
@@ -87,6 +100,8 @@ Inget uppdateras av sig självt.
 | Containern startar inte, felet nämner nätverket | Du har inte kört `docker network create subsynq` (steg 1). |
 | Gränssnittet visar att modeller saknas eller ett fel | Loggen för `subsynq-worker` (rader som börjar med `[modeller]`), internet och ledigt utrymme i modellmappen. |
 | "Skapa undertext" gör inget | Banner överst: modellerna laddas fortfarande ner. Jobben startar när de är klara. |
+| Modell får `PermissionError ... /models/...` | Modellmappen ägs av root. Kör `chown 99:100 /mnt/user/appdata/subsynq/models` (steg 1b) och tryck sedan på ladda ner igen under Inställningar → Modeller. |
+| Workern skriver "Väntar på att webbgränssnittet skapar databasen" | Starta containern `subsynq`. Workern fortsätter av sig själv när databasen finns. |
 | Undertexten sparas inte | Mediamappen är skrivskyddad eller ägs av en annan användare än 99:100. |
 
 ## GPU

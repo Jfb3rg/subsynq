@@ -16,6 +16,44 @@ def manager(ready):
     return SimpleNamespace(ready=ready)
 
 
+class DatabaseWaitTests(unittest.TestCase):
+    """A fresh install may start the worker before subsynq has created the database."""
+
+    def test_worker_waits_for_the_database_instead_of_crashing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            database = Path(folder) / 'subsynq.db'
+            with patch.object(worker, 'DATABASE', database):
+                self.assertFalse(worker.database_is_ready())
+                database.touch()
+                self.assertFalse(worker.database_is_ready(), 'tom fil är inte en klar databas')
+                with sqlite3.connect(database) as db:
+                    db.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                self.assertFalse(worker.database_is_ready(), 'metadata utan jobb och hårdvaruval är inte klart')
+                naps = []
+
+                def nap(seconds):
+                    naps.append(seconds)
+                    if len(naps) == 2:
+                        initialize_jobs(database)
+                        with sqlite3.connect(database) as db:
+                            db.execute("INSERT INTO metadata VALUES ('hardware_preference', 'auto')")
+
+                worker.wait_for_database(poll_seconds=7, sleep=nap)
+                self.assertEqual(naps, [7, 7])
+                self.assertTrue(worker.database_is_ready())
+                self.assertEqual(worker.hardware_preference(), 'auto')
+                naps.clear()
+                worker.wait_for_database(poll_seconds=7, sleep=nap)
+                self.assertEqual(naps, [], 'klar databas ger ingen väntan')
+
+    def test_missing_database_is_not_created_by_the_worker(self):
+        with tempfile.TemporaryDirectory() as folder:
+            database = Path(folder) / 'subsynq.db'
+            with patch.object(worker, 'DATABASE', database):
+                self.assertFalse(worker.database_is_ready())
+            self.assertFalse(database.exists())
+
+
 class ModelWaitTests(unittest.TestCase):
     def test_local_jobs_wait_only_while_models_are_missing_and_the_job_would_run_here(self):
         with patch.object(worker, 'hardware_preference', return_value='auto'):

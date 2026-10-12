@@ -3469,10 +3469,41 @@ def note_jobs_waiting_for_models():
                    (WAITING_FOR_MODELS_MESSAGE, stamp(), WAITING_FOR_MODELS_MESSAGE))
 
 
+def database_is_ready():
+    """True once the web container has created the tables the worker reads."""
+    if not DATABASE.is_file():
+        return False
+    try:
+        with sqlite3.connect(DATABASE, timeout=5) as db:
+            tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not {'metadata', 'subtitle_jobs'} <= tables:
+                return False
+            return db.execute("SELECT 1 FROM metadata WHERE key='hardware_preference'").fetchone() is not None
+    except sqlite3.Error:
+        return False
+
+
+def wait_for_database(poll_seconds=5, sleep=time.sleep):
+    """On a fresh install the worker can start before the web container has created the database.
+
+    Waiting is harmless; crashing would leave a stopped container on Unraid until someone restarts it.
+    """
+    announced = False
+    while not database_is_ready():
+        if not announced:
+            print('Väntar på att webbgränssnittet (subsynq) skapar databasen i /config. '
+                  'Starta containern subsynq om den inte redan körs.', flush=True)
+            announced = True
+        sleep(poll_seconds)
+    if announced:
+        print('Databasen finns; workern fortsätter.', flush=True)
+
+
 def main():
     cpu_model = None
     cuda_model = None
     cpu_fallback_model = None
+    wait_for_database()
     health = gpu_health(timeout=8)
     set_hardware(False, health=health)
     recover_interrupted_jobs()

@@ -14,6 +14,7 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - **"Ny version finns" och uppdateringsknapp.** Modellhanteraren kontrollerar var 12:e timme (och på "Kontrollera nu") om de listade modellerna har en nyare version (Hugging Face: senaste commit; Gemma: registrets manifest jämfört med lokal digest). Kontrollen tittar bara. Under Inställningar → Modeller visas kolumnen Version, och för modeller med ny version ett formulär "Uppdatera markerade": den nya versionen hämtas och den gamla tas bort (Gemma: Ollama rensar gamla filer vid nästa omstart). Uppdateringen väntar tills inget undertextjobb körs och en misslyckad uppdatering lämnar den gamla versionen orörd. `POST /models/update`. 16 nya tester.
 - Webbgränssnittets adress kan väljas (`SUBSYNQ_BIND_IP`, standard `127.0.0.1`).
+- **Rättat vid nyinstallation på Unraid.** Workern väntar nu på att `subsynq` skapar databasen i stället för att krascha med `no such table: metadata` när den startas först. Installationsguiden (`unraid/README.md`) har ett nytt steg 1b: skapa mapparna och ge `models` ägare 99:100, annars får modellhämtningen `PermissionError` i `/models`.
 
 ## 0.8.210
 
