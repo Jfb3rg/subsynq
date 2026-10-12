@@ -428,6 +428,8 @@ STRINGS = {
     "bulk_select_none": {"sv": "Avmarkera alla", "en": "Clear selection"},
     "bulk_start": {"sv": "Skapa undertext för markerade", "en": "Create subtitles for selected"},
     "bulk_delete": {"sv": "Ta bort AI-undertext för markerade", "en": "Delete AI subtitle for selected"},
+    "bulk_none_usable": {"sv": "Det du markerade går inte att skapa undertext för här: filen har redan en AI-undertext (den kan bara tas bort) eller har ett pågående jobb. Markera andra filer, eller ta bort undertexten först.",
+                         "en": "You cannot create subtitles for what you ticked: the file already has an AI subtitle (it can only be deleted) or has a job in progress. Tick other files, or delete the subtitle first."},
     "bulk_confirm_start": {"sv": "Köa {n} undertextjobb?", "en": "Queue {n} subtitle jobs?"},
     "bulk_confirm_delete": {
         "sv": "Ta bort AI-undertexten för {n} filer? Videofilerna rörs inte.",

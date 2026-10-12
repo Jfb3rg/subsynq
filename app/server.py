@@ -27,7 +27,7 @@ import models_card
 import scan_state
 import subtitle_cleanup
 
-VERSION = "0.8.216"
+VERSION = "0.8.217"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -450,6 +450,7 @@ def render_bulk_bar(selected, token, lang="sv"):
         "<form id='bulk-form' class='bulk-bar preserve-seasons' data-bulk-bar action='/jobs/bulk' method='post'>"
         f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
         f"<input type='hidden' name='return_kind' value='{escape(selected, quote=True)}'>"
+        f"<p class='muted' data-bulk-hint hidden>{escape(t('bulk_none_usable', lang))}</p>"
         f"<p class='muted'><strong><span data-bulk-count>0</span> {escape(t('bulk_selected', lang))}</strong> · "
         f"<button type='button' class='small-button' data-bulk-select='start'>{escape(t('bulk_select_missing', lang))}</button> "
         f"<button type='button' class='small-button' data-bulk-select='delete'>{escape(t('bulk_select_ai', lang))}</button> "

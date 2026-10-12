@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.217
+
+- **Förklaring när "Skapa undertext för markerade" är grå.** Markerar du bara filer som redan har en AI-undertext (de kan bara tas bort) eller som har ett pågående jobb, visas nu en text som säger varför knappen inte går att trycka på, i stället för att ingenting händer.
+
 ## Utan versionshöjning (översättningsmotorns minne)
 
 - **`translate-engine` får 16 GB och körs en begäran i taget** (`compose.yaml`, mallen `subsynq-translate-engine.xml`, guiden): `mem_limit` 16g och `OLLAMA_NUM_PARALLEL=1`, `OLLAMA_MAX_LOADED_MODELS=1`. Med 12 GB kunde Gemma-motorn dödas av minnesbrist mitt i ett jobb (`HTTP 500 unexpected EOF`). Servern bör ha minst 32 GB RAM. Redan installerade behöver ändra containern: se `unraid/README.md`.

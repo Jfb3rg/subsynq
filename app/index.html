@@ -443,13 +443,18 @@ if(bulkBar){
   const refresh=()=>{
     const chosen=boxes().filter(box=>box.checked);
     if(count)count.textContent=chosen.length;
+    let anyUsable=false;
     bulkBar.querySelectorAll('button[name="action"]').forEach(button=>{
       const key=button.value;
       const usable=chosen.filter(box=>box.dataset[key]==='1').length;
       button.disabled=usable===0;
+      if(usable>0)anyUsable=true;
       const label=button.querySelector('[data-usable]');
       if(label)label.textContent=usable;
     });
+    // Say why the buttons are grey when something is ticked that neither button can act on.
+    const hint=bulkBar.querySelector('[data-bulk-hint]');
+    if(hint)hint.hidden=!(chosen.length>0&&!anyUsable);
   };
   bulkBar.querySelectorAll('[data-bulk-select]').forEach(button=>button.addEventListener('click',()=>{
     const key=button.dataset.bulkSelect;
