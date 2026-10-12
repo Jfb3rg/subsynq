@@ -1,5 +1,5 @@
-name: "SubSynq: bygg, testa och publicera (main)"
-run-name: "SubSynq main: bygg, testa och publicera på Docker Hub"
+name: "SubSynq main"
+run-name: "SubSynq main: testa och publicera på Docker Hub"
 
 # När main uppdateras: kör testerna, bygg de tre SubSynq-imagerna och lägg dem på Docker Hub.
 # Ollama (översättningsmotorn) är Ollamas egen image och byggs inte här.
@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   test:
-    name: "SubSynq: bygg och testa"
+    name: "SubSynq main: testa"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,7 +51,7 @@ jobs:
             -w /app subsynq-ai:ci -m unittest discover -s tests
 
   publish:
-    name: "SubSynq: publicera på Docker Hub"
+    name: "SubSynq main: publicera"
     needs: test
     permissions:
       contents: write        # behövs för att skapa en GitHub-release; resten av arbetsgången får bara läsa
