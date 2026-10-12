@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.223
+
+- **Bättre svenska uttryck när en replik rättas efter en meningsanmärkning.** Steget som skriver om en hel kort replik från en beskrivning av betydelsen fick bara beskrivningen och återgav den ("Fortsätt titta, fortsätt lyssna"). Nu får det även originalraden som källa och en allmän regel: är raden ett fast uttryck, en hälsning, en avslutningsfras eller en catchphrase ska svaret vara det ETT naturliga svenska uttryck man faktiskt säger, aldrig en beskrivning och aldrig två sätt att säga samma sak. Provat mot den riktiga modellen på orelaterade uttryck (till exempel "Long time no see": "Vilken trevlig överraskning!" blev "Vad länge sen!"). Den felaktiga formuleringen som redan avvisats hålls fortfarande utanför.
+
 ## 0.8.222
 
 - **Slutgranskningen gör inte längre att hela jobbet faller när granskaren motsäger sig själv.** Gav granskaren inget giltigt, självkonsekvent svar om ett helt block (till exempel en anmärkning på en replik medan jämförelsen säger att betydelsen är bevarad) föll jobbet som `failed`, och andra försöket gav exakt samma svar. Nu ställs frågan i stället om varje halva av blocket, ner till en enda replik om det behövs. Svaren valideras lika strängt som förut (belägg från rätt textrad krävs), och delarna räknas mot det ursprungliga blockets gräns för trasiga repliker, så att uppdelningen aldrig släpper igenom ett trasigt block. En enskild replik som inte får något giltigt svar stoppar fortfarande jobbet, och motorfel (till exempel HTTP 500) delas inte upp.

@@ -28,7 +28,11 @@ class MeaningRenderTests(unittest.TestCase):
         self.assertEqual(model.call_args_list[0].args[0]['model'], worker.REVIEW_MODEL_NAME)
         request = model.call_args_list[1].args[0]
         self.assertEqual(request['model'], worker.MODEL_NAME)
-        self.assertNotIn('Stay tuned', request['prompt'])
+        # The original line is given as source so that a fixed expression gets its fixed counterpart (probed on
+        # real idioms: without it the renderer restated the description, e.g. two phrases joined by a comma).
+        self.assertEqual(json.loads(request['prompt'])['rows'][0]['source'], 'Stay tuned.')
+        self.assertIn('ONE natural fixed Swedish expression', request['system'])
+        self.assertIn('never list two ways', request['system'])
         self.assertNotIn('Stanna kvar', request['prompt'])
         self.assertEqual(result[0]['sv'], 'Fortsätt titta.')
         self.assertEqual(result[1], original[1])
