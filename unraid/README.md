@@ -87,7 +87,7 @@ Kontrollera i mallarna att **mapparna är samma överallt**:
   Förslaget är `/mnt/user/appdata/subsynq/config` och `/mnt/user/appdata/subsynq/models`.
 - Ollamas mapp i `subsynq-translate-engine` ska vara undermappen `ollama` i modellmappen:
   `/mnt/user/appdata/subsynq/models/ollama`.
-- Filmer, serier och klipp ska peka på dina egna mediamappar, likadant i `subsynq` och `subsynq-worker`.
+- Filmer och serier ska peka på dina egna mediamappar, likadant i `subsynq` och `subsynq-worker`. Mappen för klipp och övrigt (`/extra`) är **valfri**: har du inga sådana klipp tar du bort den raden (Remove) i båda mallarna, och SubSynq visar den som "inte ansluten" i stället för att klaga.
 
 ## 4. Öppna SubSynq
 

@@ -108,7 +108,7 @@ def episode_identity(media, root):
     }
 
 
-def scan_library(roots, probe=None, kind_overrides=None):
+def scan_library(roots, probe=None, kind_overrides=None, progress=None):
     items = []
     def fail(error):
         raise error
@@ -116,6 +116,7 @@ def scan_library(roots, probe=None, kind_overrides=None):
         root = Path(root)
         if not root.is_dir():
             raise FileNotFoundError(f"Biblioteksmappen saknas: {root}")
+        found = 0
         for directory, dirs, files in os.walk(root, onerror=fail, followlinks=False):
             dirs[:] = sorted(d for d in dirs if not Path(directory, d).is_symlink())
             for filename in sorted(files):
@@ -142,4 +143,7 @@ def scan_library(roots, probe=None, kind_overrides=None):
                     "sidecar_langs": sidecar_languages(media, files),
                     **identity,
                 })
+                found += 1
+                if progress:
+                    progress(str(root), found)
     return items

@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.213
+
+- **Skanna ett bibliotek i taget.** Varje biblioteksflik (Filmer, Serier, Extra) har nu en egen skanningsknapp som bara läser den mappen (`/movies`, `/tv` eller `/extra`), och en separat knapp "Skanna allt". Resultatet från de andra biblioteken behålls, och sidan visar när varje mapp senast skannades.
+- **Statuskort under skanning.** Överst på varje sida visas vilken mapp som läses och hur många filer som hittats hittills; sidan laddas om av sig själv när skanningen är klar eller har misslyckats. Skanningen körs i bakgrunden i stället för att låsa webbläsaren (`/api/scan-status`).
+- **`/extra` är valfri.** Saknas mappen hoppas den över vid "Skanna allt" och visas som "inte ansluten"; skanningen misslyckas inte längre för att den saknas. Mallarna och guiden säger att raden kan tas bort.
+
 ## 0.8.212
 
 - **Rättat vid nyinstallation på Unraid.** Workern väntar nu på att `subsynq` skapar databasen i stället för att krascha med `no such table: metadata` när den startas först. Installationsguiden (`unraid/README.md`) har ett nytt steg 1b: skapa mapparna och ge `models` ägare 99:100, annars får modellhämtningen `PermissionError` i `/models`.

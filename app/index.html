@@ -119,6 +119,12 @@ small { color: var(--sec); }
 .meter-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--sec); }
 .meter-track { height: 6px; border-radius: 4px; background: var(--hi); overflow: hidden; }
 .meter-fill { height: 100%; }
+.scan-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+button.secondary-button { background: var(--hi); color: var(--tx); border: 1px solid var(--bd); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.scan-pulse { animation: scan-pulse 1.6s ease-in-out infinite; }
+@keyframes scan-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .scan-pulse { animation: none; } }
 .engine-note { font-size: 10px; color: var(--mut); line-height: 1.4; }
 .meter-state { font-size: 10px; color: var(--mut); text-align: right; line-height: 1.2; }
 .content { flex: 1 1 auto; min-width: 0; padding: 26px 30px 70px; }
@@ -413,6 +419,19 @@ if(modelsCard)setInterval(async()=>{
     });
   }catch(error){/* Try again at the next interval. */}
 },3000);
+const scanCard=document.querySelector('[data-scan-card]');
+if(scanCard&&scanCard.dataset.state==='running')setInterval(async()=>{
+  // Live status while the library is being scanned; reload when the scan has ended.
+  try{
+    const response=await fetch('/api/scan-status',{cache:'no-store'});
+    if(!response.ok)return;
+    const status=await response.json();
+    if(status.state!=='running'){location.reload();return;}
+    const detail=scanCard.querySelector('[data-scan-detail]');
+    if(detail)detail.textContent=(scanCard.dataset.tDetail||'').replace('{folder}',status.folder)
+      .replace('{files}',status.files).replace('{seconds}',status.seconds);
+  }catch(error){/* Try again at the next interval. */}
+},1500);
 const bulkBar=document.querySelector('[data-bulk-bar]');
 if(bulkBar){
   const boxes=()=>Array.from(document.querySelectorAll('.bulk-check'));

@@ -24,9 +24,10 @@ from jobs import (ACTIVE, enqueue_delete, enqueue_job, enqueue_restart, initiali
                   latest_events, latest_jobs, recent_events, request_cancel)
 from i18n import LANGUAGES, t
 import models_card
+import scan_state
 import subtitle_cleanup
 
-VERSION = "0.8.212"
+VERSION = "0.8.213"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -38,6 +39,7 @@ def enabled_cloud_providers():
     return set(load_keys(CONFIG)) & set(CLOUD_RENTAL_PROVIDERS)
 SCAN_TOKEN = secrets.token_urlsafe(32)
 SCAN_LOCK = threading.Lock()
+SCAN_STATUS = scan_state.ScanStatus()
 CONFIG = Path(os.environ.get("SUBSYNQ_CONFIG", "/config"))
 DATABASE = CONFIG / "subsynq.db"
 PAGE = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
@@ -133,21 +135,61 @@ class BusyError(Exception):
     """Raised when a library scan is already running."""
 
 
-def perform_library_scan():
-    """Scan the library folders and persist the result. Shared by the manual
-    'Skanna bibliotek' button and the background automatic scan loop."""
+def perform_library_scan(choice=scan_state.ALL):
+    """Scan one library ('movie', 'episode' or 'media') or all of them and persist the result. Shared by the
+    scan buttons and the background automatic scan loop. A scan of one library keeps the others' earlier results."""
+    roots = scan_state.roots_for(choice, lambda root: Path(root).is_dir())
     if not SCAN_LOCK.acquire(blocking=False):
         raise BusyError("En skanning pågår redan.")
     try:
-        overrides_path = CONFIG / "kind-overrides.json"
-        overrides = json.loads(overrides_path.read_text(encoding="utf-8-sig")) if overrides_path.exists() else {}
-        result = {"scanned_at": datetime.now(timezone.utc).isoformat(),
-                  "items": scan_library(["/movies", "/tv", "/extra"], probe=probe_media, kind_overrides=overrides)}
-        with sqlite3.connect(DATABASE) as db:
-            db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_scan', ?)", (json.dumps(result),))
+        SCAN_STATUS.start(choice, roots)
+        try:
+            overrides_path = CONFIG / "kind-overrides.json"
+            overrides = json.loads(overrides_path.read_text(encoding="utf-8-sig")) if overrides_path.exists() else {}
+            items = scan_library(roots, probe=probe_media, kind_overrides=overrides, progress=SCAN_STATUS.progress)
+            with sqlite3.connect(DATABASE) as db:
+                saved = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
+                result = scan_state.merge_scan(json.loads(saved[0]) if saved else {}, roots, items,
+                                               datetime.now(timezone.utc).isoformat(), choice == scan_state.ALL)
+                db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_scan', ?)", (json.dumps(result),))
+        except Exception as error:  # noqa: BLE001 - the status must never stay on "running"
+            SCAN_STATUS.fail(error if isinstance(error, FileNotFoundError)
+                             else "Kunde inte läsa biblioteksmapparna eller spara resultatet.")
+            raise
+        SCAN_STATUS.finish(len(items))
     finally:
         SCAN_LOCK.release()
     return result
+
+
+def render_scan_buttons(selected, library, scanning, token, lang="sv"):
+    """One button for the library being viewed, one for everything, and when each was last scanned."""
+    root = scan_state.LIBRARY_ROOTS[selected]
+    connected = Path(root).is_dir()
+    one_disabled = " disabled" if scanning or not connected else ""
+    all_disabled = " disabled" if scanning else ""
+    stamp = format_local_timestamp(scan_state.scanned_at_for(library, root)) or t("scan_never", lang)
+    missing = ("" if connected else
+               f"<p class='muted'>{escape(t('scan_optional_missing', lang).format(folder=root))}</p>")
+    return (
+        "<form action='/scan' method='post' class='scan-actions'>"
+        f"<input type='hidden' name='kind' value='{escape(selected, quote=True)}'>"
+        f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
+        f"<button type='submit' name='library' value='{escape(selected, quote=True)}'{one_disabled}>"
+        f"{escape(t('scan_btn_' + selected, lang))}</button>"
+        f"<button type='submit' name='library' value='{scan_state.ALL}' class='secondary-button'{all_disabled}>"
+        f"{escape(t('scan_btn_all', lang))}</button></form>"
+        f"{missing}<p class='muted'>{escape(t('scan_last', lang).format(folder=root, when=stamp))}</p>")
+
+
+def run_background_scan(choice):
+    """Run a scan started from a button, so the page can show live status instead of waiting for the answer."""
+    try:
+        perform_library_scan(choice)
+    except BusyError:
+        pass
+    except (OSError, sqlite3.Error, ValueError):
+        logging.exception("Library scan failed")
 
 
 def auto_start_missing_jobs(items, ignore_existing=False):
@@ -1161,7 +1203,9 @@ def render_page(page_title, active_nav, content, theme, accent, jobs, hardware, 
     body = body.replace("{{running_label}}", escape(t("running", lang)))
     body = body.replace("{{sidebar}}", render_sidebar(active_nav, active_job_count(jobs), hardware, lang))
     # While the AI models are still being downloaded, say so at the top of every page.
-    return body.replace("{{content}}", models_card.render_models_banner(models_card.load_status(CONFIG), lang) + content)
+    banners = (scan_state.render_scan_banner(SCAN_STATUS.snapshot(), lang)
+               + models_card.render_models_banner(models_card.load_status(CONFIG), lang))
+    return body.replace("{{content}}", banners + content)
 
 
 def status():
@@ -1655,15 +1699,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
+        choice = form.get("library", [scan_state.ALL])[0]
         try:
-            result = perform_library_scan()
-        except BusyError as error:
-            self.respond(409, "text/plain", str(error))
+            scan_state.roots_for(choice, lambda root: Path(root).is_dir())
+        except ValueError:
+            self.respond(400, "text/plain", "Välj filmer, serier, extra eller allt.")
             return
-        except (OSError, sqlite3.Error, ValueError):
-            logging.exception("Library scan failed")
-            self.respond(503, "text/plain", "Skanningen misslyckades. Kontrollera att biblioteksmapparna är tillgängliga. Föregående lista är kvar; gå tillbaka och försök igen.")
+        if SCAN_LOCK.locked():
+            self.respond(409, "text/plain", "En skanning pågår redan.")
             return
+        # The scan runs in the background; every page shows its live status until it is done.
+        before = SCAN_STATUS.snapshot()["started"]
+        threading.Thread(target=run_background_scan, args=(choice,), daemon=True).start()
+        deadline = time.monotonic() + 2
+        while SCAN_STATUS.snapshot()["started"] == before and time.monotonic() < deadline:
+            time.sleep(0.02)    # let the status card show up on the page we redirect to
         self.send_response(303)
         selected = form.get("kind", ["episode"])[0]
         self.send_header("Location", "/library?kind=" + (selected if selected in ("movie", "episode", "media") else "episode"))
@@ -1773,6 +1823,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.end_headers()
             self.wfile.write(data)
+            return
+        if path == '/api/scan-status':
+            self.respond(200, 'application/json', json.dumps(SCAN_STATUS.snapshot()))
             return
         if path == '/api/models':
             self.respond(200, 'application/json', json.dumps(models_card.load_status(CONFIG) or {}))
@@ -1994,7 +2047,7 @@ class Handler(BaseHTTPRequestHandler):
                 if selected not in ("movie", "episode", "media"):
                     selected = "episode"
                 visible = [item for item in library["items"] if item.get("kind", "media") == selected]
-                rows = "".join(f"<tr><td><code>{escape(name)}</code></td><td>{'Tillgänglig' if info['exists'] else 'Saknas'}</td></tr>"
+                rows = "".join(f"<tr><td><code>{escape(name)}</code></td><td>{'Tillgänglig' if info['exists'] else ('Valfri, inte ansluten' if name in scan_state.OPTIONAL_ROOTS else 'Saknas')}</td></tr>"
                                for name, info in data["paths"].items())
                 queued_notice = ('<p class="success" role="status">✓ Undertextjobbet är köat. Statusen visas vid avsnittet.</p>'
                                  if query.get('job', [''])[0] == 'queued' else '')
@@ -2007,17 +2060,13 @@ class Handler(BaseHTTPRequestHandler):
                 kind_label = t(kind_keys.get(selected, "kind_media"), data["ui_language"])
                 content = (
                     f"<div class='card'><h2>{escape(kind_label)} · {len(visible)} filer</h2>"
-                    "<p class='muted'>Skanna mapparna för att hitta filmer och avsnitt. Filerna läses utan att ändras. Spåranalysen kan ta en stund; vänta tills sidan laddats om.</p>"
-                    "<form action='/scan' method='post'>"
-                    f"<input type='hidden' name='kind' value='{escape(selected, quote=True)}'>"
-                    f"<input type='hidden' name='token' value='{escape(SCAN_TOKEN, quote=True)}'>"
-                    "<button type='submit'>Skanna bibliotek</button></form>"
+                    f"<p class='muted'>{escape(t('scan_intro', data['ui_language']))}</p>"
+                    f"{render_scan_buttons(selected, library, SCAN_STATUS.running, SCAN_TOKEN, data['ui_language'])}"
                     f"{queued_notice}"
-                    f"<p class='muted'>Senaste skanning: {escape(format_local_timestamp(library['scanned_at']) or 'Ingen skanning ännu')}</p>"
                     f"{render_bulk_bar(selected, SCAN_TOKEN, data['ui_language']) if visible else ''}"
                     f"<div class='library-list'>{render_library(visible, selected, SCAN_TOKEN, jobs, data['ignore_existing_subtitle'], data['ui_language'])}</div>"
                     "<p class='muted'>SubSynq startar aldrig hela biblioteket automatiskt i nuvarande version, om inte automatisk sökning/jobbstart aktiveras under Inställningar. En inbäddad svensk originalundertext, exempelvis PGS, räknas normalt som täckning och hoppas över – det går att ändra under Inställningar. Befintliga AI-undertexter skrivs aldrig över. En underkänd AI-fil kan tas bort här och därefter köras om, och en fil vars video bytts ut sedan undertexten skapades får en egen \"Kör igen\"-knapp.</p></div>"
-                    f"<div class='card'><h2>Anslutna mappar</h2><p class='muted'>/tv är ditt valda seriebibliotek. /config sparar databasen och /models är reserverad för framtida AI-modeller.</p>"
+                    f"<div class='card'><h2>Anslutna mappar</h2><p class='muted'>/tv är ditt valda seriebibliotek och /extra är valfri. /config sparar databasen och /models innehåller AI-modellerna.</p>"
                     f"<table><thead><tr><th>Mapp i containern</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table></div>"
                 )
                 page_title, active_nav = kind_label, f"library:{selected}"
