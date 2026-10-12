@@ -81,6 +81,9 @@ STRINGS = {
     "confirm_restart": {"sv": "Ta bort den gamla undertexten och köra om från grunden?",
                         "en": "Delete the old subtitle and run it again from scratch?"},
     "action_rerun": {"sv": "Kör igen", "en": "Run again"},
+    "action_recreate": {"sv": "Skapa om undertexten", "en": "Recreate subtitle"},
+    "confirm_recreate": {"sv": "Ta bort den nuvarande AI-undertexten och skapa en ny från grunden? Den gamla tas bort först.",
+                         "en": "Delete the current AI subtitle and create a new one from scratch? The old one is deleted first."},
     "action_retry_failed": {"sv": "Kör om", "en": "Retry"},
     "confirm_delete": {"sv": "Ta bort den här AI-undertexten helt? Du kan skapa en ny efteråt.",
                        "en": "Delete this AI subtitle completely? You can create a new one afterwards."},
@@ -428,8 +431,15 @@ STRINGS = {
     "bulk_select_none": {"sv": "Avmarkera alla", "en": "Clear selection"},
     "bulk_start": {"sv": "Skapa undertext för markerade", "en": "Create subtitles for selected"},
     "bulk_delete": {"sv": "Ta bort AI-undertext för markerade", "en": "Delete AI subtitle for selected"},
-    "bulk_none_usable": {"sv": "Det du markerade går inte att skapa undertext för här: filen har redan en AI-undertext (den kan bara tas bort) eller har ett pågående jobb. Markera andra filer, eller ta bort undertexten först.",
-                         "en": "You cannot create subtitles for what you ticked: the file already has an AI subtitle (it can only be deleted) or has a job in progress. Tick other files, or delete the subtitle first."},
+    "bulk_recreate": {"sv": "Skapa om undertext för markerade", "en": "Recreate subtitles for selected"},
+    "bulk_confirm_recreate": {
+        "sv": "Ta bort den nuvarande AI-undertexten för {n} filer och skapa nya från grunden? De gamla tas bort först. Videofilerna rörs inte.",
+        "en": "Delete the current AI subtitle for {n} files and create new ones from scratch? The old ones are deleted first. The video files are not touched."},
+    "bulk_notice_recreated": {
+        "sv": "✓ {done} filer köade för omskapning av AI-undertexten; {skipped} hoppades över (redan jobb, ingen undertext att ersätta eller inte aktuell).",
+        "en": "✓ {done} files queued to have their AI subtitle recreated; {skipped} skipped (already has a job, no subtitle to replace or no longer eligible)."},
+    "bulk_none_usable": {"sv": "Det du markerade går inte att köra här just nu, till exempel för att ett jobb pågår. Ladda om sidan och försök igen.",
+                         "en": "What you ticked cannot be run here right now, for example because a job is in progress. Reload the page and try again."},
     "bulk_confirm_start": {"sv": "Köa {n} undertextjobb?", "en": "Queue {n} subtitle jobs?"},
     "bulk_confirm_delete": {
         "sv": "Ta bort AI-undertexten för {n} filer? Videofilerna rörs inte.",

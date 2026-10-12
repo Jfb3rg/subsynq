@@ -38,10 +38,8 @@ class BulkBarExplainsGreyButtonsTests(unittest.TestCase):
     def test_the_bar_has_a_hidden_hint_that_the_page_script_shows_when_nothing_ticked_can_be_acted_on(self):
         bar = server.render_bulk_bar("media", "tok", "sv")
         self.assertIn("data-bulk-hint hidden", bar)
-        self.assertIn("redan en AI-undertext", bar)
-        self.assertIn("pågående jobb", bar)
-        self.assertIn("redan en AI-undertext", server.render_bulk_bar("media", "tok", "sv"))
-        self.assertIn("already has an AI subtitle", server.render_bulk_bar("media", "tok", "en"))
+        self.assertIn("ett jobb pågår", bar)
+        self.assertIn("a job is in progress", server.render_bulk_bar("media", "tok", "en"))
         self.assertIn("hint.hidden=!(chosen.length>0&&!anyUsable)", INDEX)
 
 

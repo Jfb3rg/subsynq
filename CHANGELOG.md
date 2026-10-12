@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.218
+
+- **Skapa om undertexten.** Rader som redan har en AI-undertext får knappen "Skapa om undertexten" (med bekräftelse), och det finns en flervalsknapp "Skapa om undertext för markerade (N)". Åtgärden använder den befintliga säkra omkörningen (den gamla AI-undertexten tas bort av workern, sedan körs filen om) och staplas aldrig på en fil som redan har ett jobb. Videofiler rörs inte.
+- Förklaringstexten under de grå knapparna (0.8.217) säger nu bara att något pågår, eftersom filer med AI-undertext inte längre är en återvändsgränd.
+
 ## 0.8.217
 
 - **Förklaring när "Skapa undertext för markerade" är grå.** Markerar du bara filer som redan har en AI-undertext (de kan bara tas bort) eller som har ett pågående jobb, visas nu en text som säger varför knappen inte går att trycka på, i stället för att ingenting händer.

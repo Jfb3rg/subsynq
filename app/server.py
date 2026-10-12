@@ -27,7 +27,7 @@ import models_card
 import scan_state
 import subtitle_cleanup
 
-VERSION = "0.8.217"
+VERSION = "0.8.218"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -402,6 +402,18 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
             f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>"
             f"<button type='submit' class='small-button danger'>{escape(t('action_delete', lang))}</button></form>"
         )
+    if (item.get('ai_sv_exists') and item.get('ai_sv_path') and token and not_active
+            and not subtitle_is_stale(item, job)):
+        # The "Run again" button above covers a replaced video; this one recreates a subtitle the user is unhappy with.
+        job_html += (
+            "<form action='/jobs/restart' method='post' class='restart-job-form preserve-seasons' "
+            f"onsubmit=\"return confirm('{escape(t('confirm_recreate', lang), quote=True)}')\">"
+            f"<input type='hidden' name='token' value='{escape(token)}'>"
+            f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>"
+            f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>"
+            "<input type='hidden' name='recreate' value='1'>"
+            f"<button type='submit' class='small-button'>{escape(t('action_recreate', lang))}</button></form>"
+        )
     if item.get('ai_sv_exists'):
         media_query = quote(item['path'], safe='')
         job_html += (f"<a class='small-link' href='/subtitles/view?media={media_query}'>"
@@ -428,7 +440,7 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
         # every row already holds its own forms and HTML forms cannot nest.
         bulk_box = (f"<input type='checkbox' class='bulk-check' name='media_path' form='bulk-form' "
                     f"value='{escape(item['path'], quote=True)}' data-start='{int(bool(can_start))}' "
-                    f"data-delete='{int(can_delete)}' aria-label='{escape(item['name'], quote=True)}'> ")
+                    f"data-delete='{int(can_delete)}' data-recreate='{int(can_delete)}' aria-label='{escape(item['name'], quote=True)}'> ")
     return (
         f"<tr{row_class}><td class='filename'>{bulk_box}{episode}{escape(item['name'])}<br>"
         f"<small>{escape(kind_label)} · "
@@ -446,6 +458,7 @@ def render_bulk_bar(selected, token, lang="sv"):
     """One form for acting on many ticked library rows at once (see render_media_row)."""
     confirm_start = escape(t("bulk_confirm_start", lang), quote=True)
     confirm_delete = escape(t("bulk_confirm_delete", lang), quote=True)
+    confirm_recreate = escape(t("bulk_confirm_recreate", lang), quote=True)
     return (
         "<form id='bulk-form' class='bulk-bar preserve-seasons' data-bulk-bar action='/jobs/bulk' method='post'>"
         f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
@@ -458,7 +471,9 @@ def render_bulk_bar(selected, token, lang="sv"):
         "<p><button type='submit' name='action' value='start' class='small-button' "
         f"data-confirm='{confirm_start}'>{escape(t('bulk_start', lang))} (<span data-usable>0</span>)</button> "
         "<button type='submit' name='action' value='delete' class='small-button danger' "
-        f"data-confirm='{confirm_delete}'>{escape(t('bulk_delete', lang))} (<span data-usable>0</span>)</button></p></form>")
+        f"data-confirm='{confirm_delete}'>{escape(t('bulk_delete', lang))} (<span data-usable>0</span>)</button> "
+        "<button type='submit' name='action' value='recreate' class='small-button danger' "
+        f"data-confirm='{confirm_recreate}'>{escape(t('bulk_recreate', lang))} (<span data-usable>0</span>)</button></p></form>")
 
 
 def render_library(items, selected, token="", jobs=None, ignore_existing=False, lang="sv"):
@@ -1593,7 +1608,7 @@ class Handler(BaseHTTPRequestHandler):
             action = form.get('action', [''])[0]
             return_kind = form.get('return_kind', ['episode'])[0]
             media_paths = list(dict.fromkeys(form.get('media_path', [])))
-            if action not in ('start', 'delete') or not media_paths:
+            if action not in ('start', 'delete', 'recreate') or not media_paths:
                 self.respond(400, 'text/plain', 'Inget markerat.')
                 return
             try:
@@ -1623,7 +1638,10 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         if not item.get('ai_sv_exists') or not item.get('ai_sv_path'):
                             raise ValueError('not eligible')
-                        enqueue_delete(DATABASE, item['path'], item['name'], item['ai_sv_path'])
+                        if action == 'recreate':
+                            enqueue_restart(DATABASE, item['path'], item['name'], item['ai_sv_path'])
+                        else:
+                            enqueue_delete(DATABASE, item['path'], item['name'], item['ai_sv_path'])
                     done += 1
                 except (ValueError, sqlite3.Error):
                     skipped += 1
@@ -1675,7 +1693,7 @@ class Handler(BaseHTTPRequestHandler):
                                    'restart_queued', 'restarting'}
                 if job and job.get('status') in active_statuses:
                     raise ValueError('Ett aktivt jobb måste avslutas innan filen kan köras om.')
-                if not subtitle_is_stale(item, job):
+                if not subtitle_is_stale(item, job) and form.get('recreate', ['0'])[0] != '1':
                     raise ValueError('Videofilen matchar fortfarande undertexten; ingen omkörning behövs.')
                 enqueue_restart(DATABASE, item['path'], item['name'], item['ai_sv_path'])
             except (ValueError, sqlite3.Error, OSError) as error:
@@ -2061,8 +2079,8 @@ class Handler(BaseHTTPRequestHandler):
                 queued_notice = ('<p class="success" role="status">✓ Undertextjobbet är köat. Statusen visas vid avsnittet.</p>'
                                  if query.get('job', [''])[0] == 'queued' else '')
                 if query.get('job', [''])[0] == 'bulk':
-                    notice_key = ('bulk_notice_started' if query.get('bulk_action', [''])[0] == 'start'
-                                  else 'bulk_notice_deleted')
+                    notice_key = {'start': 'bulk_notice_started', 'recreate': 'bulk_notice_recreated'}.get(
+                        query.get('bulk_action', [''])[0], 'bulk_notice_deleted')
                     queued_notice = ('<p class="success" role="status">' + escape(t(notice_key, data["ui_language"]).format(
                         done=query.get("done", ["0"])[0][:9], skipped=query.get("skipped", ["0"])[0][:9])) + '</p>')
                 kind_keys = {"movie": "kind_movie", "episode": "kind_episode", "media": "kind_media"}

@@ -115,6 +115,35 @@ class BulkRouteTests(unittest.TestCase):
                                  "media_path": [HAS_AI["path"]]})
         self.assertIn("done=0", location)
 
+    def test_recreate_queues_a_safe_delete_and_rerun_only_for_files_with_an_ai_subtitle(self):
+        status, location = self.post({"token": server.SCAN_TOKEN, "action": "recreate", "return_kind": "movie",
+                                      "media_path": [MISSING["path"], HAS_AI["path"], EMBEDDED["path"]]})
+        self.assertEqual(status, 303)
+        self.assertIn("bulk_action=recreate", location)
+        self.assertIn("done=1", location)
+        self.assertIn("skipped=2", location)
+        jobs = latest_jobs(self.database)
+        self.assertEqual(set(jobs), {HAS_AI["path"]})
+        self.assertEqual(jobs[HAS_AI["path"]]["status"], "restart_queued")
+        # Never stacked on a file that already has a job.
+        _, location = self.post({"token": server.SCAN_TOKEN, "action": "recreate", "return_kind": "movie",
+                                 "media_path": [HAS_AI["path"]]})
+        self.assertIn("done=0", location)
+
+    def test_the_rows_and_the_bar_offer_recreate_only_where_it_applies(self):
+        has_ai = server.render_media_row(HAS_AI, token="safe")
+        self.assertIn("data-recreate='1'", has_ai)
+        self.assertIn("name='recreate' value='1'", has_ai)
+        self.assertIn("Skapa om undertexten", has_ai)
+        missing = server.render_media_row(MISSING, token="safe")
+        self.assertIn("data-recreate='0'", missing)
+        self.assertNotIn("name='recreate'", missing)
+        self.assertNotIn("name='recreate'", server.render_media_row(HAS_AI, token=""))
+        bar = server.render_bulk_bar("movie", "tok", "sv")
+        self.assertIn("name='action' value='recreate'", bar)
+        self.assertIn("Skapa om undertext för markerade", bar)
+        self.assertIn("Recreate subtitles for selected", server.render_bulk_bar("movie", "tok", "en"))
+
     def test_rejects_bad_token_empty_selection_and_unknown_action(self):
         self.assertEqual(self.post({"token": "fel", "action": "start", "media_path": [MISSING["path"]]})[0], 403)
         self.assertEqual(self.post({"token": server.SCAN_TOKEN, "action": "start"})[0], 400)
