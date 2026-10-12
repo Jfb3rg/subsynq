@@ -16,6 +16,11 @@ def flag(row, **overrides):
 
 class TranslationEvidenceTests(unittest.TestCase):
     def setUp(self):
+        # Phrase scope tests isolate rendering; its model contract has separate tests.
+        rendering = patch.object(worker, 'render_whole_cue_meanings',
+            side_effect=lambda job, rows, flags, answer, *args, **kwargs: answer)
+        rendering.start()
+        self.addCleanup(rendering.stop)
         self.rows = [
             {'id': 0, 'start': 0, 'end': 2, 'source': 'मैं वापस आऊंगा।', 'sv': 'Jag kommer tillbaka.'},
             {'id': 1, 'start': 2, 'end': 4, 'source': 'This is my story.', 'sv': 'Det här är mitt berättelse.'},
@@ -366,6 +371,13 @@ class TranslationEvidenceTests(unittest.TestCase):
 
 
 class UntranslatedQuoteTests(unittest.TestCase):
+    def setUp(self):
+        # Phrase scope tests isolate rendering; its model contract has separate tests.
+        rendering = patch.object(worker, 'render_whole_cue_meanings',
+            side_effect=lambda job, rows, flags, answer, *args, **kwargs: answer)
+        rendering.start()
+        self.addCleanup(rendering.stop)
+
     """Real job 17: the reviewer correctly saw that `gun` stayed untranslated but quoted the
     whole line as source_quote, which the validator rejects -- twice, because the retry never
     said which rule was broken. The validator stays exactly as strict; only the guidance changed."""
@@ -436,6 +448,13 @@ class UntranslatedQuoteTests(unittest.TestCase):
 
 
 class RepairWordingTests(unittest.TestCase):
+    def setUp(self):
+        # Phrase scope tests isolate rendering; its model contract has separate tests.
+        rendering = patch.object(worker, 'render_whole_cue_meanings',
+            side_effect=lambda job, rows, flags, answer, *args, **kwargs: answer)
+        rendering.start()
+        self.addCleanup(rendering.stop)
+
     """Real job 17: the reviewer's reason said '(håll med tittning/lyssning)' and the repair copied
     that calque, which the next review flagged again."""
 
@@ -459,7 +478,7 @@ class RepairWordingTests(unittest.TestCase):
         self.assertIn('never authoritative translations', request['system'])
         self.assertIn('intended_meaning', request['system'])
         self.assertIn('intended action', request['system'])
-        self.assertEqual(request['model'], worker.MODEL_NAME)
+        self.assertEqual(request['model'], worker.REVIEW_MODEL_NAME)
 
     def test_current_wording_and_fallible_flags_are_passed_as_data(self):
         request, result = self.repair()

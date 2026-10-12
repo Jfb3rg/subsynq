@@ -30,6 +30,13 @@ class ReasonCopyTests(unittest.TestCase):
 
 
 class RepairCopiesTheRemarkTests(unittest.TestCase):
+    def setUp(self):
+        # Phrase scope tests isolate rendering; its model contract has separate tests.
+        rendering = patch.object(worker, 'render_whole_cue_meanings',
+            side_effect=lambda job, rows, flags, answer, *args, **kwargs: answer)
+        rendering.start()
+        self.addCleanup(rendering.stop)
+
     ROWS = [{'id': 0, 'start': 0, 'end': 1, 'source': 'Will you be making a statement?',
              'sv': 'Kommer du att göra ett uttalande?'},
             {'id': 1, 'start': 2, 'end': 3, 'source': 'Stay tuned.', 'sv': 'Stanna kvar.'}]
@@ -53,7 +60,7 @@ class RepairCopiesTheRemarkTests(unittest.TestCase):
         request = model.call_args.args[0]
         self.assertIn('never authoritative translations', request['system'])
         self.assertIn('intended_meaning', request['system'])
-        self.assertEqual(request['model'], worker.MODEL_NAME)
+        self.assertEqual(request['model'], worker.REVIEW_MODEL_NAME)
         self.assertNotIn('reason', json.loads(request['prompt'])['flags'][0])
         self.assertEqual(result[1]['sv'], 'Vänta och se.')
         self.assertEqual(result[0], self.ROWS[0])

@@ -1,6 +1,7 @@
 """Plan and merge overlapping ASR windows without assuming one language."""
 from difflib import SequenceMatcher
 from types import SimpleNamespace
+import math
 import re
 import unicodedata
 
@@ -1307,7 +1308,329 @@ def reconcile_v2_fragments(base, precision, v2_rows):
     return sorted(result, key=lambda item: item['start'])
 
 
-def restore_corroborated_address_titles(base, rescue, v2_rows):
+def plan_address_title_confirmations(base, rescue, confirmations, duration, *, maximum_total=4,
+                                     include_seen_names=False):
+    """Recheck an omitted title heard by two offset views before the same cue.
+
+    Long windows can place a quiet title too early. These bounded short views
+    provide fresh word times; planning alone never changes the transcript.
+    """
+    titles = {'mr', 'mrs', 'ms', 'dr', 'prof', 'mister', 'miss', 'sir', 'madam'}
+    planned = []
+    if maximum_total <= 0:
+        return planned
+    for prefix in sorted(rescue, key=lambda row: row['start']):
+        title = _normalized(prefix.get('text', ''))
+        if (title not in titles or float(prefix.get('confidence', 0)) < .6
+                or not any(_normalized(row.get('text', '')) == title
+                           and float(row.get('confidence', 0)) >= .6
+                           and abs(row['start'] - prefix['start']) <= 1.2
+                           and abs(row['end'] - prefix['end']) <= 1.2
+                           for row in confirmations)):
+            continue
+        following = next((row for row in sorted(base, key=lambda row: row['start'])
+                          if 0 <= row['start'] - prefix['end'] <= 2
+                          and str(row.get('text', '')).lstrip()[:1].isupper()
+                          and len(_normalized(row.get('text', '')).split()) >= 3
+                          and _normalized(row['text']).split()[0] not in titles), None)
+        if following is None:
+            continue
+        start = max(0., float(math.floor(following['start'] - 3.5)))
+        end = min(float(duration), following['end'] + 3., start + 12.)
+        if end - start < 4 or any(min(end, w['end']) - max(start, w['start']) > 0
+                                  for w in planned):
+            continue
+        planned.append({'start': start, 'end': end})
+        if len(planned) >= maximum_total:
+            break
+    if include_seen_names:
+        rows = sorted(base, key=lambda row: row['start'])
+        seen = set()
+        for index, row in enumerate(rows):
+            tokens = _normalized(row.get('text', '')).split()
+            if not tokens:
+                continue
+            if tokens[0] in titles:
+                if len(tokens) >= 2:
+                    seen.add(tokens[1])
+                elif index + 1 < len(rows) and 0 <= rows[index + 1]['start'] - row['end'] <= 1:
+                    following = str(rows[index + 1].get('text', '')).lstrip()
+                    names = _normalized(following).split()
+                    if names and following[:1].isupper():
+                        seen.add(names[0])
+                continue
+            if (tokens[0] not in seen or len(tokens) < 3
+                    or not str(row['text']).lstrip()[:1].isupper()
+                    or index and _normalized(rows[index - 1].get('text', '')) in titles
+                    and 0 <= row['start'] - rows[index - 1]['end'] <= 1):
+                continue
+            start = max(0., float(math.floor(row['start'] - 3.5)))
+            end = min(float(duration), float(math.floor(row['end']) + 3), start + 12.)
+            if end - start < 4 or any(min(end, w['end']) - max(start, w['start']) > 0 for w in planned):
+                continue
+            if len(planned) >= maximum_total:
+                break
+            planned.append({'start': start, 'end': end})
+    return planned
+
+
+def plan_unpunctuated_clusters(base, duration, *, maximum_total=4):
+    """Bound rereads to consecutive long fragments, including their closing cue."""
+    rows = sorted(base, key=lambda row: row['start'])
+    planned, index = [], 0
+    def fragment(row):
+        return (len(_normalized(row.get('text', '')).split()) >= 5
+                and not str(row.get('text', '')).rstrip().endswith(('.', '?', '!')))
+    while index < len(rows):
+        begin = index
+        while (index < len(rows) and fragment(rows[index])
+               and (index == begin or rows[index]['start'] - rows[index - 1]['end'] <= 1.5)):
+            index += 1
+        if index - begin >= 2:
+            last = index - 1
+            if index < len(rows) and rows[index]['start'] - rows[last]['end'] <= 1.5:
+                last = index
+            start, end = rows[begin]['start'], rows[last]['end']
+            if end - start <= 24:
+                planned.append({'start': max(0., math.floor(start) - 1.),
+                                'end': min(float(duration), math.ceil(end) + 1.),
+                                'target_start': start, 'target_end': end})
+                if len(planned) >= maximum_total:
+                    break
+        index = max(index, begin + 1)
+    return planned
+
+
+def restore_corroborated_clusters(base, first, second, v2):
+    """Replace a fragment cluster only with complete, three-reading timed agreement."""
+    result = [dict(row) for row in sorted(base, key=lambda row: row['start'])]
+    for window in plan_unpunctuated_clusters(result, max((r['end'] for r in result), default=0)):
+        group = [row for row in result if window['target_start'] <= row['start']
+                 and row['end'] <= window['target_end']]
+        candidates = [dict(row) for row in v2
+                      if row['end'] > window['target_start'] and row['start'] < window['target_end']]
+        candidates.sort(key=lambda row: row['start'])
+        if (len(candidates) < 2 or abs(candidates[0]['start'] - group[0]['start']) > .8
+                or abs(candidates[-1]['end'] - group[-1]['end']) > .5
+                or not all(str(row['text']).rstrip().endswith(('.', '?', '!')) for row in candidates)):
+            continue
+        valid = True
+        for row in candidates:
+            words = _valid_cue_words(row)
+            if (not words or row['end'] - row['start'] > 7
+                    or not all(_matching_timed_phrase(profile, [w['token'] for w in words],
+                                                      words[0]['start'], words[-1]['end'])
+                               for profile in (first, second))):
+                valid = False
+                break
+        if not valid:
+            continue
+        # Only trim duplicated words already spanning an old cue boundary.
+        old = _normalized(' '.join(row['text'] for row in
+                                  trim_duplicated_cue_boundary(group, minimum_words=2))).split()
+        new = _normalized(' '.join(row['text'] for row in candidates)).split()
+        position = 0
+        for token in new:
+            if position < len(old) and token == old[position]:
+                position += 1
+        if position != len(old):
+            continue  # No existing source word may disappear.
+        for left, right in zip(candidates, candidates[1:]):
+            if left['end'] > right['start']:
+                end, start = _valid_cue_words(left)[-1]['end'], _valid_cue_words(right)[0]['start']
+                if end > start:
+                    valid = False
+                    break
+                boundary = (end + start) / 2
+                left['end'], right['start'] = boundary, boundary
+        untouched = [row for row in result if row not in group]
+        if not valid or any(c['start'] < row['end'] and c['end'] > row['start']
+                            for c in candidates for row in untouched):
+            continue
+        result = sorted(untouched + candidates, key=lambda row: row['start'])
+    return result
+
+
+def _matching_timed_phrase(profile, tokens, start, end, *, onset_tolerance=.8):
+    """Find the complete phrase in one timed reading, allowing extra context."""
+    for row in profile:
+        words = _timed_rescue_words(row)
+        for offset in range(len(words) - len(tokens) + 1):
+            span = words[offset:offset + len(tokens)]
+            if ([word['token'] for word in span] == tokens
+                    and (offset == 0 or words[offset - 1]['source_word_index']
+                         != span[0]['source_word_index'])
+                    and (offset + len(tokens) == len(words)
+                         or words[offset + len(tokens)]['source_word_index']
+                         != span[-1]['source_word_index'])
+                    and all(math.isfinite(word[key]) for word in span
+                            for key in ('start', 'end', 'probability'))
+                    and min(word['probability'] for word in span) >= .55
+                    and all(0 < word['end'] - word['start'] <= 1.5 for word in span)
+                    and abs(span[0]['start'] - start) <= onset_tolerance
+                    and abs(span[-1]['end'] - end) <= .5
+                    and all(left['source_word_index'] == right['source_word_index']
+                            or left['end'] <= right['start'] + .02
+                            for left, right in zip(span, span[1:]))):
+                return span
+    return []
+
+
+def _valid_cue_words(row):
+    words = _timed_rescue_words(row)
+    if (not words or not all(math.isfinite(word[key]) for word in words
+                            for key in ('start', 'end', 'probability'))
+            or min(word['probability'] for word in words) < .55
+            or any(not row['start'] <= word['start'] < word['end'] <= row['end']
+                   or word['end'] - word['start'] > 1.5 for word in words)
+            or any(left['source_word_index'] != right['source_word_index']
+                   and left['end'] > right['start'] + .02
+                   for left, right in zip(words, words[1:]))):
+        return []
+    return words
+
+
+def plan_intervening_cue_confirmations(base, v2_rows, duration, *, maximum_total=4):
+    """Plan new evidence for a possible sentence hidden by the next cue's onset.
+
+    An uncertain old word may trigger a reread, never acceptance. The actual
+    restoration still requires fresh complete v2 and two independent v3 views.
+    """
+    planned = []
+    if maximum_total <= 0:
+        return planned
+    rows = sorted(base, key=lambda row: row['start'])
+    readings = sorted(v2_rows, key=lambda row: row['start'])
+    for candidate, following in zip(readings, readings[1:]):
+        words = _timed_rescue_words(candidate)
+        anchor = _valid_cue_words(following)
+        if (not 3 <= len(words) <= 12 or not 3 <= len(anchor) <= 12
+                or not str(candidate.get('text', '')).rstrip().endswith(('.', '?', '!'))
+                or not all(math.isfinite(w[key]) for w in words
+                           for key in ('start', 'end', 'probability'))
+                or not all(0 <= w['probability'] <= 1
+                           and candidate['start'] <= w['start'] < w['end'] <= candidate['end']
+                           and w['end'] - w['start'] <= 1.5 for w in words)
+                or any(left['source_word_index'] != right['source_word_index']
+                       and left['end'] > right['start'] + .02
+                       for left, right in zip(words, words[1:]))
+                or not 0 < candidate['end'] - candidate['start'] <= 7
+                or not .05 <= following['start'] - candidate['end'] <= 1.2):
+            continue
+        tokens = _normalized(candidate['text'])
+        if any(_normalized(row.get('text', '')) == tokens for row in rows):
+            continue
+        target = _normalized(following['text'])
+        matching = [row for row in rows if _normalized(row.get('text', '')) == target
+                    and candidate['start'] < row['start'] < candidate['end']
+                    and .5 <= following['start'] - row['start'] <= 4
+                    and abs(following['end'] - row['end']) <= .5]
+        if len(matching) != 1:
+            continue
+        old = matching[0]
+        if (any(row is not old and candidate['start'] < row['end'] - .001
+                       and candidate['end'] > row['start'] + .001 for row in rows)):
+            continue
+        # Use the same bounded context length as other short ASR confirmations;
+        # a clip starting inside earlier dialogue can break both word alignment
+        # and punctuation. Longer pairs outside this budget are not planned.
+        start = max(0., float(math.floor(candidate['start']) - 18))
+        end = min(float(duration), float(math.ceil(following['end']) + 1))
+        if not 4 <= end - start <= 26:
+            continue
+        if any(min(end, window['end']) > max(start, window['start']) for window in planned):
+            continue
+        planned.append({'start': start, 'end': end})
+        if len(planned) >= maximum_total:
+            break
+    return planned
+
+
+def restore_corroborated_intervening_cues(base, rescue, confirmations, v2_rows,
+                                         *, allow_confirmed_end=False):
+    """Recover a missing sentence hidden by an early onset of the next cue.
+
+    V2 must time two complete sentences. Two independent v3 views must hear
+    every word of both sentences, including the preserved following cue.
+    Its text and all neighbours stay intact. The legacy path preserves its
+    end; fresh confirmations may also correct that end within the existing
+    half-second agreement limit, provided no neighbour is overlapped.
+    """
+    result = [dict(row) for row in sorted(base, key=lambda item: item['start'])]
+    readings = sorted(v2_rows, key=lambda item: item['start'])
+    for candidate, following in zip(readings, readings[1:]):
+        words, anchor = _valid_cue_words(candidate), _valid_cue_words(following)
+        if (not 3 <= len(words) <= 12 or not 3 <= len(anchor) <= 12
+                or not str(candidate.get('text', '')).rstrip().endswith(('.', '?', '!'))
+                or candidate['end'] - candidate['start'] > 7
+                or not .05 <= following['start'] - candidate['end'] <= 1.2):
+            continue
+        tokens = [word['token'] for word in words]
+        target = [word['token'] for word in anchor]
+        matching = [row for row in result if _normalized(row.get('text', '')).split() == target
+                    and candidate['start'] < row['start'] < candidate['end']
+                    and .5 <= following['start'] - row['start'] <= 4
+                    and abs(following['end'] - row['end']) <= .5]
+        if len(matching) != 1:
+            continue
+        old = matching[0]
+        new_end = following['end'] if allow_confirmed_end else old['end']
+        if (following['start'] >= new_end - .08 or anchor[-1]['end'] > new_end + .02
+                or not 0 < new_end - following['start'] <= 7):
+            continue
+        if any(row is not old and candidate['start'] < row['end'] - .001
+               and candidate['end'] > row['start'] + .001 for row in result):
+            continue
+        if not all(_matching_timed_phrase(profile, tokens, words[0]['start'], words[-1]['end'],
+                                         onset_tolerance=2.0)
+                   and _matching_timed_phrase(profile, target, anchor[0]['start'], anchor[-1]['end'])
+                   for profile in (rescue, confirmations)):
+            continue
+        if any(row is not old and following['start'] < row['end'] - .001
+               and new_end > row['start'] + .001 for row in result):
+            continue
+        old['start'] = following['start']
+        old['end'] = new_end
+        old.pop('words', None)  # Old word timings no longer describe the retimed cue.
+        result.append(dict(candidate))
+        result.sort(key=lambda item: item['start'])
+    return result
+
+
+def _restore_joined_address_titles(base, rescue, confirmations, v2_rows):
+    result = [dict(row) for row in base]
+    titles = {'mr', 'mrs', 'ms', 'dr', 'prof', 'mister', 'miss', 'sir', 'madam'}
+    for reading in v2_rows:
+        words = _valid_cue_words(reading)
+        if (len(words) < 3 or words[0]['token'] not in titles
+                or not .08 <= words[0]['end'] - words[0]['start'] <= 1.0
+                or not 0 <= words[1]['start'] - words[0]['end'] <= .35):
+            continue
+        body = [word['token'] for word in words[1:]]
+        matches = [row for row in result if _normalized(row.get('text', '')).split() == body
+                   and str(row.get('text', '')).lstrip()[:1].isupper()
+                   and abs(row['start'] - words[1]['start']) <= .5
+                   and abs(row['end'] - words[-1]['end']) <= .5]
+        if len(matches) != 1:
+            continue
+        old = matches[0]
+        start = words[0]['start']
+        if (start >= old['start'] or old['end'] - start > 7
+                or words[-1]['end'] > old['end'] + .02
+                or any(row is not old and start < row['end'] - .001
+                       and old['end'] > row['start'] + .001 for row in result)):
+            continue
+        tokens = [word['token'] for word in words]
+        if not all(_matching_timed_phrase(profile, tokens, start, words[-1]['end'])
+                   for profile in (rescue, confirmations)):
+            continue
+        title = reading['words'][0]['text'].strip()
+        old.update(start=start, text=title + ' ' + old['text'].strip(),
+                   words=[dict(word) for word in reading['words']])
+    return result
+
+
+def restore_corroborated_address_titles(base, rescue, v2_rows, confirmations=()):
     """Restore a heard title before a matching name cue, never invent a missing title.
 
     A VAD-free rescue cue must already be confirmed by another v3 offset.
@@ -1320,11 +1643,13 @@ def restore_corroborated_address_titles(base, rescue, v2_rows):
     readings = sorted(v2_rows, key=lambda item: item['start'])
     for prefix, following in zip(readings, readings[1:]):
         title = _normalized(prefix.get('text', ''))
-        words = _timed_rescue_words(prefix)
+        words = _valid_cue_words(prefix)
+        following_words = _valid_cue_words(following)
         name = str(following.get('text', '')).lstrip()
         if (title not in titles or len(words) != 1 or words[0]['probability'] < .55
+                or not following_words
                 or not .08 <= prefix['end'] - prefix['start'] <= 1.0
-                or not 0 <= following['start'] - prefix['end'] <= .35
+                or not 0 <= following_words[0]['start'] - words[0]['end'] <= .35
                 or not name[:1].isupper() or len(_normalized(name).split()) < 2):
             continue
         if not any(candidate.get('corroborated')
@@ -1334,19 +1659,26 @@ def restore_corroborated_address_titles(base, rescue, v2_rows):
                    and abs(candidate['end'] - prefix['end']) <= 2.0
                    for candidate in rescue):
             continue
+        if confirmations and not all(_matching_timed_phrase(
+                profile, [w['token'] for w in following_words],
+                following_words[0]['start'], following_words[-1]['end'])
+                for profile in (rescue, confirmations)):
+            continue
         old = next((row for row in result
                     if _normalized(row.get('text', '')) == _normalized(name)
                     and abs(row['start'] - following['start']) <= .5
                     and abs(row['end'] - following['end']) <= .5), None)
         if old is None or prefix['start'] >= old['start']:
             continue
-        following_words = _timed_rescue_words(following)
         timed = words + following_words
         if (not following_words
                 or not prefix['start'] <= words[0]['start'] < words[0]['end'] <= prefix['end']
                 or any(not prefix['start'] <= word['start'] < word['end'] <= old['end'] + .02
                        for word in timed)
-                or any(left['end'] > right['start'] + .02 for left, right in zip(timed, timed[1:]))
+                or any(left['end'] > right['start'] + .02
+                       and not (left['source_word_index'] == right['source_word_index']
+                                and left['start'] == right['start'] and left['end'] == right['end'])
+                       for left, right in zip(timed, timed[1:]))
                 or words[0]['end'] > following_words[0]['start'] + .02
                 or following_words[-1]['end'] > old['end'] + .02
                 or old['end'] - prefix['start'] > 7.0
@@ -1355,7 +1687,7 @@ def restore_corroborated_address_titles(base, rescue, v2_rows):
             continue
         old.update(start=prefix['start'], text=prefix['text'].strip() + ' ' + old['text'].strip(),
                    words=[dict(word) for word in prefix['words'] + following['words']])
-    return result
+    return _restore_joined_address_titles(result, rescue, confirmations, v2_rows)
 
 
 def reconcile_v2_shifted_words(base, precision, rescue, v2_rows, speech_intervals):
@@ -1630,7 +1962,7 @@ def correct_rescue_onset_drift(base, rescue, *, minimum_similarity=.85,
 def _timed_rescue_words(candidate):
     """Return word timings only when they still represent the cue's full text."""
     result = []
-    for word in candidate.get('words', []):
+    for word_index, word in enumerate(candidate.get('words', [])):
         try:
             start, end = float(word['start']), float(word['end'])
             probability = float(word['probability'])
@@ -1640,7 +1972,7 @@ def _timed_rescue_words(candidate):
         if not tokens or end <= start:
             return []
         result.extend({'token': token, 'start': start, 'end': end,
-                       'probability': probability} for token in tokens)
+                       'probability': probability, 'source_word_index': word_index} for token in tokens)
     if ' '.join(word['token'] for word in result) != _normalized(candidate.get('text', '')):
         return []
     return result

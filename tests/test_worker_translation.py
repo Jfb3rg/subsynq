@@ -205,6 +205,9 @@ class WorkerTranslationTests(unittest.TestCase):
             nonlocal audits
             self.assertIn('Preserve intentional repetition and emphasis', request['system'])
             self.assertIn('Preserve agency and causation', request['system'])
+            if 'after' in request['format']['properties'].get('rows', {}).get('items', {}).get('properties', {}):
+                return {'response': json.dumps({'rows': [{'id': row['id'], 'after': row['sv']}
+                                                        for row in repaired]})}
             if 'flags' in request['format']['properties']:
                 audits += 1
                 sample = json.loads(request['prompt'])['rows']

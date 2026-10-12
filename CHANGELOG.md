@@ -10,6 +10,15 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.219
+
+Bättre hantering av tilltal, förlorade repliker och översättningsfel. Allt är allmänna regler som gäller alla filer; inget är knutet till en viss film, serie eller trailer.
+
+- **Förlorade repliker och tilltal återställs bara med belägg.** Saknas ett tilltalsord, en mellanreplik eller en hel fras i ljudet kan SubSynq göra högst fyra korta, språkstyrda omlyssningar per fil. Kravet är två nya, förskjutna Whisper-läsningar och tidsatta ord från andra avlyssningen; befintliga rader, sluttider och grannar bevaras, och osäkra ord, konflikter och överlapp avvisas.
+- **Sammanfogade, opunkterade dialogområden** får en begränsad omlyssning där Qwen först avgör språket. Ordtiderna jämförs mot faktiska ord, så att till exempel en engelsk sammandragning inte räknas som två överlappande ord.
+- **Frasrättningen väljer sina citat ur den faktiska svenska texten.** Engelska källcitat kan inte väljas som ankare för en ändring. Hela flaggade repliker kan formuleras om från en separat betydelseförklaring; källtext, tider och andra rader skyddas, och en separat slutgranskning krävs fortfarande.
+- **Jobb sparar sina avlyssningsprofiler** och råa ordtider före sammanslagningen (`/config/source-transcripts`) för felsökning.
+
 ## 0.8.218
 
 - **Skapa om undertexten.** Rader som redan har en AI-undertext får knappen "Skapa om undertexten" (med bekräftelse), och det finns en flervalsknapp "Skapa om undertext för markerade (N)". Åtgärden använder den befintliga säkra omkörningen (den gamla AI-undertexten tas bort av workern, sedan körs filen om) och staplas aldrig på en fil som redan har ett jobb. Videofiler rörs inte.

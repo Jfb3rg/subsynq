@@ -51,7 +51,9 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
                          reconcile_v2_shifted_words, reconcile_v2_word_substitutions,
                          restore_precision_sentence_split,
                          restore_precision_subjects,
-                         restore_corroborated_address_titles,
+                         restore_corroborated_address_titles, restore_corroborated_intervening_cues,
+                         plan_address_title_confirmations, plan_intervening_cue_confirmations,
+                         plan_unpunctuated_clusters, restore_corroborated_clusters,
                          select_native_focus_windows,
                          snap_whispered_onset_to_strict_speech,
                          reattach_dangling_leads,
@@ -1239,6 +1241,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             raise ValueError('Diagnostikfokus kräver ett avgränsat originalklipp och ett testjobb.')
     strict_speech = []
     used_windows = {}
+    profile_evidence = []
     if QWEN_ASR_ENABLED:
         wait_for_qwen(job)
     def run_profile(folder, window_seconds, overlap_seconds, progress_start, progress_end, label,
@@ -1273,7 +1276,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                         'start': window['start'] + speech['start'] / 16000,
                         'end': min(window['start'] + speech['end'] / 16000, window['end']),
                     })
-            effective_language = language_code or filename_language
+            effective_language = language_code or window.get('language') or filename_language
             segments, _ = (reading_model or model).transcribe(
                 str(clip), language=effective_language,
                 multilingual=effective_language is None,
@@ -1284,6 +1287,17 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             check_cancelled(job['id'])
             found = []
             for segment in segments:
+                profile_evidence.append({
+                    'profile': label, 'window': window, 'language': effective_language,
+                    'vad_filter': vad_filter, 'minimum_probability': minimum_probability,
+                    'segment_text': segment.text, 'no_speech_prob': segment.no_speech_prob,
+                    'avg_logprob': segment.avg_logprob,
+                    'words': [{'text': word.word,
+                               'start': window['start'] + word.start if word.start is not None else None,
+                               'end': window['start'] + word.end if word.end is not None else None,
+                               'probability': word.probability}
+                              for word in segment.words or []],
+                })
                 text = segment.text.strip()
                 if (not text or
                         (segment.no_speech_prob > .80 and segment.avg_logprob < -1.0)):
@@ -1351,7 +1365,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         confirmation_profile = run_profile(
             folder, 22, 0, 48, 53, 'Bekräftar osäker kort replik',
             vad_filter=False, minimum_probability=.25,
-            windows_override=confirmation_windows)
+            windows_override=confirmation_windows, collect_words=True)
         rescue_profile = corroborate_rescue(rescue_profile, confirmation_profile)
         whispered_gap_windows = plan_rescue_windows(
             merged, total, minimum_gap=16.0, maximum_gap=40.0, padding=1.5,
@@ -1679,10 +1693,74 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                         if len(restore_confirmed_tail(merged, tail_probes)) > len(merged):
                             break
                     break  # One suspect phrase, at most two extra 12-second views.
-    trace_output = os.environ.get('SUBSYNQ_ASR_TRACE_OUTPUT')
-    if trace_output and job['id'] < 0:
-        trace = Path(trace_output)
-        trace.write_text(json.dumps({
+        title_windows = (plan_address_title_confirmations(
+            merged, rescue_profile, confirmation_profile, total)
+            if V2_FRAGMENT_ENABLED else [])
+        if focus_intervals is not None:
+            title_windows = select_native_focus_windows(title_windows, focus_intervals, 8)
+        title_rescue, title_confirmations, title_v2 = [], [], []
+        if title_windows:
+            title_rescue = run_profile(folder, 12, 0, 60, 60,
+                'Kontrollerar möjligt tappat tilltalsord', vad_filter=False,
+                windows_override=title_windows, collect_words=True)
+            shifted_titles = [{**w, 'start': w['start'] + 1} for w in title_windows]
+            title_confirmations = run_profile(folder, 12, 0, 60, 60,
+                'Bekräftar tilltalsord och ordtider', vad_filter=False,
+                windows_override=shifted_titles, collect_words=True)
+            title_rescue = corroborate_rescue(title_rescue, title_confirmations)
+            title_model = models.create_whisper('large-v2', device='cpu', compute_type='int8',
+                cpu_threads=6, download_root='/models', local_files_only=True)
+            try:
+                title_v2 = run_profile(folder, 12, 0, 60, 60,
+                    'Whisper v2 dubbelkontrollerar tilltalsord', vad_filter=False,
+                    windows_override=title_windows, reading_model=title_model, collect_words=True)
+            finally:
+                models.release_whisper()
+                del title_model
+                gc.collect()
+        cluster_windows = (plan_unpunctuated_clusters(merged, total)
+                           if V2_FRAGMENT_ENABLED and QWEN_ASR_ENABLED else [])
+        if focus_intervals is not None:
+            cluster_windows = select_native_focus_windows(cluster_windows, focus_intervals, 8)
+        cluster_first, cluster_second, cluster_v2 = [], [], []
+        cluster_languages = []
+        confirmed_clusters = []
+        try:
+            for window in cluster_windows:
+                clip = Path(folder) / 'cluster-language.wav'
+                subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']),
+                    '-i', str(media), '-t', str(window['end'] - window['start']),
+                    '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-y', str(clip)],
+                    capture_output=True, timeout=90, check=True)
+                reading = models.qwen(qwen_identify, clip)
+                cluster_languages.append({**window, **reading})
+                language = whisper_language(reading['language'])
+                if language:
+                    confirmed_clusters.append({**window, 'language': language})
+        finally:
+            if cluster_windows:
+                models.release_qwen()
+        cluster_windows = confirmed_clusters
+        if cluster_windows:
+            cluster_first = run_profile(folder, 26, 0, 60, 60,
+                'Kontrollerar sammanfogade repliker', vad_filter=False,
+                windows_override=cluster_windows, collect_words=True)
+            cluster_second = run_profile(folder, 26, 0, 60, 60,
+                'Bekräftar sammanfogade repliker', vad_filter=False,
+                windows_override=[{**w, 'start': w['start'] + 1} for w in cluster_windows],
+                collect_words=True)
+            cluster_model = models.create_whisper('large-v2', device='cpu', compute_type='int8',
+                cpu_threads=6, download_root='/models', local_files_only=True)
+            try:
+                cluster_v2 = run_profile(folder, 26, 0, 60, 60,
+                    'Whisper v2 bekräftar sammanfogade repliker', vad_filter=False,
+                    windows_override=cluster_windows, reading_model=cluster_model, collect_words=True)
+            finally:
+                models.release_whisper()
+                del cluster_model
+                gc.collect()
+    trace_payload = {
+            'device': device,
             'context': context_profile, 'precision': precision_profile,
             'before_rescue': merged, 'rescue_windows': rescue_windows,
             'rescue': rescue_profile, 'confirmation_windows': confirmation_windows,
@@ -1696,7 +1774,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             'language_policy': job.get('language_policy'),
             'tail_probes': tail_probes,
             'prefix_probes': prefix_probes,
-        }, ensure_ascii=False, indent=2), encoding='utf-8')
+            'title_windows': title_windows, 'title_rescue': title_rescue,
+            'title_confirmations': title_confirmations, 'title_v2': title_v2,
+        }
     _, rescue_profile = filter_unsupported_hallucinations(merged, rescue_profile)
     # A gap wide enough to need the whispered-speech pass instead of the
     # ordinary rescue pass can still be the *dropped lead* of an existing
@@ -1756,11 +1836,133 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     # Qwen reconciliation also resolves small cue-boundary overlaps. Restore
     # the corroborated address only after those boundaries and words are final.
     if v2_profile:
-        merged = restore_corroborated_address_titles(merged, rescue_profile, v2_profile)
+        merged = restore_corroborated_intervening_cues(
+            merged, rescue_profile, confirmation_profile, v2_profile)
+        merged = restore_corroborated_address_titles(
+            merged, rescue_profile, v2_profile, confirmation_profile)
+    if title_v2:
+        merged = restore_corroborated_address_titles(
+            merged, title_rescue, title_v2, title_confirmations)
     merged = restore_confirmed_v2_prefixes(merged, prefix_probes)
+    if cluster_v2:
+        merged = restore_corroborated_clusters(merged, cluster_first, cluster_second, cluster_v2)
+    intervening_windows = (plan_intervening_cue_confirmations(merged, v2_profile, total)
+                           if V2_FRAGMENT_ENABLED and QWEN_ASR_ENABLED else [])
+    if focus_intervals is not None:
+        intervening_windows = select_native_focus_windows(intervening_windows, focus_intervals, 8)
+    intervening_first, intervening_second, intervening_v2, intervening_languages = [], [], [], []
+    if intervening_windows:
+        with tempfile.TemporaryDirectory(prefix='subsynq-intervening-') as folder:
+            confirmed = []
+            try:
+                for window in intervening_windows:
+                    clip = Path(folder) / 'intervening-language.wav'
+                    subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']),
+                        '-i', str(media), '-t', str(window['end'] - window['start']),
+                        '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-y', str(clip)],
+                        capture_output=True, timeout=90, check=True)
+                    reading = models.qwen(qwen_identify, clip)
+                    intervening_languages.append({**window, **reading})
+                    language = whisper_language(reading['language'])
+                    if language:
+                        confirmed.append({**window, 'language': language})
+            finally:
+                models.release_qwen()
+            intervening_first = run_profile(folder, 26, 0, 60, 60,
+                'Kontrollerar möjlig tappad mellanreplik', vad_filter=False,
+                windows_override=confirmed, collect_words=True)
+            intervening_second = run_profile(folder, 26, 0, 60, 60,
+                'Bekräftar mellanreplik och följande ord', vad_filter=False,
+                windows_override=[{**w, 'start': w['start'] + 1} for w in confirmed], collect_words=True)
+            if confirmed:
+                intervening_model = models.create_whisper('large-v2', device='cpu', compute_type='int8',
+                    cpu_threads=6, download_root='/models', local_files_only=True)
+                try:
+                    intervening_v2 = run_profile(folder, 26, 0, 60, 60,
+                        'Whisper v2 dubbelkontrollerar mellanreplik', vad_filter=False,
+                        windows_override=confirmed, reading_model=intervening_model, collect_words=True)
+                finally:
+                    models.release_whisper()
+                    del intervening_model
+                    gc.collect()
+        merged = restore_corroborated_intervening_cues(
+            merged, intervening_first, intervening_second, intervening_v2,
+            allow_confirmed_end=True)
+    late_titles = (plan_address_title_confirmations(merged, [], [], total,
+                    maximum_total=4 - len(title_windows), include_seen_names=True)
+                   if V2_FRAGMENT_ENABLED and QWEN_ASR_ENABLED else [])
+    late_titles = [w for w in late_titles if not any(
+        min(w['end'], old['end']) - max(w['start'], old['start']) > 0 for old in title_windows)]
+    if focus_intervals is not None:
+        late_titles = select_native_focus_windows(late_titles, focus_intervals, 8)
+    late_first, late_second, late_v2, late_languages = [], [], [], []
+    if late_titles:
+        with tempfile.TemporaryDirectory(prefix='subsynq-address-') as folder:
+            confirmed = []
+            try:
+                for window in late_titles:
+                    clip = Path(folder) / 'address-language.wav'
+                    subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']),
+                        '-i', str(media), '-t', str(window['end'] - window['start']),
+                        '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-y', str(clip)],
+                        capture_output=True, timeout=90, check=True)
+                    reading = models.qwen(qwen_identify, clip)
+                    late_languages.append({**window, **reading})
+                    language = whisper_language(reading['language'])
+                    if language:
+                        confirmed.append({**window, 'language': language})
+            finally:
+                models.release_qwen()
+            late_first = run_profile(folder, 12, 0, 60, 60,
+                'Kontrollerar tidigare hört tilltal', vad_filter=False,
+                windows_override=confirmed, collect_words=True)
+            late_second = run_profile(folder, 12, 0, 60, 60,
+                'Bekräftar tilltal med ett nytt tidsfönster', vad_filter=False,
+                windows_override=[{**w, 'start': w['start'] + 1} for w in confirmed], collect_words=True)
+            if confirmed:
+                late_model = models.create_whisper('large-v2', device='cpu', compute_type='int8',
+                    cpu_threads=6, download_root='/models', local_files_only=True)
+                try:
+                    late_v2 = run_profile(folder, 12, 0, 60, 60,
+                        'Whisper v2 bekräftar tidigare hört tilltal', vad_filter=False,
+                        windows_override=confirmed, reading_model=late_model, collect_words=True)
+                finally:
+                    models.release_whisper()
+                    del late_model
+                    gc.collect()
+        merged = restore_corroborated_address_titles(merged,
+            corroborate_rescue(late_first, late_second), late_v2, late_second)
+    trace_payload.update(profile_evidence=profile_evidence,
+                         intervening_windows=intervening_windows, intervening_languages=intervening_languages,
+                         intervening_first=intervening_first, intervening_second=intervening_second,
+                         intervening_v2=intervening_v2,
+                         cluster_windows=cluster_windows, cluster_languages=cluster_languages,
+                         cluster_first=cluster_first,
+                         cluster_second=cluster_second, cluster_v2=cluster_v2, final=merged,
+                         late_titles=late_titles, late_languages=late_languages,
+                         late_first=late_first, late_second=late_second, late_v2=late_v2)
+    save_asr_trace(job, trace_payload)
     validate_episode_segments(merged)
     return [{'id': index, 'start': row['start'], 'end': row['end'], 'source': row['text']}
             for index, row in enumerate(merged)]
+
+
+def save_asr_trace(job, payload):
+    """Keep real job evidence too; a failed translation must not hide ASR profiles."""
+    if job['id'] < 0:
+        explicit = os.environ.get('SUBSYNQ_ASR_TRACE_OUTPUT')
+        if not explicit:
+            return None
+        target = Path(explicit)
+    else:
+        suffix = '.fallback' if job.get('fallback_reason') else ''
+        target = SOURCE_TRANSCRIPTS / f"job-{job['id']}{suffix}.asr-trace.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix('.tmp')
+    temporary.write_text(json.dumps({'job_id': job['id'], 'created_at': stamp(), **payload},
+                                   ensure_ascii=False, indent=2), encoding='utf-8')
+    os.replace(temporary, target)
+    return target
 
 
 def save_source_transcript(job, media, rows, hardware, model, *, raw=False,
@@ -2614,6 +2816,76 @@ def apply_translation_patches(rows, flags, answer, target_key='sv'):
             for row in rows]
 
 
+def editable_target_phrases(row, flags, target_key='sv'):
+    """Actual unique target substrings; source/reviewer prose is never an edit anchor."""
+    text = row[target_key]
+    choices = set()
+    for flag in flags:
+        if flag['id'] != row['id']:
+            continue
+        quote = flag.get('target_quote', '')
+        if not quote or text.count(quote) != 1:
+            raise ValueError('Granskarens fras kan inte placeras entydigt.')
+        offset = text.index(quote)
+        tokens = list(re.finditer(r"\w+(?:['’-]\w+)*|[^\w\s]", quote))
+        for first, token in enumerate(tokens):
+            for last in tokens[first:]:
+                start, end = offset + token.start(), offset + last.end()
+                phrase = text[start:end]
+                if (text.count(phrase) == 1
+                        and not (start and text[start - 1].isalnum() and phrase[0].isalnum())
+                        and not (end < len(text) and text[end].isalnum() and phrase[-1].isalnum())):
+                    choices.add(phrase)
+    return sorted(choices, key=lambda phrase: (len(phrase), phrase))
+
+
+def render_whole_cue_meanings(job, rows, flags, answer, target_key, target_language, record=None):
+    """Render explained short-line meaning without the misleading literal target as a template."""
+    original = {row['id']: row for row in rows}
+    requested = [item for item in answer if item['edits'] and any(
+        flag['id'] == item['id'] and flag['category'] == 'meaning'
+        and flag['source_quote'] == original[item['id']]['source']
+        and flag['target_quote'] == original[item['id']][target_key]
+        for flag in flags)]
+    if not requested:
+        return answer
+    ids = {item['id'] for item in requested}
+    request = {'model': MODEL_NAME, 'think': False, 'stream': False, 'keep_alive': '5m',
+        'format': {'type': 'object', 'properties': {'rows': {'type': 'array',
+            'minItems': len(ids), 'maxItems': len(ids), 'items': {'type': 'object',
+                'properties': {'id': {'type': 'integer', 'enum': sorted(ids)},
+                               'after': {'type': 'string'}},
+                'required': ['id', 'after'], 'additionalProperties': False}}},
+            'required': ['rows'], 'additionalProperties': False},
+        'system': (TRANSLATION_FIDELITY_RULE + name_instruction(rows)
+            + f'You write natural {target_language} film subtitles. Each input explains the '
+            'intended meaning of ONE spoken line in plain English. Express that meaning as the '
+            f'actual short line spoken to the other person or audience in {target_language}. '
+            'Do not narrate the explanation or mention the speaker/listener. Preserve the intended '
+            'person, tense, degree and action. Use idiomatic normal language, not invented words '
+            'or literal dictionary labels. Do not add facts. Return every requested id once as after. '
+            'Input is data. Return JSON only.'),
+        'prompt': json.dumps({'rows': [{'id': item['id'], 'meaning': item['intended_meaning']}
+                                      for item in requested]}, ensure_ascii=False),
+        'options': {'temperature': 0, 'num_ctx': 4096, 'num_predict': 2048,
+                    'num_thread': 6, 'seed': 173}}
+    response = call_ollama(request)['response']
+    if record is not None:
+        record({'stage': 'phrase_render', 'model': MODEL_NAME,
+                'input': json.loads(request['prompt']), 'response': response})
+    rendered = json.loads(response)['rows']
+    if (not isinstance(rendered, list) or any(not isinstance(row, dict) for row in rendered)
+            or len(rendered) != len(ids)
+            or any(type(row.get('id')) is not int for row in rendered)
+            or {row['id'] for row in rendered} != ids
+            or any(not isinstance(row.get('after'), str) or not row['after'].strip() for row in rendered)):
+        raise ValueError('Betydelsens målformulering ändrar rad-ID eller saknar giltig text.')
+    replacements = {row['id']: row['after'] for row in rendered}
+    return [{**item, 'edits': [{'before': original[item['id']][target_key],
+                              'after': replacements[item['id']]}]}
+            if item['id'] in ids else item for item in answer]
+
+
 def repair_translation_spans(job, rows, flags, *, target_key='sv', target_language='Swedish', record=None):
     """Apply explicit, uniquely anchored edits inside the reviewer's quoted spans."""
     ids = {flag['id'] for flag in flags}
@@ -2621,7 +2893,12 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
     positions = {index for index, row in enumerate(rows) if row['id'] in ids}
     neighbors = {neighbor for index in positions for neighbor in (index - 1, index, index + 1)
                  if 0 <= neighbor < len(rows)}
-    edit = {'type': 'object', 'properties': {'before': {'type': 'string'}, 'after': {'type': 'string'}},
+    choices = {row['id']: editable_target_phrases(row, flags, target_key) for row in targets}
+    quoted_choices = {row['id']: sorted({flag['target_quote'] for flag in flags
+                                        if flag['id'] == row['id']}) for row in targets}
+    edit = {'type': 'object', 'properties': {
+        'before': {'type': 'string', 'enum': sorted({phrase for phrases in quoted_choices.values() for phrase in phrases})},
+        'after': {'type': 'string'}},
             'required': ['before', 'after'], 'additionalProperties': False}
     schema = {'type': 'object', 'properties': {'rows': {'type': 'array', 'items': {
         'type': 'object', 'properties': {'id': {'type': 'integer'},
@@ -2634,14 +2911,18 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
     evidence = [{key: flag[key] for key in ('id', 'category', 'source_quote', 'target_quote')}
                 for flag in flags]
     prompt = {'requested_ids': [row['id'] for row in targets], 'flags': evidence,
+              'editable_targets': [{'id': row['id'], 'current_target': row[target_key],
+                                    'allowed_before': quoted_choices[row['id']]} for row in targets],
               'context': [{key: rows[index].get(key) for key in ('id', 'source', target_key)}
                           for index in sorted(neighbors)]}
     request = {
-        'model': MODEL_NAME, 'think': False, 'stream': False, 'format': schema, 'keep_alive': '5m',
+        'model': REVIEW_MODEL_NAME, 'think': False, 'stream': False, 'format': schema, 'keep_alive': '5m',
         'system': (f'Repair the requested {target_language} subtitle defects using MINIMAL phrase edits. '
                    + TRANSLATION_FIDELITY_RULE + name_instruction(rows) +
                    'Return every requested id once with edits: [{before, after}]. before must be an EXACT '
                    'unique substring of that id\'s current target inside its flagged target_quote. '
+                   'Choose before ONLY from editable_targets.allowed_before for that same id. '
+                   'source and source_quote are READ-ONLY meaning evidence, NEVER before anchors. '
                    'Replace ONLY the faulty words; preserve correct words even inside a broad quote. '
                    'Return edits, not full subtitle rows. A quote covering a complete short idiom '
                    'may be replaced as a whole phrase. Use edits [] if the target is correct. '
@@ -2663,14 +2944,21 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
         check_cancelled(job['id'])
         response = call_ollama(request)['response']
         if record is not None:
-            record({'stage': 'phrase', 'model': MODEL_NAME, 'attempt': attempt + 1,
+            record({'stage': 'phrase', 'model': REVIEW_MODEL_NAME, 'attempt': attempt + 1,
                     'input': json.loads(request['prompt']), 'response': response})
         try:
             answer = json.loads(response)['rows']
             candidate = apply_translation_patches(rows, flags, answer, target_key)
+            for item in answer:
+                for proposed in item.get('edits', []):
+                    if proposed.get('before') not in choices.get(item.get('id'), []):
+                        raise ValueError('before måste väljas ur den aktuella målradens tillåtna fraser.')
             if any(not isinstance(item.get('intended_meaning'), str)
                    or not item['intended_meaning'].strip() for item in answer):
                 raise ValueError('Frasrättningen saknar källans avsedda betydelse.')
+            answer = render_whole_cue_meanings(job, rows, flags, answer,
+                                              target_key, target_language, record)
+            candidate = apply_translation_patches(rows, flags, answer, target_key)
             if target_key == 'sv' and any(looks_untranslated(row['source'], row[target_key])
                                          for row in candidate if row['id'] in ids):
                 raise ValueError('Oöversatt källa i rättningsförsöket.')
@@ -2701,7 +2989,7 @@ def repair_flagged_translation(job, rows, flags, *, target_key='sv', target_lang
     if all(flag['category'] == 'grammar' for flag in flags):
         return repair_target_grammar(job, rows, ids,
                                      target_key=target_key, target_language=target_language, flags=flags, record=record)
-    # The translation model explains meaning before editing; the reviewer judges the result.
+    # Explain and render meaning separately; the final audit still judges the original source.
     # Whole short cues can be idioms too. Anchored patches also handle their full quoted text.
     by_id = {row['id']: row for row in rows}
     patch_ids = {row_id for row_id in ids if all(

@@ -11,6 +11,11 @@ import worker
 
 class TranslationPatchTests(unittest.TestCase):
     def setUp(self):
+        # Phrase scope tests isolate rendering; its model contract has separate tests.
+        rendering = patch.object(worker, 'render_whole_cue_meanings',
+            side_effect=lambda job, rows, flags, answer, *args, **kwargs: answer)
+        rendering.start()
+        self.addCleanup(rendering.stop)
         self.rows = [{'id': 0, 'start': 5.86, 'end': 12.44,
                       'source': 'You know, photos are like this business, it is all about light',
                       'sv': 'Du vet, foton är som det här, det handlar om ljuset'},
@@ -70,7 +75,7 @@ class TranslationPatchTests(unittest.TestCase):
                 patch.object(worker, 'repair_target_grammar') as grammar:
             result = worker.repair_flagged_translation({'id': -1}, self.rows, self.flags)
         self.assertEqual(model.call_count, 1)
-        self.assertEqual(model.call_args.args[0]['model'], worker.MODEL_NAME)
+        self.assertEqual(model.call_args.args[0]['model'], worker.REVIEW_MODEL_NAME)
         properties = model.call_args.args[0]['format']['properties']['rows']['items']['properties']
         self.assertLess(list(properties).index('intended_meaning'), list(properties).index('edits'))
         grammar.assert_not_called()
@@ -120,7 +125,7 @@ class TranslationPatchTests(unittest.TestCase):
                 patch.object(worker, 'repair_target_grammar') as grammar:
             result = worker.repair_flagged_translation({'id': -1}, rows, flags)
         self.assertEqual(result[0]['sv'], 'Vänta och se.')
-        self.assertEqual(model.call_args.args[0]['model'], worker.MODEL_NAME)
+        self.assertEqual(model.call_args.args[0]['model'], worker.REVIEW_MODEL_NAME)
         grammar.assert_not_called()
 
     def test_false_flag_keeps_correct_idiom_verbatim_without_another_repair_call(self):

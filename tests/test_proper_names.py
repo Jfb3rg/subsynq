@@ -85,7 +85,8 @@ class NameNotFlaggedTests(unittest.TestCase):
                 'reason': 'Idiomet är fel översatt.'}
         response = {'response': json.dumps({'rows': [{'id': 2, 'intended_meaning': 'Continue following.',
                     'edits': [{'before': 'Stanna kvar.', 'after': 'Vänta och se.'}]}]})}
-        with patch.object(worker, 'call_ollama', return_value=response) as model, \
+        rendered = {'response': json.dumps({'rows': [{'id': 2, 'after': 'Vänta och se.'}]})}
+        with patch.object(worker, 'call_ollama', side_effect=[response, rendered]) as model, \
                 patch.object(worker, 'check_cancelled'), \
                 patch.object(worker, 'repair_target_grammar', side_effect=lambda job, r, *a, **k: r):
             worker.repair_flagged_translation({'id': 9}, data, [flag])
