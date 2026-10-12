@@ -97,6 +97,21 @@ Klicka på ikonen för `subsynq` i Docker-fliken och välj **WebUI**, eller öpp
 undertextjobb väntar tills alla modeller finns. Du behöver inte göra något, men starta inte om containrarna under tiden.
 Klart när **Inställningar → Modeller** visar 6 av 6.
 
+## Lösenord och åtkomst utifrån (Cloudflare)
+
+Gränssnittet har från början **ingen inloggning**. Vill du skydda det, eller nå det utifrån, slår du på ett lösenord under
+**Inställningar → Lösenord**. Då visas en inloggningssida före allt annat. Lösenordet sparas bara som en saltad hash, och
+du kan byta det, ta bort det eller logga ut alla sessioner på samma sida. Efter fem felaktiga försök spärras den som
+försöker en stund.
+
+- **Radarr, Sonarr, Jellyfin och Emby påverkas inte.** Deras webhooks skyddas av sin egen token (Inställningar → Media).
+- **Hälsokontrollen** `/health` är öppen men visar bara att tjänsten lever.
+- **Cloudflare:** använd en **Cloudflare Tunnel** (ingen port behöver öppnas i routern) och slå gärna på **Cloudflare
+  Access** också, så att det finns två lås. Kör alltid över **https**. Lägg till variabeln `SUBSYNQ_TRUST_PROXY` = `1` i
+  `subsynq` om du vill att spärren efter felaktiga försök ska räkna per besökare i stället för per tunnel.
+- Glömt lösenordet? Stoppa `subsynq`, och ta bort raderna `auth_password_hash` och `auth_secret` ur tabellen `metadata`
+  i `subsynq.db` (i mappen du valde för `/config`). Då är inloggningen av igen.
+
 ## Uppdateringar
 
 **Redan installerad med 12 GB på översättningsmotorn?** Öppna `subsynq-translate-engine` i Docker-fliken, välj **Edit**

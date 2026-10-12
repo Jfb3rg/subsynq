@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.221
+
+- **Frivilligt lösenord och inloggningssida.** Under Inställningar → Lösenord kan du slå på ett lösenord (minst 8 tecken). Då visas en inloggningssida före allt annat; lösenordet sparas bara som en saltad PBKDF2-hash, sessionen är en signerad cookie (HttpOnly, SameSite, `Secure` över https) som gäller i 14 dagar, och efter fem felaktiga försök spärras klienten i fem minuter. Byte och borttagning kräver nuvarande lösenord, och att byta eller ta bort lösenordet avslutar alla sessioner. Av som standard, så befintliga installationer fungerar som förut.
+- **Det som inte kräver inloggning:** `/health` (visar bara att tjänsten lever), inloggningssidan, ikonerna och webhooks (de har sin egen token). Alla övriga sidor och `/api/*` svarar med inloggningssidan respektive 401.
+- **Cloudflare:** guiden (`unraid/README.md`) beskriver hur du når SubSynq via en Cloudflare Tunnel med Access som andra lås. Variabeln `SUBSYNQ_TRUST_PROXY=1` gör att spärren räknar per besökare bakom proxyn.
+
 ## 0.8.220
 
 - **"Skapa undertext för markerade" frågar på sidan i stället för med en webbläsardialog.** Webbläsare kan blockera dialogrutor (`confirm`) för en webbplats utan att visa något, och då såg knapparna döda ut: ingenting hände och ingen förfrågan nådde servern. Bekräftelsen ("Köa N undertextjobb?" med Ja/Avbryt) visas nu som en rad i flervalsstapeln. Gäller alla tre flervalsknapparna (skapa, ta bort, skapa om).

@@ -8,6 +8,7 @@ services:
     user: "${SUBSYNQ_UID:-1000}:${SUBSYNQ_GID:-1000}"
     environment:
       TZ: ${TZ:-Europe/Stockholm}
+      SUBSYNQ_TRUST_PROXY: ${SUBSYNQ_TRUST_PROXY:-0}
     ports:
       - "${SUBSYNQ_BIND_IP:-127.0.0.1}:${SUBSYNQ_PORT:-8765}:8080"
     volumes:

@@ -25,9 +25,10 @@ from jobs import (ACTIVE, enqueue_delete, enqueue_job, enqueue_restart, initiali
 from i18n import LANGUAGES, t
 import models_card
 import scan_state
+import auth
 import subtitle_cleanup
 
-VERSION = "0.8.220"
+VERSION = "0.8.221"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -40,6 +41,8 @@ def enabled_cloud_providers():
 SCAN_TOKEN = secrets.token_urlsafe(32)
 SCAN_LOCK = threading.Lock()
 SCAN_STATUS = scan_state.ScanStatus()
+LOGIN_LIMITER = auth.LoginLimiter()
+TRUST_PROXY = os.environ.get("SUBSYNQ_TRUST_PROXY", "0").strip().lower() in ("1", "true", "yes")
 CONFIG = Path(os.environ.get("SUBSYNQ_CONFIG", "/config"))
 DATABASE = CONFIG / "subsynq.db"
 PAGE = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
@@ -613,7 +616,7 @@ def accent_css_block(accent):
     return (f"<style>:root[data-theme] {{ --ac:{hexcode}; --acb: color-mix(in srgb, {hexcode} 16%, transparent); }}</style>")
 
 
-def render_sidebar(active, active_jobs, hardware, lang="sv"):
+def render_sidebar(active, active_jobs, hardware, lang="sv", auth_enabled=False):
     def nav_link(href, label, key, count=None):
         classes = "active" if key == active else ""
         count_html = f"<span class='count'>{count}</span>" if count is not None else ""
@@ -639,8 +642,10 @@ def render_sidebar(active, active_jobs, hardware, lang="sv"):
         + nav_link("/settings/media", t("nav_settings_media", lang), "settings:media")
         + nav_link("/settings/cloud", t("nav_settings_cloud", lang), "settings:cloud")
         + nav_link("/settings/models", t("nav_settings_models", lang), "settings:models")
+        + nav_link("/settings/security", t("nav_settings_security", lang), "settings:security")
         + nav_link("/settings/log", t("nav_settings_log", lang), "settings:log")
         + "</details>"
+        + (nav_link("/logout", t("nav_logout", lang), "logout") if auth_enabled else "")
         + "</div>"
     )
     return (
@@ -1222,13 +1227,34 @@ def render_log_content(events, page, total_pages, lang="sv"):
     )
 
 
+def auth_settings():
+    """(password hash, session secret); the hash is empty when no password is set."""
+    try:
+        with sqlite3.connect(f"{DATABASE.as_uri()}?mode=ro", uri=True, timeout=5) as db:
+            stored = dict(db.execute("SELECT key, value FROM metadata WHERE key IN "
+                                     "('auth_password_hash', 'auth_secret', 'ui_language')"))
+    except sqlite3.Error:
+        return "", ""
+    return stored.get("auth_password_hash", ""), stored.get("auth_secret", "")
+
+
+def ui_language_setting():
+    try:
+        with sqlite3.connect(f"{DATABASE.as_uri()}?mode=ro", uri=True, timeout=5) as db:
+            row = db.execute("SELECT value FROM metadata WHERE key='ui_language'").fetchone()
+    except sqlite3.Error:
+        return "sv"
+    return row[0] if row and row[0] in LANGUAGES else "sv"
+
+
 def render_page(page_title, active_nav, content, theme, accent, jobs, hardware, token, lang="sv"):
     body = PAGE.replace("{{theme}}", escape(theme, quote=True))
     body = body.replace("{{accent_css}}", accent_css_block(accent))
     body = body.replace("{{version}}", VERSION)
     body = body.replace("{{page_title}}", escape(page_title))
     body = body.replace("{{running_label}}", escape(t("running", lang)))
-    body = body.replace("{{sidebar}}", render_sidebar(active_nav, active_job_count(jobs), hardware, lang))
+    body = body.replace("{{sidebar}}", render_sidebar(active_nav, active_job_count(jobs), hardware, lang,
+                                                      auth_enabled=bool(auth_settings()[0])))
     # While the AI models are still being downloaded, say so at the top of every page.
     banners = (scan_state.render_scan_banner(SCAN_STATUS.snapshot(), lang)
                + models_card.render_models_banner(models_card.load_status(CONFIG), lang))
@@ -1289,7 +1315,7 @@ class Handler(BaseHTTPRequestHandler):
                              '/cloud-cost', '/cloud-key', '/cloud-key/remove', '/cloud-refresh',
                              '/cloud-offer', '/jobs/start', '/jobs/retry', '/jobs/delete', '/jobs/restart', '/jobs/cancel',
                              '/cleanup/trash', '/cleanup/restore', '/cleanup/empty', '/cleanup/retention',
-                             '/jobs/bulk', '/models/remove', '/models/update'):
+                             '/jobs/bulk', '/models/remove', '/models/update', '/login', '/settings/security'):
             self.respond(404, "text/plain", "Sidan saknas")
             return
         try:
@@ -1301,6 +1327,13 @@ class Handler(BaseHTTPRequestHandler):
             form = parse_qs(self.rfile.read(length).decode("utf-8"))
         except (ValueError, OSError):
             self.respond(400, "text/plain", "Ogiltig begäran")
+            return
+        password_hash, session_secret = auth_settings()
+        if self.path == '/login':
+            self.handle_login(form, password_hash, session_secret)
+            return
+        if password_hash and not self.authenticated(session_secret):
+            self.respond(403, "text/plain", "Logga in först.")
             return
         if not secrets.compare_digest(form.get("token", [""])[0], SCAN_TOKEN):
             self.respond(403, "text/plain", "Ladda om sidan och försök igen.")
@@ -1404,6 +1437,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Location', '/settings/theme?saved=1')
             self.send_header('Content-Length', '0')
             self.end_headers()
+            return
+        if self.path == '/settings/security':
+            self.handle_security(form, password_hash, session_secret)
             return
         if self.path == '/settings/automation':
             ignore_existing = '1' if form.get('ignore_existing_subtitle', [''])[0] == '1' else '0'
@@ -1750,6 +1786,97 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    # --- optional password login -------------------------------------------------------------------------------------
+    def client_key(self):
+        """Who a login attempt comes from. Behind a proxy (SUBSYNQ_TRUST_PROXY=1) the proxy's own header is used."""
+        if TRUST_PROXY:
+            forwarded = (self.headers.get("CF-Connecting-IP") or self.headers.get("X-Forwarded-For") or "")
+            forwarded = forwarded.split(",")[0].strip()
+            if forwarded:
+                return forwarded[:64]
+        return self.client_address[0]
+
+    def secure_request(self):
+        return self.headers.get("X-Forwarded-Proto", "").strip().lower() == "https"
+
+    def authenticated(self, session_secret):
+        return auth.session_valid(session_secret, auth.cookie_from_header(self.headers.get("Cookie", "")))
+
+    def redirect(self, location, cookie=None):
+        self.send_response(303)
+        self.send_header("Location", location)
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def handle_login(self, form, password_hash, session_secret):
+        lang = ui_language_setting()
+        next_path = auth.safe_next(form.get("next", ["/"])[0])
+        if not password_hash:
+            self.redirect("/")
+            return
+        key = self.client_key()
+        wait = LOGIN_LIMITER.blocked(key)
+        if wait:
+            self.respond(429, "text/html", auth.render_login_page(
+                lang, t("login_locked", lang).format(seconds=wait), next_path))
+            return
+        password = form.get("password", [""])[0]
+        if auth.verify_password(password, password_hash):
+            LOGIN_LIMITER.success(key)
+            self.redirect(next_path, auth.set_cookie_header(auth.make_session(session_secret), self.secure_request()))
+            return
+        LOGIN_LIMITER.failure(key)
+        self.respond(401, "text/html", auth.render_login_page(lang, t("login_wrong", lang), next_path))
+
+    def handle_security(self, form, password_hash, session_secret):
+        action = form.get("action", [""])[0]
+        current = form.get("current_password", [""])[0]
+        key = self.client_key()
+
+        def fail(code):
+            self.redirect(f"/settings/security?error={code}")
+
+        if action in ("set", "remove") and password_hash:
+            if LOGIN_LIMITER.blocked(key):
+                fail("locked")
+                return
+            if not auth.verify_password(current, password_hash):
+                LOGIN_LIMITER.failure(key)
+                fail("current")
+                return
+            LOGIN_LIMITER.success(key)
+        try:
+            if action == "set":
+                new = form.get("new_password", [""])[0]
+                if new != form.get("repeat_password", [""])[0]:
+                    fail("mismatch")
+                    return
+                if not auth.MIN_LENGTH <= len(new) <= auth.MAX_LENGTH:
+                    fail("short")
+                    return
+                secret = auth.new_secret()
+                with sqlite3.connect(DATABASE, timeout=10) as db:
+                    db.execute("INSERT OR REPLACE INTO metadata VALUES ('auth_password_hash', ?)", (auth.hash_password(new),))
+                    db.execute("INSERT OR REPLACE INTO metadata VALUES ('auth_secret', ?)", (secret,))
+                self.redirect("/settings/security?saved=set",
+                              auth.set_cookie_header(auth.make_session(secret), self.secure_request()))
+            elif action == "remove":
+                with sqlite3.connect(DATABASE, timeout=10) as db:
+                    db.execute("DELETE FROM metadata WHERE key IN ('auth_password_hash', 'auth_secret')")
+                self.redirect("/settings/security?saved=removed", auth.clear_cookie_header(self.secure_request()))
+            elif action == "logout_all" and password_hash:
+                with sqlite3.connect(DATABASE, timeout=10) as db:
+                    db.execute("INSERT OR REPLACE INTO metadata VALUES ('auth_secret', ?)", (auth.new_secret(),))
+                self.redirect("/login", auth.clear_cookie_header(self.secure_request()))
+            else:
+                self.respond(400, "text/plain", "Ogiltig åtgärd.")
+        except sqlite3.Error:
+            logging.exception("Saving the password settings failed")
+            self.respond(503, "text/plain", "Inställningen kunde inte sparas.")
+
     def handle_webhook(self, path):
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -1854,6 +1981,28 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
+        password_hash, session_secret = auth_settings()
+        query_string = urlsplit(self.path).query
+        if path == '/login':
+            next_path = auth.safe_next(parse_qs(query_string).get('next', ['/'])[0])
+            if not password_hash or self.authenticated(session_secret):
+                self.redirect(next_path)
+                return
+            self.respond(200, 'text/html', auth.render_login_page(ui_language_setting(), '', next_path))
+            return
+        if path == '/logout':
+            self.redirect('/login' if password_hash else '/', auth.clear_cookie_header(self.secure_request()))
+            return
+        if password_hash and not self.authenticated(session_secret):
+            if path == '/health':
+                # The container health check only needs to know that the service is alive.
+                self.respond(200, 'application/json', json.dumps({'status': 'ok'}))
+                return
+            if path.startswith('/api/'):
+                self.respond(401, 'application/json', json.dumps({'error': 'Logga in först.'}))
+                return
+            self.redirect('/login?next=' + quote(path + ('?' + query_string if query_string else ''), safe=''))
+            return
         if path == '/api/scan-status':
             self.respond(200, 'application/json', json.dumps(SCAN_STATUS.snapshot()))
             return
@@ -1906,7 +2055,7 @@ class Handler(BaseHTTPRequestHandler):
                     f"<pre>{escape(content)}</pre></html>")
             self.respond(200, 'text/html', body)
             return
-        if path not in ("/", "/library", "/settings", "/settings/theme", "/settings/media", "/settings/cloud",
+        if path not in ("/", "/library", "/settings", "/settings/theme", "/settings/media", "/settings/cloud", "/settings/security",
                         "/settings/log", "/settings/models", "/queue", "/cleanup", "/health", "/api/status", "/api/library",
                         "/api/jobs", "/api/log"):
             self.respond(404, "application/json", json.dumps({"error": "Not found"}))
@@ -1926,7 +2075,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/log':
             self.respond(200, 'application/json', json.dumps({'events': latest_events(DATABASE)}))
             return
-        if path in ("/", "/library", "/settings", "/settings/theme", "/settings/media",
+        if path in ("/", "/library", "/settings", "/settings/theme", "/settings/media", "/settings/security",
                     "/settings/cloud", "/settings/log", "/settings/models", "/queue", "/cleanup"):
             query = parse_qs(urlsplit(self.path).query)
             jobs = latest_jobs(DATABASE)
@@ -1989,6 +2138,14 @@ class Handler(BaseHTTPRequestHandler):
                     saved=query.get("saved", [""])[0] == "media",
                     token_regenerated=query.get("saved", [""])[0] == "token")
                 page_title, active_nav = t("page_title_settings_media", data["ui_language"]), "settings:media"
+            elif path == "/settings/security":
+                saved = query.get("saved", [""])[0]
+                error = query.get("error", [""])[0]
+                content = auth.render_security_content(
+                    SCAN_TOKEN, bool(password_hash), data["ui_language"],
+                    saved if saved in ("set", "removed") else "",
+                    error if error in ("current", "mismatch", "short", "locked") else "")
+                page_title, active_nav = t("page_title_settings_security", data["ui_language"]), "settings:security"
             elif path == "/settings/cloud":
                 provider = query.get('provider', [data['cloud_cost_profile']['provider']])[0]
                 if provider not in PROVIDERS:

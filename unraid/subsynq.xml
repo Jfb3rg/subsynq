@@ -28,4 +28,5 @@
   <Config Name="Serier (/tv)" Target="/tv" Default="/mnt/user/media/serier" Mode="rw" Description="Din seriemapp." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/serier</Config>
   <Config Name="Klipp och övrigt (/extra)" Target="/extra" Default="/mnt/user/media/extra" Mode="rw" Description="Valfri. Klipp och övriga videofiler. Har du inga kan du ta bort den här raden (Remove) i både subsynq och subsynq-worker; SubSynq fungerar utan den." Type="Path" Display="always" Required="false" Mask="false">/mnt/user/media/extra</Config>
   <Config Name="Tidszon (TZ)" Target="TZ" Default="Europe/Stockholm" Mode="" Description="Tidszon för loggar och klockslag." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Stockholm</Config>
+  <Config Name="Bakom proxy (Cloudflare)" Target="SUBSYNQ_TRUST_PROXY" Default="0" Mode="" Description="1 om SubSynq nås via en proxy eller Cloudflare Tunnel: då räknas felaktiga lösenordsförsök per besökare. Lämna 0 annars." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
 </Container>
