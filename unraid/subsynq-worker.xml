@@ -20,9 +20,9 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Docker-nätverket subsynq samt containrarna subsynq-translate-engine och subsynq-qwen-asr.</Requires>
+  <Requires>Docker-nätverket subsynq samt containrarna subsynq-translate-engine och subsynq-qwen-asr. Kör också chown 99:100 på din modellmapp (till exempel chown 99:100 /mnt/user/appdata/subsynq/models) innan första starten.</Requires>
   <Config Name="Inställningar och databas (/config)" Target="/config" Default="/mnt/user/appdata/subsynq/config" Mode="rw" Description="Samma mapp som i subsynq." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/config</Config>
-  <Config Name="AI-modeller (/models)" Target="/models" Default="/mnt/user/appdata/subsynq/models" Mode="rw" Description="Samma mapp som i subsynq. Här hämtas modellerna." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models</Config>
+  <Config Name="AI-modeller (/models)" Target="/models" Default="/mnt/user/appdata/subsynq/models" Mode="rw" Description="Samma mapp som i subsynq. Här hämtas modellerna. Viktigt: kör först i Unraids terminal chown 99:100 på just den här mappen, till exempel: chown 99:100 /mnt/user/appdata/subsynq/models (eller din egen modellmapp, till exempel chown 99:100 /mnt/user/subsynq-ai-models/models). Annars kan workern inte hämta modellerna." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models</Config>
   <Config Name="Filmer (/movies)" Target="/movies" Default="/mnt/user/media/film" Mode="rw" Description="Samma filmmapp som i subsynq. Skrivbar: här skrivs undertextfilerna." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/film</Config>
   <Config Name="Serier (/tv)" Target="/tv" Default="/mnt/user/media/serier" Mode="rw" Description="Samma seriemapp som i subsynq." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/serier</Config>
   <Config Name="Klipp och övrigt (/extra)" Target="/extra" Default="/mnt/user/media/extra" Mode="rw" Description="Samma mapp som i subsynq." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/extra</Config>

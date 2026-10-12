@@ -180,6 +180,9 @@ class UnraidTemplateTests(unittest.TestCase):
             self.assertIn(f"{name}.xml", readme)
         self.assertIn("docker network create subsynq", readme)
         self.assertIn("chown 99:100 /mnt/user/appdata/subsynq", readme)
+        for name in ("subsynq", "subsynq-worker", "subsynq-qwen-asr"):
+            description = next(c["Description"] for c in (dict(e.attrib) for e in load(name)[0].findall("Config")) if c.get("Target") == "/models")
+            self.assertIn("chown 99:100", description, name)
 
 
 if __name__ == "__main__":

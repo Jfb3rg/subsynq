@@ -21,7 +21,7 @@
   <DonateText/>
   <DonateLink/>
   <Requires>Docker-nätverket subsynq.</Requires>
-  <Config Name="AI-modeller (/models)" Target="/models" Default="/mnt/user/appdata/subsynq/models" Mode="rw" Description="Samma mapp som i subsynq och subsynq-worker." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models</Config>
+  <Config Name="AI-modeller (/models)" Target="/models" Default="/mnt/user/appdata/subsynq/models" Mode="rw" Description="Samma mapp som i subsynq och subsynq-worker. Viktigt: kör först i Unraids terminal chown 99:100 på just den här mappen, till exempel: chown 99:100 /mnt/user/appdata/subsynq/models (eller din egen modellmapp, till exempel chown 99:100 /mnt/user/subsynq-ai-models/models). Annars kan workern inte hämta modellerna." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/subsynq/models</Config>
   <Config Name="Enhet" Target="SUBSYNQ_QWEN_DEVICE" Default="cpu" Mode="" Description="cpu. GPU-stöd finns inte i den här versionen." Type="Variable" Display="advanced" Required="true" Mask="false">cpu</Config>
   <Config Name="Talformat" Target="SUBSYNQ_QWEN_DTYPE" Default="float32" Mode="" Description="float32 på CPU." Type="Variable" Display="advanced" Required="true" Mask="false">float32</Config>
   <Config Name="Tomgångstid (sekunder)" Target="SUBSYNQ_QWEN_IDLE_SECONDS" Default="60" Mode="" Description="Efter så här många sekunder utan arbete lämnar modellen minnet." Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
