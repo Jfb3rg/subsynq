@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.234
+
+- **Moln-GPU-servern behålls mellan jobb i kön.** Förut hyrdes en ny server för varje jobb och förstördes när jobbet var klart, så alla modeller (flera GB) hämtades på nytt varje gång. Nu behålls en färdig server så länge ett annat molnjobb väntar i kön och används direkt av nästa jobb (ingen ny installation, ingen ny nedladdning); när kön är tom förstörs den genast, så ingen betalar för en tom server. Servern förstörs också om den inte längre svarar, om du byter GPU-modell eller hårdvaruval, eller om ingen tar den inom 3 minuter. Den förstörs även när workern stoppas (`docker stop`) eller startas om. Stäng av med miljövariabeln `SUBSYNQ_CLOUD_KEEP_SERVER=0`.
+- **Långsam värd byts ut automatiskt.** En värd som annonserade snabbt nätverk men hämtade en 17 GB-modell i 13 MB/s fick ett jobb att stå i 45 minuter och sedan misslyckas. Nu förstörs en server som inte är klar efter 20 minuter (eller som aldrig svarar) och nästa värd hyrs, högst två gånger per jobb; samma maskins övriga erbjudanden hoppas över. Jobbmeddelandet visar vad som hände. Jobbmeddelandet "Hyr …" visar nu också var den hyrda servern står.
+
 ## 0.8.233
 
 - **Landsflagga och sortering efter läge i moln-GPU-listan.** Varje erbjudande från Vast.ai visar nu landet med flagga och plats (till exempel "🇳🇴 Norway, NO · RTX 4090 · 0,6470 USD/tim"). Listan är grupperad efter var servern står: Europa (närmast Sverige) först, sedan USA och Kanada, sedan övriga världen, och billigast först i varje grupp. Så hittar du lättare en server nära Sverige i stället för en i Asien. Det är en ordning i listan; ingenting döljs. Runpod anger ingen plats per erbjudande, så den listan är oförändrad.

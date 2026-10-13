@@ -6,6 +6,7 @@ import json
 import os
 import re
 import secrets
+import signal
 import sqlite3
 import ssl
 import subprocess
@@ -270,6 +271,21 @@ CLOUD_OFFER_ATTEMPTS = 4
 CLOUD_CHAIN_FIRST_REPLY_SECONDS = 900
 # No rental may cost more per hour than this, whatever the provider reports.
 CLOUD_MAX_USD_PER_HOUR = 2.0
+# A host's advertised speed is a promise, not a measurement: one "500 Mbit/s" host pulled a 17 GB model at
+# 13 MB/s and the job failed after 45 minutes. A server that is not ready this long after it was created is
+# destroyed and the next host is rented, at most CLOUD_SLOW_HOST_RETRIES times per job.
+CLOUD_CHAIN_SLOW_HOST_SECONDS = 1200
+CLOUD_SLOW_HOST_RETRIES = 2
+# A ready server (models already installed) is kept for the next queued cloud job instead of being destroyed
+# and installed again; it is destroyed as soon as no cloud job waits, or after this many idle seconds.
+# SUBSYNQ_CLOUD_KEEP_SERVER=0 turns the reuse off (one fresh server per job, as before).
+CLOUD_KEEP_SERVER = os.environ.get('SUBSYNQ_CLOUD_KEEP_SERVER', '1') != '0'
+CLOUD_KEEP_IDLE_SECONDS = 180
+_KEPT_CLOUD = None
+
+
+class SlowCloudHost(RuntimeError):
+    """The rented host cannot finish installing in reasonable time; another host should be tried."""
 
 
 class JobCancelled(RuntimeError):
@@ -1016,114 +1032,146 @@ def rent_cloud_chain(job, provider, mode):
     # Stock is thin (Runpod often shows `Low` for every cheap card) and offers disappear between
     # listing and ordering, so try the cheapest few in turn. A refused order creates nothing and
     # costs nothing; only a successful one is billed, and it is stored below at once.
-    instance_id = cost = None
-    refusals = []
-    for offer in offers[:CLOUD_OFFER_ATTEMPTS]:
-        price = offer.get('price')
-        update_job(job['id'], 'transcribing', 1,
-                   f'Hyr {offer.get("gpu") or wanted} ({provider}): {offer.get("detail", "")}'
-                   + (f', ~{price:.3f} USD/h' if price else '')
-                   + (f' (försök {len(refusals) + 1})' if refusals else ''))
-        try:
-            onstart, cloud_models = onstart_for(offer)
-            instance_id, cost = cloud_gpu.create_chain_instance(
-                provider, api_key, offer, onstart, device=mode)
-            MODEL_JOB.cloud_models = tuple(cloud_models)     # what really runs there (shown on the job)
-            break
-        except RuntimeError as error:
-            refusals.append(f'{offer.get("gpu") or offer.get("id")}: {str(error)[:160]}')
-            print(f'Beställningen avvisades ({refusals[-1]}); provar nästa erbjudande.', flush=True)
-    if instance_id is None:
-        raise RuntimeError(f'{provider} avvisade alla {len(refusals)} beställningar; inget hyrdes och inget '
-                           'kostar pengar. ' + ' | '.join(refusals))
-    # Persisted at once so a worker crash can still find and destroy it.
-    update_job(job['id'], 'transcribing', 1, f'{server.capitalize()}n är skapad, väntar på att den startar',
-               cloud_instance_id=cloud_gpu.stored_instance_id(provider, instance_id))
-    try:
-        if cost and cost > CLOUD_MAX_USD_PER_HOUR:
-            raise RuntimeError(f'Hyran blev {cost:.2f} USD/h, över gränsen {CLOUD_MAX_USD_PER_HOUR:.2f} '
-                               'USD/h. Servern förstördes; ingen undertext skapades.')
-        started = time.monotonic()
-        deadline = started + CLOUD_CHAIN_SPINUP_SECONDS
-        url = None
-        address_status = 'ingen instansstatus hämtad'
-        while time.monotonic() < min(deadline, started + CLOUD_CHAIN_ADDRESS_SECONDS):
-            check_cancelled(job['id'])
-            time.sleep(10)
-            instance = cloud_gpu.show_chain_instance(provider, api_key, instance_id)
-            latest_status = cloud_address_status(provider, instance)
-            if latest_status != address_status:
-                address_status = latest_status
-                print(f'Molnuppstart ({provider}, jobb {job["id"]}): {address_status}', flush=True)
-                update_job(job['id'], 'transcribing', 1,
-                           f'Väntar på {server}n ({provider}) · {address_status}')
-            url = cloud_gpu.chain_service_url(provider, instance)
-            if url:
-                break
-        if not url:
-            why = fetch_vast_container_log(api_key, instance_id) if provider == 'vast' else None
-            raise RuntimeError(f'{server.capitalize()}n blev aldrig nåbar inom tiden '
-                               f'({provider}, {address_status}). Tekniskt fel; ingen undertext skapades.'
-                               + (f' Serverns logg: {why}' if why else ' Leverantörslogg saknas.'))
-        # Only HTTPS, and only with the certificate generated above.
-        base_url = 'https://' + url.split('://', 1)[1] + '/' + token
-        install_tls_opener(tls_context)
-        update_job(job['id'], 'transcribing', 1,
-                   f'Installerar och laddar Whisper, Qwen3-ASR och Gemma på {server}n')
-        last_step = None
-        answered = False
-        reply_deadline = time.monotonic() + CLOUD_CHAIN_FIRST_REPLY_SECONDS
-        while time.monotonic() < deadline:
-            check_cancelled(job['id'])
-            health = None
+    remaining = list(offers)
+    slow_hosts = 0
+
+    def can_retry_elsewhere():
+        return slow_hosts < CLOUD_SLOW_HOST_RETRIES and bool(remaining)
+
+    while True:
+        instance_id = cost = chosen = None
+        refusals = []
+        tried = []
+        for offer in remaining[:CLOUD_OFFER_ATTEMPTS]:
+            tried.append(offer)
+            price = offer.get('price')
+            update_job(job['id'], 'transcribing', 1,
+                       f'Hyr {offer.get("gpu") or wanted} ({provider}): {offer.get("detail", "")}'
+                       + (f', ~{price:.3f} USD/h' if price else '')
+                       + (f' (försök {len(refusals) + 1})' if refusals else ''))
             try:
-                with urllib.request.urlopen(f'{base_url}/health', timeout=10) as response:
-                    health = json.load(response)
-            except urllib.error.URLError as error:
-                if isinstance(error.reason, ssl.SSLCertVerificationError):
-                    # Never fall back to an unverified or plain connection.
-                    raise RuntimeError(
-                        f'{server.capitalize()}ns certifikat stämmer inte med det som skapades för '
-                        'jobbet. Tekniskt stopp; ingen data skickades vidare.') from error
-            except (TimeoutError, ConnectionError, http.client.HTTPException, ValueError,
-                    ssl.SSLError):
-                pass
-            if isinstance(health, dict):
-                answered = True
-                last_step = health.get('bootstrap_step') or last_step
-                if health.get('status') == 'ready':
-                    break
-                failure = cloud_health_failure(health, kind)
-                if failure:
-                    why = fetch_cloud_logs(base_url) if health.get('status') == 'bootstrap_failed' else None
-                    raise RuntimeError(failure + (f' Serverns logg: {why}' if why else ''))
+                onstart, cloud_models = onstart_for(offer)
+                instance_id, cost = cloud_gpu.create_chain_instance(
+                    provider, api_key, offer, onstart, device=mode)
+                MODEL_JOB.cloud_models = tuple(cloud_models)     # what really runs there (shown on the job)
+                chosen = offer
+                break
+            except RuntimeError as error:
+                refusals.append(f'{offer.get("gpu") or offer.get("id")}: {str(error)[:160]}')
+                print(f'Beställningen avvisades ({refusals[-1]}); provar nästa erbjudande.', flush=True)
+        remaining = [offer for offer in remaining if offer not in tried]
+        if instance_id is None:
+            raise RuntimeError(f'{provider} avvisade alla {len(refusals)} beställningar; inget hyrdes och inget '
+                               'kostar pengar. ' + ' | '.join(refusals))
+        # Persisted at once so a worker crash can still find and destroy it.
+        update_job(job['id'], 'transcribing', 1, f'{server.capitalize()}n är skapad, väntar på att den startar',
+                   cloud_instance_id=cloud_gpu.stored_instance_id(provider, instance_id))
+        try:
+            try:
+                if cost and cost > CLOUD_MAX_USD_PER_HOUR:
+                    raise RuntimeError(f'Hyran blev {cost:.2f} USD/h, över gränsen {CLOUD_MAX_USD_PER_HOUR:.2f} '
+                                       'USD/h. Servern förstördes; ingen undertext skapades.')
+                started = time.monotonic()
+                deadline = started + CLOUD_CHAIN_SPINUP_SECONDS
+                url = None
+                address_status = 'ingen instansstatus hämtad'
+                while time.monotonic() < min(deadline, started + CLOUD_CHAIN_ADDRESS_SECONDS):
+                    check_cancelled(job['id'])
+                    time.sleep(10)
+                    instance = cloud_gpu.show_chain_instance(provider, api_key, instance_id)
+                    latest_status = cloud_address_status(provider, instance)
+                    if latest_status != address_status:
+                        address_status = latest_status
+                        print(f'Molnuppstart ({provider}, jobb {job["id"]}): {address_status}', flush=True)
+                        update_job(job['id'], 'transcribing', 1,
+                                   f'Väntar på {server}n ({provider}) · {address_status}')
+                    url = cloud_gpu.chain_service_url(provider, instance)
+                    if url:
+                        break
+                if not url:
+                    why = fetch_vast_container_log(api_key, instance_id) if provider == 'vast' else None
+                    problem = (f'{server.capitalize()}n blev aldrig nåbar inom tiden '
+                               f'({provider}, {address_status}).')
+                    if can_retry_elsewhere():
+                        raise SlowCloudHost(problem)
+                    raise RuntimeError(problem + ' Tekniskt fel; ingen undertext skapades.'
+                                       + (f' Serverns logg: {why}' if why else ' Leverantörslogg saknas.'))
+                # Only HTTPS, and only with the certificate generated above.
+                base_url = 'https://' + url.split('://', 1)[1] + '/' + token
+                install_tls_opener(tls_context)
                 update_job(job['id'], 'transcribing', 1,
-                           f'{kind} ({provider}) · {cloud_health_message(health)}')
-            elif not answered and time.monotonic() > reply_deadline:
-                why = fetch_cloud_logs(base_url) or (
-                    fetch_vast_container_log(api_key, instance_id) if provider == 'vast' else None)
-                raise RuntimeError(
-                    f'{server.capitalize()}n svarade aldrig på hälsokontrollen inom '
-                    f'{CLOUD_CHAIN_FIRST_REPLY_SECONDS // 60} minuter (installationen startade troligen inte). '
-                    'Tekniskt stopp; ingen undertext skapades.' + (f' Serverns logg: {why}' if why else ''))
-            time.sleep(15)
-        else:
-            why = fetch_cloud_logs(base_url) or (
-                fetch_vast_container_log(api_key, instance_id) if provider == 'vast' else None)
-            raise RuntimeError(
-                f'{server.capitalize()}n blev inte redo (Whisper, Qwen3-ASR och Gemma) inom tiden'
-                + (f' (sista steg: {last_step})' if last_step else '') + '. '
-                'Tekniskt stopp; ingen lokal reserv används.'
-                + (f' Serverns logg: {why}' if why else ' Servern svarade inte på loggfrågan.'))
-        update_job(job['id'], 'transcribing', 1, f'Ansluten till {kind} ({provider})')
-        return (RemoteCloudWhisperModel(base_url, f'{kind}-tjänsten ({provider})'), instance_id,
-                base_url, tls_context)
-    except BaseException:
-        reset_opener()
-        destroy_cloud_gpu(provider, instance_id)
-        with sqlite3.connect(DATABASE, timeout=10) as db:
-            db.execute('UPDATE subtitle_jobs SET cloud_instance_id=NULL WHERE id=?', (job['id'],))
-        raise
+                           f'Installerar och laddar Whisper, Qwen3-ASR och Gemma på {server}n')
+                last_step = None
+                answered = False
+                reply_deadline = time.monotonic() + CLOUD_CHAIN_FIRST_REPLY_SECONDS
+                while time.monotonic() < deadline:
+                    check_cancelled(job['id'])
+                    health = None
+                    try:
+                        with urllib.request.urlopen(f'{base_url}/health', timeout=10) as response:
+                            health = json.load(response)
+                    except urllib.error.URLError as error:
+                        if isinstance(error.reason, ssl.SSLCertVerificationError):
+                            # Never fall back to an unverified or plain connection.
+                            raise RuntimeError(
+                                f'{server.capitalize()}ns certifikat stämmer inte med det som skapades för '
+                                'jobbet. Tekniskt stopp; ingen data skickades vidare.') from error
+                    except (TimeoutError, ConnectionError, http.client.HTTPException, ValueError,
+                            ssl.SSLError):
+                        pass
+                    if isinstance(health, dict):
+                        answered = True
+                        last_step = health.get('bootstrap_step') or last_step
+                        if health.get('status') == 'ready':
+                            break
+                        failure = cloud_health_failure(health, kind)
+                        if failure:
+                            why = fetch_cloud_logs(base_url) if health.get('status') == 'bootstrap_failed' else None
+                            raise RuntimeError(failure + (f' Serverns logg: {why}' if why else ''))
+                        update_job(job['id'], 'transcribing', 1,
+                                   f'{kind} ({provider}) · {cloud_health_message(health)}')
+                    elif not answered and time.monotonic() > reply_deadline:
+                        why = fetch_cloud_logs(base_url) or (
+                            fetch_vast_container_log(api_key, instance_id) if provider == 'vast' else None)
+                        problem = (f'{server.capitalize()}n svarade aldrig på hälsokontrollen inom '
+                                   f'{CLOUD_CHAIN_FIRST_REPLY_SECONDS // 60} minuter (installationen startade '
+                                   'troligen inte).')
+                        if can_retry_elsewhere():
+                            raise SlowCloudHost(problem)
+                        raise RuntimeError(problem + ' Tekniskt stopp; ingen undertext skapades.'
+                                           + (f' Serverns logg: {why}' if why else ''))
+                    if time.monotonic() - started > CLOUD_CHAIN_SLOW_HOST_SECONDS and can_retry_elsewhere():
+                        raise SlowCloudHost(f'{server.capitalize()}n var inte klar efter '
+                                            f'{CLOUD_CHAIN_SLOW_HOST_SECONDS // 60} minuter'
+                                            + (f' (sista steg: {last_step})' if last_step else '') + '.')
+                    time.sleep(15)
+                else:
+                    why = fetch_cloud_logs(base_url) or (
+                        fetch_vast_container_log(api_key, instance_id) if provider == 'vast' else None)
+                    raise RuntimeError(
+                        f'{server.capitalize()}n blev inte redo (Whisper, Qwen3-ASR och Gemma) inom tiden'
+                        + (f' (sista steg: {last_step})' if last_step else '') + '. '
+                        'Tekniskt stopp; ingen lokal reserv används.'
+                        + (f' Serverns logg: {why}' if why else ' Servern svarade inte på loggfrågan.'))
+                update_job(job['id'], 'transcribing', 1, f'Ansluten till {kind} ({provider})')
+                return (RemoteCloudWhisperModel(base_url, f'{kind}-tjänsten ({provider})'), instance_id,
+                        base_url, tls_context)
+            except BaseException:
+                reset_opener()
+                destroy_cloud_gpu(provider, instance_id)
+                with sqlite3.connect(DATABASE, timeout=10) as db:
+                    db.execute('UPDATE subtitle_jobs SET cloud_instance_id=NULL WHERE id=?', (job['id'],))
+                raise
+        except SlowCloudHost as slow:
+            # The server is already destroyed above. The same machine's other offers are skipped too.
+            slow_hosts += 1
+            machine = (chosen or {}).get('machine_id')
+            if machine:
+                remaining = [offer for offer in remaining if offer.get('machine_id') != machine]
+            note = (f'{slow} Servern förstördes; provar en annan värd '
+                    f'(försök {slow_hosts + 1} av {CLOUD_SLOW_HOST_RETRIES + 1}).')
+            print(f'Molnuppstart (jobb {job["id"]}): {note}', flush=True)
+            update_job(job['id'], 'transcribing', 1, note)
 
 
 def destroy_cloud_gpu(provider, instance_id):
@@ -1153,6 +1201,133 @@ def cleanup_orphaned_cloud_instances():
         destroy_cloud_gpu(provider, raw_id)
         with sqlite3.connect(DATABASE, timeout=10) as db:
             db.execute('UPDATE subtitle_jobs SET cloud_instance_id=NULL WHERE id=?', (job_id,))
+    # A server kept for the next queued job when the worker stopped: its certificate is gone with the process.
+    with sqlite3.connect(DATABASE, timeout=10) as db:
+        kept = db.execute("SELECT value FROM metadata WHERE key='cloud_kept_server'").fetchone()
+    if kept and kept[0]:
+        print(f'Städar upp en behållen molnserver ({kept[0]}) från en tidigare körning', flush=True)
+        provider, raw_id = cloud_gpu.split_stored_instance_id(kept[0])
+        destroy_cloud_gpu(provider, raw_id)
+        forget_kept_cloud_server()
+
+
+def cloud_wanted_gpu(provider, mode):
+    """The card the saved plan asks for; only a Vast GPU rental is tied to one model."""
+    return load_cloud_profile()['gpu'] if provider == 'vast' and mode == 'cuda' else ''
+
+
+def cloud_server_is_ready(base_url, context):
+    """True when a kept server still answers `ready` over its pinned certificate."""
+    try:
+        install_tls_opener(context)
+        with urllib.request.urlopen(f'{base_url}/health', timeout=10) as response:
+            health = json.load(response)
+        return isinstance(health, dict) and health.get('status') == 'ready'
+    except Exception:
+        return False
+    finally:
+        reset_opener()
+
+
+def cloud_jobs_are_waiting(preference):
+    """Is another job queued that will run on a rented server?"""
+    if not str(preference).startswith('cloud-'):
+        return False
+    try:
+        with sqlite3.connect(DATABASE, timeout=10) as db:
+            return db.execute("SELECT 1 FROM subtitle_jobs WHERE status IN ('queued','restart_queued') "
+                              "LIMIT 1").fetchone() is not None
+    except sqlite3.Error:
+        return False
+
+
+def remember_kept_cloud_server(provider, instance_id):
+    """Persisted so that a worker restart can still find and destroy a server that waits for the next job."""
+    with sqlite3.connect(DATABASE, timeout=10) as db:
+        db.execute("INSERT OR REPLACE INTO metadata VALUES ('cloud_kept_server', ?)",
+                   (cloud_gpu.stored_instance_id(provider, instance_id),))
+
+
+def forget_kept_cloud_server():
+    try:
+        with sqlite3.connect(DATABASE, timeout=10) as db:
+            db.execute("DELETE FROM metadata WHERE key='cloud_kept_server'")
+    except sqlite3.Error as error:
+        print(f'VARNING: kunde inte rensa markeringen för den behållna molnservern: {error!r}', flush=True)
+
+
+def destroy_kept_cloud_server():
+    global _KEPT_CLOUD
+    kept, _KEPT_CLOUD = _KEPT_CLOUD, None
+    if kept:
+        destroy_cloud_gpu(kept['provider'], kept['instance_id'])
+        forget_kept_cloud_server()
+
+
+def acquire_cloud_chain(job, provider, mode):
+    """The server kept from the previous job when it still fits (same provider, mode and card, still ready,
+    models already installed), otherwise a new rental. Same return value as rent_cloud_chain."""
+    global _KEPT_CLOUD
+    kept, _KEPT_CLOUD = _KEPT_CLOUD, None
+    if kept:
+        forget_kept_cloud_server()
+        fits = (kept['provider'] == provider and kept['mode'] == mode
+                and kept['gpu'] == cloud_wanted_gpu(provider, mode)
+                and cloud_server_is_ready(kept['base_url'], kept['tls_context']))
+        if fits:
+            kind = 'Moln-CPU' if mode == 'cpu' else 'Moln-GPU'
+            MODEL_JOB.cloud_models = kept['cloud_models']
+            update_job(job['id'], 'transcribing', 1,
+                       f'Återanvänder {kind}-servern från förra jobbet (modellerna är redan installerade)',
+                       cloud_instance_id=cloud_gpu.stored_instance_id(provider, kept['instance_id']))
+            print(f'Molnserver återanvänds (jobb {job["id"]}).', flush=True)
+            return (RemoteCloudWhisperModel(kept['base_url'], f'{kind}-tjänsten ({provider})'),
+                    kept['instance_id'], kept['base_url'], kept['tls_context'])
+        print('Den behållna molnservern passar inte eller svarar inte; den förstörs och en ny hyrs.', flush=True)
+        destroy_cloud_gpu(kept['provider'], kept['instance_id'])
+    return rent_cloud_chain(job, provider, mode)
+
+
+def finish_cloud_chain(job, provider, mode, instance_id, base_url, tls_context, reusable):
+    """After a job: keep the ready server for the next queued cloud job, else destroy it (no idle billing)."""
+    global _KEPT_CLOUD
+    waiting = False
+    if CLOUD_KEEP_SERVER and reusable:
+        try:
+            waiting = cloud_jobs_are_waiting(hardware_preference())
+        except RuntimeError:
+            waiting = False
+    if waiting:
+        _KEPT_CLOUD = {'provider': provider, 'mode': mode, 'gpu': cloud_wanted_gpu(provider, mode),
+                       'instance_id': instance_id, 'base_url': base_url, 'tls_context': tls_context,
+                       'cloud_models': getattr(MODEL_JOB, 'cloud_models', None), 'since': time.monotonic()}
+        remember_kept_cloud_server(provider, instance_id)
+        print(f'Behåller molnservern för nästa jobb i kön (jobb {job["id"]} är klart).', flush=True)
+    else:
+        destroy_cloud_gpu(provider, instance_id)
+    # Only clears cloud_instance_id -- a kept server is tracked by its own marker.
+    with sqlite3.connect(DATABASE, timeout=10) as db:
+        db.execute('UPDATE subtitle_jobs SET cloud_instance_id=NULL WHERE id=?', (job['id'],))
+
+
+def expire_kept_cloud_server():
+    """Called while the worker is idle: a kept server nobody claims is destroyed at once."""
+    kept = _KEPT_CLOUD
+    if not kept:
+        return
+    try:
+        waiting = cloud_jobs_are_waiting(hardware_preference())
+    except RuntimeError:
+        waiting = False
+    if not CLOUD_KEEP_SERVER or not waiting or time.monotonic() - kept['since'] > CLOUD_KEEP_IDLE_SECONDS:
+        print('Ingen molnjobb väntar längre; den behållna servern förstörs.', flush=True)
+        destroy_kept_cloud_server()
+
+
+def stop_gracefully(signum, frame):
+    """docker stop: do not leave a rented server billing behind."""
+    destroy_kept_cloud_server()
+    raise SystemExit(0)
 
 
 def gpu_display_name(health):
@@ -3941,6 +4116,10 @@ def main():
     cuda_model = None
     cpu_fallback_model = None
     wait_for_database()
+    try:
+        signal.signal(signal.SIGTERM, stop_gracefully)
+    except ValueError:      # not the main thread (tests)
+        pass
     health = gpu_health(timeout=8)
     set_hardware(False, health=health)
     recover_interrupted_jobs()
@@ -3959,6 +4138,7 @@ def main():
         waiting_for_models = local_jobs_must_wait(model_downloads)
         job = claim_job(only_deletes=waiting_for_models)
         if not job:
+            expire_kept_cloud_server()
             if waiting_for_models and time.monotonic() - last_waiting_note >= 30:
                 note_jobs_waiting_for_models()
                 last_waiting_note = time.monotonic()
@@ -3998,7 +4178,8 @@ def main():
                 else:
                     cloud_provider, cloud_mode, cloud_name = preference[len('cloud-'):], 'cuda', 'moln-GPU'
                 device = preference
-                model, cloud_instance_id, base_url, tls_context = rent_cloud_chain(job, cloud_provider, cloud_mode)
+                model, cloud_instance_id, base_url, tls_context = acquire_cloud_chain(job, cloud_provider, cloud_mode)
+                reusable = True
                 try:
                     with cloud_chain_endpoints(base_url, tls_context), vram_recorder(job, base_url):
                         try:
@@ -4022,16 +4203,20 @@ def main():
                             except SourceQualityError as retry_error:
                                 raise SourceQualityError(
                                     f'{retry_error} (Whisper large-v2 gav samma resultat.)') from error
+                except (SourceQualityError, JobCancelled):
+                    # Job-level outcomes (TranslationQualityError is a SourceQualityError): the server did
+                    # nothing wrong, so it may serve the next queued job.
+                    raise
+                except BaseException:
+                    reusable = False
+                    raise
                 finally:
-                    # Only clears cloud_instance_id -- never touches
-                    # status/progress/message, which work() (or the outer
-                    # except handlers below, on failure/cancellation) already
-                    # set correctly; reusing update_job() here would stomp
-                    # that with this stale pre-work() job snapshot.
-                    destroy_cloud_gpu(cloud_provider, cloud_instance_id)
-                    with sqlite3.connect(DATABASE, timeout=10) as db:
-                        db.execute('UPDATE subtitle_jobs SET cloud_instance_id=NULL WHERE id=?',
-                                  (job['id'],))
+                    # Keeps the ready server for the next queued cloud job, else destroys it. Only clears
+                    # cloud_instance_id -- never touches status/progress/message, which work() (or the outer
+                    # except handlers below, on failure/cancellation) already set correctly; reusing
+                    # update_job() here would stomp that with this stale pre-work() job snapshot.
+                    finish_cloud_chain(job, cloud_provider, cloud_mode, cloud_instance_id, base_url,
+                                       tls_context, reusable)
                 continue
             if use_gpu:
                 if NATIVE_CUDA_ENABLED:

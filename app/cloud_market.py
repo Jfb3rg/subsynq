@@ -284,7 +284,10 @@ def fetch_vast_chain_gpu_offers(key, gpu_query, reader=_read_json):
         for item in result:
             raw = speeds.get(item['id']) or {}
             item['detail'] = (f"{item['detail']} · ner {int(raw.get('inet_down') or 0)} Mbit/s"
-                              f" · tillförl. {raw.get('reliability', 0):.2f}")
+                              f" · tillförl. {raw.get('reliability', 0):.2f}"
+                              + (f" · {item['location']}" if item.get('location') else ''))
+            # Lets a rental that turned out slow skip the same machine's other offers.
+            item['machine_id'] = raw.get('machine_id')
         if result:
             return result
     return []

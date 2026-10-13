@@ -145,6 +145,7 @@ class ModelLifecycleTests(unittest.TestCase):
                     'cloud_chain_endpoints': Mock(return_value=nullcontext()),
                     'vram_recorder': Mock(return_value=nullcontext()),
                     'work': Mock(side_effect=[error, None]),
+                    'cloud_jobs_are_waiting': Mock(return_value=False),
                 }
                 replacements.update({name: Mock() for name in (
                     'wait_for_database', 'gpu_health', 'set_hardware', 'recover_interrupted_jobs',
