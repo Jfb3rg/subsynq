@@ -91,6 +91,16 @@ class WorkerPlanTests(unittest.TestCase):
         models, aliases, _ = self.plan('cuda', translation='gemma3:27b')
         self.assertEqual((models, aliases), (['gemma3:27b', 'gemma4:12b'], {'gemma3:12b': 'gemma3:27b'}))
 
+    def test_models_of_30b_and_up_need_a_32_gb_card_and_smaller_ones_a_24_gb_card(self):
+        self.assertEqual(self.plan('cuda', 'gemma3:27b', 'gemma4:26b')[2], worker.CLOUD_LARGE_MODEL_MIN_VRAM_GIB)
+        self.assertEqual(worker.CLOUD_LARGE_MODEL_MIN_VRAM_GIB, 22)
+        self.assertEqual(self.plan('cuda', 'gemma3:27b', 'gemma4:31b')[2], 30)
+        self.assertEqual(self.plan('cuda', 'gemma4:31b', 'gemma4:31b')[2], 30)
+        self.assertEqual(worker.cloud_min_vram_gib(['llama:70b']), 30)
+        self.assertEqual(worker.cloud_min_vram_gib(['gemma4:e4b', 'gemma3:12b']), 22)
+        self.assertEqual(worker.cloud_min_vram_gib(['gemma4:31b-it-q4_K_M']), 30)
+        self.assertEqual(worker.cloud_min_vram_gib(['custom']), 22)
+
     def test_one_model_used_for_both_roles_gets_one_alias(self):
         models, aliases, _ = self.plan('cuda', 'gemma3:27b', 'gemma4:26b', local=('gemma3:12b', 'gemma3:12b'))
         self.assertEqual((models, aliases), (['gemma3:27b', 'gemma3:27b'], {'gemma3:12b': 'gemma3:27b'}))

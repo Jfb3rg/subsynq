@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.225
+
+- **Lägsta VRAM för stora moln-modeller följer modellstorleken.** Modeller upp till cirka 27B (till exempel `gemma3:27b`, `gemma4:26b`) kräver en hyrd server med minst 22 GiB VRAM (ett 24 GB-kort). Från 30B (till exempel `gemma4:31b`) krävs minst 30 GiB (ett 32 GB-kort, till exempel RTX 5090), eftersom vikterna ensamma är 20 GB och Whisper och Qwen ligger kvar i minnet. Den hyrda servern vägrar starta på mindre.
+
 ## 0.8.224
 
 - **Större Gemma-modeller bara på hyrda NVIDIA-servrar (valfritt, av som standard).** Nya variabler `SUBSYNQ_CLOUD_TRANSLATION_MODEL` och `SUBSYNQ_CLOUD_REVIEW_MODEL` (till exempel `gemma3:27b` och `gemma4:26b`) gör att den hyrda servern hämtar och kör dem, medan hemservern aldrig hämtar dem. Workern frågar fortfarande efter sina vanliga modellnamn; gatewayn på den hyrda servern byter namn (`SUBSYNQ_CLOUD_MODEL_ALIASES`) och kräver minst 22 GiB VRAM. CPU-hyra påverkas inte, och tomt betyder som förut. Variablerna finns som valfria fält i mallen `subsynq-worker`. Provat på en hyrd RTX 4090: hela kedjan klar på cirka 16 minuter inklusive uppstart och nedladdning; VRAM-toppen blev 23,2 av 24 GiB, alltså ett 24 GB-kort är på gränsen.

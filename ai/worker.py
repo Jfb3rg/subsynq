@@ -93,6 +93,7 @@ REVIEW_MODEL_NAME = os.environ.get('SUBSYNQ_REVIEW_MODEL') or model_manager.conf
 CLOUD_TRANSLATION_MODEL = os.environ.get('SUBSYNQ_CLOUD_TRANSLATION_MODEL', '').strip()
 CLOUD_REVIEW_MODEL = os.environ.get('SUBSYNQ_CLOUD_REVIEW_MODEL', '').strip()
 CLOUD_LARGE_MODEL_MIN_VRAM_GIB = 22      # a 24 GB card; the rented server refuses to start on less
+CLOUD_HUGE_MODEL_MIN_VRAM_GIB = 30       # a 32 GB card, for models of 30B and up
 
 
 def cloud_model_plan(mode):
@@ -104,7 +105,15 @@ def cloud_model_plan(mode):
         review = translation
     aliases = {local: remote for local, remote in ((MODEL_NAME, translation), (REVIEW_MODEL_NAME, review))
                if local != remote}
-    return [translation, review], aliases, (CLOUD_LARGE_MODEL_MIN_VRAM_GIB if aliases else None)
+    return [translation, review], aliases, (cloud_min_vram_gib([translation, review]) if aliases else None)
+
+
+def cloud_min_vram_gib(models):
+    """Lowest VRAM the rented server must have: a 24 GB card for models up to ~27B, a 32 GB card from ~30B
+    (their weights alone are 20 GB; Whisper and Qwen stay in memory next to them)."""
+    sizes = [float(match.group(1)) for name in models
+             for match in [re.search(r':(\d+(?:\.\d+)?)b(?![a-z0-9])', str(name))] if match]
+    return CLOUD_HUGE_MODEL_MIN_VRAM_GIB if sizes and max(sizes) >= 30 else CLOUD_LARGE_MODEL_MIN_VRAM_GIB
 
 
 FOCUSED_REVIEW =os.environ.get('SUBSYNQ_FOCUSED_REVIEW', '0') == '1'
