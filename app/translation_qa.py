@@ -177,3 +177,24 @@ def quote_is_only_names(quote, forms):
     """True when every word of the quote is a name according to `forms`."""
     words = re.findall(r'[^\W\d_]+', str(quote))
     return bool(words) and all(name_key(word) in forms for word in words)
+
+
+# Words that mark a row as certainly not Swedish: a row is only kept as spoken when the language model reads it as
+# Swedish AND none of these appear in it (a second opinion over a model that can be wrong on very short rows).
+FOREIGN_VETO_MARKERS = UNTRANSLATED_MARKERS | {
+    'ich', 'und', 'nicht', 'ist', 'der', 'die', 'das', 'mein', 'ein', 'eine', 'wir', 'sie', 'mit', 'auf', 'nein',
+}
+
+
+def swedish_rows_to_keep(batch, languages):
+    """Ids of rows that are already Swedish: the language model said `sv` and no foreign marker word is present.
+
+    `languages` maps id -> language code. Rows the model did not classify, or called anything else, are translated.
+    """
+    kept = set()
+    for row in batch:
+        language = str(languages.get(row['id'], '')).strip().lower()
+        words = re.findall(r"[^\W\d_]+", str(row.get('source', '')).casefold(), flags=re.UNICODE)
+        if language == 'sv' and words and not FOREIGN_VETO_MARKERS.intersection(words):
+            kept.add(row['id'])
+    return kept

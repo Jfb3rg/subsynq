@@ -3,6 +3,8 @@ import json
 import math
 from html import escape
 
+from cloud_market import VRAM_BAND_LABELS, VRAM_BANDS, normalize_vram_bands
+
 
 DEFAULT_PROFILE = {
     'provider': 'vast', 'gpu': 'RTX 5060 Ti', 'mode': 'test',
@@ -117,8 +119,10 @@ def render_cloud_cost(profile, token, saved=False):
     )
 
 
-def render_cloud_market(provider, connected, result, token, notice='', gpu_query=''):
+def render_cloud_market(provider, connected, result, token, notice='', gpu_query='', vram_bands=()):
     """Render only offers returned by the selected provider's current API response."""
+    vram_bands = normalize_vram_bands(vram_bands)
+    vram_hidden = ''.join(f'<input type="hidden" name="vram" value="{band}">' for band in vram_bands)
     if provider not in ('vast', 'runpod'):
         provider = 'vast'
     label = 'Vast.ai' if provider == 'vast' else 'Runpod'
@@ -148,16 +152,28 @@ def render_cloud_market(provider, connected, result, token, notice='', gpu_query
         '<button class="small-button danger" type="submit">Ta bort nyckel</button></form>'
     ) if connected else ''
     offers = result.get('offers') or []
-    search = (
-        '<form action="/settings/cloud" method="get">'
-        '<input type="hidden" name="provider" value="vast">'
+    vram_boxes = ''.join(
+        f'<label class="vram-choice"><input type="checkbox" name="vram" value="{key}"'
+        f'{" checked" if key in vram_bands else ""} onchange="this.form.submit()"> '
+        f'{VRAM_BAND_LABELS[key]}</label>' for key, _low, _high in VRAM_BANDS)
+    name_search = (
         '<label for="gpu-query">Sök exakt GPU-modell hos Vast.ai</label>'
         f'<input id="gpu-query" name="gpu" value="{escape(gpu_query, quote=True)}" '
         'placeholder="t.ex. RTX 5060 Ti" maxlength="80">'
-        '<button type="submit">Sök GPU</button></form>'
-        '<p class="muted">Tom sökning visar ett urval av de billigaste en-GPU-erbjudandena. '
-        'Sök på modell för att hitta även mindre vanliga GPU:er.</p>'
     ) if provider == 'vast' else ''
+    search = (
+        '<form action="/settings/cloud" method="get" class="vram-filter">'
+        f'<input type="hidden" name="provider" value="{provider}">'
+        + name_search +
+        '<fieldset><legend>Visa bara GPU med så här mycket minne</legend>' + vram_boxes + '</fieldset>'
+        f'<button type="submit">{"Sök GPU" if provider == "vast" else "Visa"}</button></form>'
+        '<p class="muted">Ingen ruta ikryssad visar alla storlekar. 16 GB omfattar även 20 GB-kort, '
+        '24 GB är 23–30 GB, 32 GB är 31–32 GB och över 32 GB är 40 GB och uppåt. '
+        + ('Tom sökning visar ett urval av de billigaste en-GPU-erbjudandena; '
+           'sök på modell för att hitta även mindre vanliga GPU:er.' if provider == 'vast' else '')
+        + '</p>'
+    )
+    chosen_text = ', '.join(VRAM_BAND_LABELS[key] for key in vram_bands)
     if result.get('error'):
         catalog_html = f'<p class="job-message">{escape(result["error"])}</p>'
     elif offers:
@@ -168,21 +184,24 @@ def render_cloud_market(provider, connected, result, token, notice='', gpu_query
             for item in offers)
         catalog_html = (
             f'<p class="muted">Hämtat {escape(result.get("fetched_at") or "")}. '
+            + (f'Visar bara {chosen_text} ({len(offers)} st). ' if vram_bands else '') +
             'Visade priser kan ändras utan förvarning; kontrollera hos leverantören innan köp.</p>'
             f'<form action="/cloud-offer" method="post"><input type="hidden" name="token" value="{escape(token, quote=True)}">'
             f'<input type="hidden" name="provider" value="{provider}">'
-            f'<input type="hidden" name="gpu_query" value="{escape(gpu_query, quote=True)}">'
+            f'<input type="hidden" name="gpu_query" value="{escape(gpu_query, quote=True)}">{vram_hidden}'
             f'<label for="live-offer">Aktuellt erbjudande från {label}</label>'
             f'<select id="live-offer" name="offer_id">{options}</select>'
             '<button type="submit">Använd priset i min kostnadsplan</button></form>'
             '<p class="muted">Det väljer bara ett prisunderlag. Det hyr, startar eller överför inget.</p>'
         )
     else:
-        catalog_html = '<p class="muted">Inga lediga en-GPU-erbjudanden med pris hittades just nu.</p>'
+        catalog_html = ('<p class="muted">Inga lediga en-GPU-erbjudanden med pris hittades just nu'
+                        + (f' med minnesstorlek {chosen_text}. Prova en annan storlek eller ta bort filtret.</p>'
+                           if vram_bands else '.</p>'))
     refresh = (
         f'<form action="/cloud-refresh" method="post"><input type="hidden" name="token" value="{escape(token, quote=True)}">'
         f'<input type="hidden" name="provider" value="{provider}">'
-        f'<input type="hidden" name="gpu_query" value="{escape(gpu_query, quote=True)}">'
+        f'<input type="hidden" name="gpu_query" value="{escape(gpu_query, quote=True)}">{vram_hidden}'
         '<button class="small-button" type="submit">Hämta aktuella erbjudanden</button></form>'
     )
     return (

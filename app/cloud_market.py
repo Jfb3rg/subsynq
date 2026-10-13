@@ -84,6 +84,40 @@ def normalize_gpu_query(value):
     return name
 
 
+# Memory classes the market page can filter on, in MiB (what both providers
+# report): a "16 GB" card is 16 or 20 GB, "24 GB" is 24 GB (a 23 GB card is
+# near enough for the large Gemma models, see CLOUD_AUTO_MODEL_TIERS), "32 GB"
+# is 32 GB, and "over 32 GB" is 40 GB and up.
+VRAM_BANDS = (('16', 14848, 23552), ('24', 23552, 31744),
+              ('32', 31744, 33280), ('over32', 33280, None))
+VRAM_BAND_LABELS = {'16': '16 GB', '24': '24 GB', '32': '32 GB', 'over32': 'över 32 GB'}
+
+
+def normalize_vram_bands(values):
+    """The known classes in canonical order; anything else is ignored."""
+    wanted = {str(value).strip() for value in (values or ())}
+    return tuple(key for key, _low, _high in VRAM_BANDS if key in wanted)
+
+
+def vram_request_range(bands):
+    """Widest MiB range covering every chosen class, as (low, high or None)."""
+    chosen = [(low, high) for key, low, high in VRAM_BANDS if key in bands]
+    if not chosen:
+        return None
+    return (min(low for low, _high in chosen),
+            None if any(high is None for _low, high in chosen) else max(high for _low, high in chosen))
+
+
+def vram_matches(offer, bands):
+    if not bands:
+        return True
+    megabytes = offer.get('vram_mb')
+    if not isinstance(megabytes, (int, float)):
+        return False
+    return any(low <= megabytes and (high is None or megabytes < high)
+               for key, low, high in VRAM_BANDS if key in bands)
+
+
 def _read_json(request):
     with urlopen(request, timeout=10) as response:
         return json.load(response)
@@ -111,8 +145,10 @@ def normalize_vast(payload):
         if offer.get('rentable') is False or offer.get('rented') is True or offer.get('num_gpus', 1) != 1:
             continue
         vram = offer.get('gpu_ram')
+        known = isinstance(vram, (int, float)) and vram > 0
         result.append({'id': str(offer_id), 'gpu': gpu, 'price': price,
-                       'vram_gb': round(vram / 1024, 1) if isinstance(vram, (int, float)) and vram > 0 else None,
+                       'vram_gb': round(vram / 1024, 1) if known else None,
+                       'vram_mb': vram if known else None,
                        'detail': f"{offer.get('gpu_ram', 0) / 1024:.0f} GB VRAM" if isinstance(offer.get('gpu_ram'), (int, float)) else ''})
     return sorted(result, key=lambda item: (item['price'], item['gpu']))
 
@@ -240,8 +276,10 @@ def normalize_runpod(payload):
         display_name = gpu.get('displayName') or gpu_id
         if not isinstance(display_name, str) or not 1 <= len(display_name) <= 80:
             continue
-        result.append({'id': gpu_id, 'gpu': display_name,
-                       'price': price, 'detail': f"{gpu.get('memoryInGb')} GB VRAM · {price_info.get('stockStatus') or 'lager okänt'}"})
+        memory = gpu.get('memoryInGb')
+        result.append({'id': gpu_id, 'gpu': display_name, 'price': price,
+                       'vram_mb': memory * 1024 if isinstance(memory, (int, float)) and memory > 0 else None,
+                       'detail': f"{gpu.get('memoryInGb')} GB VRAM · {price_info.get('stockStatus') or 'lager okänt'}"})
     return sorted(result, key=lambda item: (item['price'], item['gpu']))
 
 
@@ -302,13 +340,24 @@ def fetch_runpod_chain_offers(key, mode, reader=_read_json):
     return normalize_runpod_chain_gpus(reader(request))
 
 
-def fetch_offers(provider, key='', reader=_read_json, gpu_query=''):
+def fetch_offers(provider, key='', reader=_read_json, gpu_query='', vram_bands=()):
+    vram_bands = normalize_vram_bands(vram_bands)
+    offers = _fetch_offers(provider, key, reader, gpu_query, vram_bands)
+    return [offer for offer in offers if vram_matches(offer, vram_bands)]
+
+
+def _fetch_offers(provider, key, reader, gpu_query, vram_bands):
     if provider == 'vast':
         query = {'limit': 1000, 'type': 'on-demand', 'verified': {'eq': True},
                  'rentable': {'eq': True}, 'rented': {'eq': False},
                  'num_gpus': {'eq': 1}, 'order': [['dph_total', 'asc']]}
         if gpu_query:
             query['gpu_name'] = {'eq': normalize_gpu_query(gpu_query)}
+        # Ask Vast for the chosen sizes so the 1000 cheapest offers are not
+        # all small cards; the exact classes are enforced again in fetch_offers.
+        span = vram_request_range(vram_bands)
+        if span:
+            query['gpu_ram'] = {'gte': span[0]} if span[1] is None else {'gte': span[0], 'lt': span[1]}
         headers = {'Content-Type': 'application/json', 'User-Agent': 'SubSynq/0.8.87'}
         if key:
             headers['Authorization'] = f'Bearer {key}'
@@ -331,16 +380,17 @@ def fetch_offers(provider, key='', reader=_read_json, gpu_query=''):
     raise ValueError('Ogiltig leverantör.')
 
 
-def catalog(config, provider, *, force=False, gpu_query=''):
+def catalog(config, provider, *, force=False, gpu_query='', vram_bands=()):
     gpu_query = normalize_gpu_query(gpu_query) if provider == 'vast' else ''
+    vram_bands = normalize_vram_bands(vram_bands)
     now = time.monotonic()
-    cache_key = (provider, gpu_query)
+    cache_key = (provider, gpu_query, vram_bands)
     with _lock:
         cached = _cache.get(cache_key)
         if not force and cached and now - cached['at'] < _MAX_AGE:
             return cached['result']
     try:
-        offers = fetch_offers(provider, gpu_query=gpu_query)
+        offers = fetch_offers(provider, gpu_query=gpu_query, vram_bands=vram_bands)
         result = {'offers': offers, 'fetched_at': datetime.now(timezone.utc).isoformat(), 'error': None}
     except HTTPError as error:
         message = ('Leverantörens katalog nekade åtkomst.' if error.code in (401, 403)

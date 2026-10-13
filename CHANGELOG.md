@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.232
+
+- **Filtrera moln-GPU på minnesstorlek.** På sidan Moln-GPU (Inställningar) finns nu fyra rutor – 16 GB, 24 GB, 32 GB och över 32 GB – för både Vast.ai och Runpod. Kryssa i en eller flera så visas bara GPU:er med den storleken (ingen ruta ikryssad visar alla); listan uppdateras direkt när du kryssar. Valet följer med när du hämtar om listan och när du använder ett pris i kostnadsplanen. Hos Vast.ai ställs frågan direkt på storleken, så de 1 000 billigaste inte längre mest är små kort (utan filter visades bara kort på 6–11 GB). 16 GB omfattar även 20 GB-kort, 24 GB är 23–30 GB, 32 GB är 31–32 GB och över 32 GB är 40 GB och uppåt.
+- Intern städning utan ändrat beteende: `swedish_rows_to_keep` och listan över främmande ord ligger nu i `app/translation_qa.py` i stället för i `ai/worker.py`.
+
 ## 0.8.231
 
 - **Varje serie får sin egen rubrik.** I ett bibliotek som `/tv/Animation/Gummi Bears/Season 1/…` eller `/tv/Tv Shows/Grimm/Season 2/…` blev kategorimappen ("Animation", "Tv Shows") rubrik och alla seriers säsonger lades ihop under den. Nu läses serien ur mappen ovanför säsongsmappen (även när varje avsnitt ligger i en egen mapp), och kategorin visas som liten text bredvid ("Animation · 2 säsonger · 67 avsnitt"). Samma serienamn i två kategorier blir två grupper. Fungerar direkt på redan sparade skanningar, utan ny skanning.

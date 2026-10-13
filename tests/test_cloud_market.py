@@ -1,11 +1,13 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
+import cloud_market
 from cloud_cost import render_cloud_market
 from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, fetch_offers, fetch_vast_chain_gpu_offers,
-                          load_keys, normalize_gpu_query, normalize_runpod,
+                          load_keys, normalize_gpu_query, normalize_runpod, normalize_vram_bands,
                           normalize_vast, remove_key, save_key)
 from server import jobs_signature, library_return_path, render_queue_content
 
@@ -165,5 +167,115 @@ class VastChainGpuOfferTests(unittest.TestCase):
             fetch_vast_chain_gpu_offers('key', 'RTX; DROP', lambda request: {'offers': []})
 
 
-if __name__ == '__main__':
+
+class VramFilterTests(unittest.TestCase):
+    def offers(self):
+        return {'offers': [
+            {'id': 1, 'gpu_name': 'RTX 5060 Ti', 'dph_total': .20, 'gpu_ram': 16311},
+            {'id': 2, 'gpu_name': 'RTX 4000 Ada', 'dph_total': .25, 'gpu_ram': 20475},
+            {'id': 3, 'gpu_name': 'RTX 3090', 'dph_total': .30, 'gpu_ram': 24576},
+            {'id': 4, 'gpu_name': 'RTX 4090', 'dph_total': .40, 'gpu_ram': 24564},
+            {'id': 5, 'gpu_name': 'RTX 5090', 'dph_total': .60, 'gpu_ram': 32607},
+            {'id': 6, 'gpu_name': 'Tesla V100', 'dph_total': .65, 'gpu_ram': 32768},
+            {'id': 7, 'gpu_name': 'A100', 'dph_total': 1.1, 'gpu_ram': 40960},
+            {'id': 8, 'gpu_name': 'RTX A6000', 'dph_total': 1.2, 'gpu_ram': 49140},
+            {'id': 9, 'gpu_name': 'RTX 3060', 'dph_total': .10, 'gpu_ram': 12288},
+            {'id': 10, 'gpu_name': 'Mystery', 'dph_total': .15},
+        ]}
+
+    def ids(self, bands):
+        return [offer['id'] for offer in fetch_offers('vast', reader=lambda request: self.offers(), vram_bands=bands)]
+
+    def test_unknown_choices_are_ignored_and_order_is_fixed(self):
+        self.assertEqual(normalize_vram_bands(['over32', '16', 'nonsense', '16', ' 24 ']), ('16', '24', 'over32'))
+        self.assertEqual(normalize_vram_bands(None), ())
+        self.assertEqual(normalize_vram_bands(['<script>']), ())
+
+    def test_each_class_picks_the_cards_sold_in_that_size(self):
+        self.assertEqual(self.ids(('16',)), ['1', '2'])
+        self.assertEqual(self.ids(('24',)), ['3', '4'])
+        self.assertEqual(self.ids(('32',)), ['5', '6'])
+        self.assertEqual(self.ids(('over32',)), ['7', '8'])
+
+    def test_several_classes_are_added_together_and_none_means_everything(self):
+        self.assertEqual(self.ids(('16', '32')), ['1', '2', '5', '6'])
+        self.assertEqual(len(self.ids(())), 10, 'no box ticked shows every offer, also those without a known size')
+
+    def test_offers_with_unknown_memory_are_hidden_when_a_size_is_chosen(self):
+        self.assertNotIn('10', self.ids(('16', '24', '32', 'over32')))
+
+    def test_vast_is_asked_for_the_chosen_sizes_so_the_cheapest_1000_are_not_all_small_cards(self):
+        asked = []
+
+        def reader(request):
+            asked.append(json.loads(request.data).get('gpu_ram'))
+            return {'offers': []}
+        for bands in ((), ('24',), ('16', '32'), ('over32',), ('16', '24', '32', 'over32')):
+            fetch_offers('vast', reader=reader, vram_bands=bands)
+        self.assertEqual(asked, [None, {'gte': 23552, 'lt': 31744}, {'gte': 14848, 'lt': 33280},
+                                 {'gte': 33280}, {'gte': 14848}])
+
+    def test_the_classes_are_enforced_locally_even_if_the_server_ignores_the_range(self):
+        # The reader returns every card whatever was asked.
+        self.assertEqual(self.ids(('24',)), ['3', '4'])
+
+    def test_runpod_is_filtered_on_its_reported_memory(self):
+        payload = {'data': {'gpuTypes': [
+            {'id': 'A', 'displayName': 'RTX 4090', 'memoryInGb': 24,
+             'lowestPrice': {'stockStatus': 'High', 'uninterruptablePrice': .7, 'availableGpuCounts': [1]}},
+            {'id': 'B', 'displayName': 'RTX A4000', 'memoryInGb': 16,
+             'lowestPrice': {'stockStatus': 'High', 'uninterruptablePrice': .3, 'availableGpuCounts': [1]}},
+            {'id': 'C', 'displayName': 'H100', 'memoryInGb': 80,
+             'lowestPrice': {'stockStatus': 'Low', 'uninterruptablePrice': 2.5, 'availableGpuCounts': [1]}},
+        ]}}
+        got = lambda bands: [offer['id'] for offer in fetch_offers('runpod', reader=lambda request: payload, vram_bands=bands)]
+        self.assertEqual(got(('24',)), ['A'])
+        self.assertEqual(got(('16', 'over32')), ['B', 'C'])
+        self.assertEqual(got(()), ['B', 'A', 'C'])
+
+    def test_the_catalog_caches_each_choice_separately(self):
+        calls = []
+
+        def fake_fetch(provider, key='', reader=None, gpu_query='', vram_bands=()):
+            calls.append(vram_bands)
+            return []
+        cloud_market._cache.clear()
+        with patch.object(cloud_market, 'fetch_offers', fake_fetch):
+            cloud_market.catalog('config', 'vast', vram_bands=('24',))
+            cloud_market.catalog('config', 'vast', vram_bands=('24',))
+            cloud_market.catalog('config', 'vast', vram_bands=('24', '32'))
+            cloud_market.catalog('config', 'vast', vram_bands=['bogus'])
+            cloud_market.catalog('config', 'vast')
+        self.assertEqual(calls, [('24',), ('24', '32'), ()], 'repeated and empty/unknown choices reuse the cache')
+        cloud_market._cache.clear()
+
+    def render(self, provider='vast', bands=(), offers=None):
+        result = {'offers': offers if offers is not None else [], 'fetched_at': 'now', 'error': None}
+        return render_cloud_market(provider, False, result, 'token', '', '', bands)
+
+    def test_the_page_shows_four_boxes_and_marks_the_chosen_ones(self):
+        page = self.render(bands=('24', 'over32'))
+        for label in ('16 GB', '24 GB', '32 GB', 'över 32 GB'):
+            self.assertIn(label, page)
+        self.assertEqual(page.count('type="checkbox" name="vram"'), 4)
+        self.assertIn('value="24" checked', page)
+        self.assertIn('value="over32" checked', page)
+        self.assertNotIn('value="16" checked', page)
+        self.assertIn('Inga lediga en-GPU-erbjudanden', page)
+        self.assertIn('24 GB, över 32 GB', page, 'the empty message names the chosen sizes')
+
+    def test_the_boxes_are_also_offered_for_runpod_without_a_name_search(self):
+        page = self.render('runpod')
+        self.assertIn('name="vram"', page)
+        self.assertNotIn('id="gpu-query"', page)
+
+    def test_the_choice_follows_the_refresh_and_use_price_forms(self):
+        offers = [{'id': '1', 'gpu': 'RTX 4090', 'price': .4, 'detail': '24 GB VRAM', 'vram_mb': 24576}]
+        page = self.render(bands=('24',), offers=offers)
+        self.assertEqual(page.count('<input type="hidden" name="vram" value="24">'), 2)
+        self.assertIn('Visar bara 24 GB (1 st)', page)
+        self.assertEqual(self.render(offers=offers).count('type="hidden" name="vram"'), 0)
+
+
+if __name__ == "__main__":
     unittest.main()

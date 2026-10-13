@@ -19,7 +19,8 @@ from probe import probe_media
 from presentation import format_file_size, render_tracks
 from hardware import allowed_preferences, load_hardware, render_hardware
 from cloud_cost import load_profile, parse_profile, render_cloud_cost, render_cloud_market
-from cloud_market import PROVIDERS, catalog, load_keys, save_key, remove_key, normalize_gpu_query
+from cloud_market import (PROVIDERS, catalog, load_keys, save_key, remove_key, normalize_gpu_query,
+                          normalize_vram_bands)
 from jobs import (ACTIVE, enqueue_delete, enqueue_job, enqueue_restart, initialize_jobs,
                   latest_events, latest_jobs, recent_events, request_cancel)
 from i18n import LANGUAGES, t
@@ -28,7 +29,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.231"
+VERSION = "0.8.232"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1416,12 +1417,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 gpu_query = normalize_gpu_query(form.get('gpu_query', [''])[0]) if provider == 'vast' else ''
+                vram_bands = normalize_vram_bands(form.get('vram', []))
                 if self.path == '/cloud-key':
                     save_key(CONFIG, provider, form.get('api_key', [''])[0].strip())
                 elif self.path == '/cloud-key/remove':
                     remove_key(CONFIG, provider)
                 elif self.path == '/cloud-refresh':
-                    catalog(CONFIG, provider, force=True, gpu_query=gpu_query)
+                    catalog(CONFIG, provider, force=True, gpu_query=gpu_query, vram_bands=vram_bands)
                 else:
                     offer_id = form.get('offer_id', [''])[0]
                     # Must match the exact list the <select> was just rendered
@@ -1429,7 +1431,7 @@ class Handler(BaseHTTPRequestHandler):
                     # refetch here raced the marketplace itself (offers can
                     # be taken by someone else within seconds) and made a
                     # valid selection look like it "no longer exists".
-                    result = catalog(CONFIG, provider, gpu_query=gpu_query)
+                    result = catalog(CONFIG, provider, gpu_query=gpu_query, vram_bands=vram_bands)
                     offer = next((item for item in result['offers'] if item['id'] == offer_id), None)
                     if offer is None:
                         self.respond(409, 'text/plain', 'Erbjudandet finns inte längre. Uppdatera listan och välj igen.')
@@ -1449,7 +1451,8 @@ class Handler(BaseHTTPRequestHandler):
                      '/cloud-refresh': 'refreshed', '/cloud-offer': 'offer'}[self.path]
             self.send_response(303)
             self.send_header('Location', f'/settings/cloud?provider={provider}&saved={event}'
-                             + (f'&gpu={quote(gpu_query, safe="")}' if gpu_query else ''))
+                             + (f'&gpu={quote(gpu_query, safe="")}' if gpu_query else '')
+                             + ''.join(f'&vram={band}' for band in vram_bands))
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -2244,12 +2247,14 @@ class Handler(BaseHTTPRequestHandler):
                     gpu_query = normalize_gpu_query(query.get('gpu', [''])[0]) if provider == 'vast' else ''
                 except ValueError:
                     gpu_query = ''
+                vram_bands = normalize_vram_bands(query.get('vram', []))
                 saved_event = query.get('saved', [''])[0]
                 notices = {'key': 'API-nyckeln sparades lokalt.', 'removed': 'API-nyckeln togs bort.',
                            'refreshed': 'Listan har uppdaterats.', 'offer': 'Aktuellt pris kopierades till din kostnadsplan.'}
                 content = (render_cloud_market(provider, provider in load_keys(CONFIG),
-                                                 catalog(CONFIG, provider, gpu_query=gpu_query), SCAN_TOKEN,
-                                                 notices.get(saved_event, ''), gpu_query)
+                                                 catalog(CONFIG, provider, gpu_query=gpu_query,
+                                                         vram_bands=vram_bands), SCAN_TOKEN,
+                                                 notices.get(saved_event, ''), gpu_query, vram_bands)
                            + render_cloud_cost(data['cloud_cost_profile'], SCAN_TOKEN,
                                                saved_event == 'cloud'))
                 page_title, active_nav = t("page_title_settings_cloud", data["ui_language"]), "settings:cloud"

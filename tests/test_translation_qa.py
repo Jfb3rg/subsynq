@@ -3,10 +3,11 @@ import unittest
 
 sys.path.insert(0, '/app')
 from asr_consensus import normalized
-from translation_qa import (dominant_non_latin_script, filename_language_hint,
+from translation_qa import (FOREIGN_VETO_MARKERS, UNTRANSLATED_MARKERS, dominant_non_latin_script,
+                            filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
                             looks_untranslated, restore_id_order,
-                            whisper_language_label)
+                            swedish_rows_to_keep, whisper_language_label)
 
 
 class TranslationQaTests(unittest.TestCase):
@@ -107,3 +108,20 @@ class TranslationQaTests(unittest.TestCase):
     def test_rejects_empty_translation_for_targeted_retry(self):
         with self.assertRaisesRegex(ValueError, 'tom undertextrad'):
             restore_id_order([10], [{'id': 10, 'sv': '   '}])
+
+
+class SwedishRowsToKeepTests(unittest.TestCase):
+    def test_the_foreign_word_list_extends_the_untranslated_one(self):
+        self.assertLess(UNTRANSLATED_MARKERS, FOREIGN_VETO_MARKERS)
+        self.assertTrue({'ich', 'nicht', 'und'} <= FOREIGN_VETO_MARKERS)
+
+    def test_a_row_is_kept_only_when_the_model_says_swedish_and_no_foreign_word_is_present(self):
+        batch = [{'id': 1, 'source': 'Vad fan?'}, {'id': 2, 'source': 'Ich bin hier'},
+                 {'id': 3, 'source': 'Hej då'}, {'id': 4, 'source': '...'}, {'id': 5, 'source': 'You are late'}]
+        languages = {1: 'sv', 2: 'sv', 3: 'da', 4: 'sv', 5: 'sv'}
+        self.assertEqual(swedish_rows_to_keep(batch, languages), {1})
+
+    def test_unclassified_rows_and_odd_codes_are_translated_and_the_code_is_read_leniently(self):
+        batch = [{'id': 1, 'source': 'Vad fan?'}, {'id': 2, 'source': 'Tack så mycket'}]
+        self.assertEqual(swedish_rows_to_keep(batch, {}), set())
+        self.assertEqual(swedish_rows_to_keep(batch, {1: ' SV ', 2: None}), {1})
