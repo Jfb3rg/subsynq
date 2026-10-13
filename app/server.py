@@ -14,7 +14,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit, parse_qs, quote
-from library import VIDEO_EXTENSIONS, has_embedded_swedish_subtitle, scan_library, subtitle_coverage
+from library import SEASON_FOLDER, VIDEO_EXTENSIONS, has_embedded_swedish_subtitle, scan_library, subtitle_coverage
 from probe import probe_media
 from presentation import format_file_size, render_tracks
 from hardware import allowed_preferences, load_hardware, render_hardware
@@ -28,7 +28,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.230"
+VERSION = "0.8.231"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -494,6 +494,82 @@ def render_bulk_bar(selected, token, lang="sv"):
         f"<button type='button' class='small-button' data-bulk-no>{escape(t('bulk_ask_no', lang))}</button></p></form>")
 
 
+LIBRARY_ROOT_NAMES = ("tv", "movies", "extra")
+EXTRAS_FOLDER = re.compile(r"(specials?|extras?|featurettes?|bonus|behind the scenes|deleted scenes|trailers?)\b", re.IGNORECASE)
+
+
+def series_identity(item):
+    """(series, category) from the folder layout, so /tv/Animation/Gummi Bears/Season 1/x.mkv is the series
+    "Gummi Bears" in the category "Animation" (a scan saved earlier named the series after the category folder).
+    The folder above the LAST season folder is the series (an episode may sit in a folder of its own inside the season).
+    Without a season folder the scan's choice stands, unless it named the category folder."""
+    parts = Path(str(item.get("path") or "")).parts
+    folders = list(parts[2:-1]) if len(parts) > 3 and parts[1] in LIBRARY_ROOT_NAMES else []
+    stored = item.get("series") or ""
+    season_index = max((index for index, folder in enumerate(folders) if SEASON_FOLDER.search(folder)), default=None)
+    if season_index is not None and season_index >= 1:
+        series_folders = folders[:season_index]
+    elif len(folders) >= 2 and stored == folders[0]:
+        series_folders = list(folders)
+        while len(series_folders) > 1 and EXTRAS_FOLDER.match(series_folders[-1]):
+            series_folders.pop()
+        if len(series_folders) == 1:
+            return stored, ""
+    else:
+        return stored, ""
+    return series_folders[-1], " / ".join(series_folders[:-1])
+
+
+LAZY_SERIES_MIN_EPISODES = 300      # bigger libraries load a series' seasons when the series is opened
+
+
+def group_series(items, lang="sv"):
+    grouped = {}
+    for item in items:
+        series, category = series_identity(item)
+        grouped.setdefault((series or t("unknown_series", lang), category), {}).setdefault(
+            item.get("season") or t("no_season", lang), []).append(item)
+    return grouped
+
+
+def series_group_name(series, category):
+    return f"{category} / {series}" if category else series
+
+
+def render_seasons(group_name, seasons, token, jobs, ignore_existing, lang):
+    """The season blocks (with their episode rows) of ONE series."""
+    output = []
+    for season in sorted(seasons, key=lambda label: (
+            seasons[label][0].get("season_number") is None,
+            seasons[label][0].get("season_number") or 0, label.casefold())):
+        episodes = sorted(seasons[season], key=lambda item: (
+            item.get("episode_number") is None, item.get("episode_number") or 0,
+            item["name"].casefold()))
+        missing = sum(needs_swedish_subtitle(item, ignore_existing) for item in episodes)
+        missing_text = (f" · {missing} {t('missing_subtitle_suffix', lang)}" if missing
+                        else f" · {t('all_have_subtitle', lang)}")
+        rows = "".join(render_media_row(item, nested=True, token=token, job=jobs.get(item['path']),
+                                          ignore_existing=ignore_existing, lang=lang) for item in episodes)
+        season_key = escape(f"{group_name}␟{season}", quote=True)
+        output.append(
+            f"<details class='season-group' data-season='{season_key}'><summary>"
+            f"<span class='folder-icon' aria-hidden='true'></span> "
+            f"{escape(season)} <small>{len(episodes)} {escape(t('episodes_count', lang))}{missing_text}</small></summary>"
+            f"<table><thead><tr><th>{escape(t('table_header_episode', lang))}</th>"
+            f"<th>{escape(t('table_header_subtitle', lang))}</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></details>")
+    return "".join(output)
+
+
+def render_series_body(items, group_name, token="", jobs=None, ignore_existing=False, lang="sv"):
+    """The seasons of one series for the lazily loaded part of a big library, or None when there is no such series."""
+    jobs = jobs or {}
+    for (series, category), seasons in group_series(items, lang).items():
+        if series_group_name(series, category) == group_name:
+            return render_seasons(group_name, seasons, token, jobs, ignore_existing, lang)
+    return None
+
+
 def render_library(items, selected, token="", jobs=None, ignore_existing=False, lang="sv"):
     jobs = jobs or {}
     if selected != "episode":
@@ -502,45 +578,28 @@ def render_library(items, selected, token="", jobs=None, ignore_existing=False, 
         return (f"<table><thead><tr><th>{escape(t('table_header_file', lang))}</th>"
                 f"<th>{escape(t('table_header_subtitle', lang))}</th></tr></thead>"
                 f"<tbody>{rows}</tbody></table>") if rows else f"<p>{escape(t('no_video_files', lang))}</p>"
-    grouped = {}
-    for item in items:
-        grouped.setdefault(item.get("series") or t("unknown_series", lang), {}).setdefault(
-            item.get("season") or t("no_season", lang), []).append(item)
+    grouped = group_series(items, lang)
+    lazy = len(items) > LAZY_SERIES_MIN_EPISODES
     output = []
-    for series in sorted(grouped, key=str.casefold):
-        seasons = grouped[series]
+    for series, category in sorted(grouped, key=lambda key: (key[0].casefold(), key[1].casefold())):
+        seasons = grouped[(series, category)]
         total_episodes = sum(len(episodes) for episodes in seasons.values())
         total_missing = sum(needs_swedish_subtitle(item, ignore_existing) for episodes in seasons.values()
                             for item in episodes)
         series_missing_text = (f" · {total_missing} {t('missing_subtitle_suffix', lang)}" if total_missing
                                else f" · {t('all_have_subtitle', lang)}")
-        series_key = escape(series, quote=True)
+        group_name = series_group_name(series, category)
+        series_key = escape(group_name, quote=True)
+        # A big library would otherwise put thousands of rows in one page; a series then loads its seasons when opened.
+        body = (f"<div class='series-body' data-series-body data-failed='{escape(t('series_load_failed', lang), quote=True)}'><p class='muted'>{escape(t('series_loading', lang))}</p></div>"
+                if lazy else render_seasons(group_name, seasons, token, jobs, ignore_existing, lang))
+        lazy_attribute = " data-lazy='1'" if lazy else ""
         output.append(
-            f"<details class='series-group' data-series='{series_key}'><summary>"
+            f"<details class='series-group' data-series='{series_key}'{lazy_attribute}><summary>"
             f"<span class='folder-icon' aria-hidden='true'></span> "
-            f"<h3>{escape(series)}</h3> <small>{len(seasons)} {escape(t('seasons_count', lang))} · "
-            f"{total_episodes} {escape(t('episodes_count', lang))}{series_missing_text}</small></summary>")
-        for season in sorted(seasons, key=lambda label: (
-                seasons[label][0].get("season_number") is None,
-                seasons[label][0].get("season_number") or 0, label.casefold())):
-            episodes = sorted(seasons[season], key=lambda item: (
-                item.get("episode_number") is None, item.get("episode_number") or 0,
-                item["name"].casefold()))
-            missing = sum(needs_swedish_subtitle(item, ignore_existing) for item in episodes)
-            missing_text = (f" · {missing} {t('missing_subtitle_suffix', lang)}" if missing
-                            else f" · {t('all_have_subtitle', lang)}")
-            rows = "".join(render_media_row(item, nested=True, token=token, job=jobs.get(item['path']),
-                                              ignore_existing=ignore_existing, lang=lang) for item in episodes)
-            season_key = escape(f"{series}\u241f{season}", quote=True)
-            output.append(
-                f"<details class='season-group' data-season='{season_key}'><summary>"
-                f"<span class='folder-icon' aria-hidden='true'></span> "
-                f"{escape(season)} <small>{len(episodes)} {escape(t('episodes_count', lang))}{missing_text}</small></summary>"
-                f"<table><thead><tr><th>{escape(t('table_header_episode', lang))}</th>"
-                f"<th>{escape(t('table_header_subtitle', lang))}</th></tr></thead>"
-                f"<tbody>{rows}</tbody></table></details>"
-            )
-        output.append("</details>")
+            f"<h3>{escape(series)}</h3> <small>{escape(category + ' · ') if category else ''}{len(seasons)} {escape(t('seasons_count', lang))} · "
+            f"{total_episodes} {escape(t('episodes_count', lang))}{series_missing_text}</small></summary>"
+            f"{body}</details>")
     return "".join(output) if output else f"<p>{escape(t('no_episodes', lang))}</p>"
 
 
@@ -2065,6 +2124,25 @@ class Handler(BaseHTTPRequestHandler):
                     f"<p><a href='/subtitles/file?media={file_query}'>"
                     "Öppna eller ladda ner SRT-filen</a></p>"
                     f"<pre>{escape(content)}</pre></html>")
+            self.respond(200, 'text/html', body)
+            return
+        if path == '/library/series':
+            # The seasons of one series, loaded when the series is opened in a big library.
+            group = parse_qs(query_string).get('series', [''])[0]
+            try:
+                data = status()
+                with sqlite3.connect(DATABASE) as db:
+                    saved = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
+                library = json.loads(saved[0]) if saved else {'items': []}
+                jobs = latest_jobs(DATABASE)
+            except (sqlite3.Error, OSError, RuntimeError, ValueError):
+                self.respond(503, 'text/plain', 'Biblioteket kunde inte läsas.')
+                return
+            body = render_series_body([item for item in library['items'] if item.get('kind', 'media') == 'episode'],
+                                      group, SCAN_TOKEN, jobs, data['ignore_existing_subtitle'], data['ui_language'])
+            if body is None:
+                self.respond(404, 'text/plain', 'Serien finns inte i den aktuella skanningen.')
+                return
             self.respond(200, 'text/html', body)
             return
         if path not in ("/", "/library", "/settings", "/settings/theme", "/settings/media", "/settings/cloud", "/settings/security",

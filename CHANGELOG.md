@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.231
+
+- **Varje serie får sin egen rubrik.** I ett bibliotek som `/tv/Animation/Gummi Bears/Season 1/…` eller `/tv/Tv Shows/Grimm/Season 2/…` blev kategorimappen ("Animation", "Tv Shows") rubrik och alla seriers säsonger lades ihop under den. Nu läses serien ur mappen ovanför säsongsmappen (även när varje avsnitt ligger i en egen mapp), och kategorin visas som liten text bredvid ("Animation · 2 säsonger · 67 avsnitt"). Samma serienamn i två kategorier blir två grupper. Fungerar direkt på redan sparade skanningar, utan ny skanning.
+- **Serier-sidan är inte längre seg.** Med 2 200 avsnitt blev sidan 4 MB med nästan 3 000 utfällbara block och 1 750 formulär, och webbläsaren tog lång tid på sig (särskilt vid varje automatisk omladdning). I bibliotek med över 300 avsnitt listas nu bara serierna (cirka 60 kB för 52 serier), och en serie hämtar sina säsonger när den öppnas (`/library/series`, runt 60 ms). Öppna serier och säsonger kommer ihåg sitt läge vid omladdning. "Välj alla saknade" gäller de serier som är öppna.
+
 ## 0.8.230
 
 - **Lugnare högerkolumn i biblioteket.** Statusmärket (till exempel "AI-undertext skapad" eller "Svensk undertext saknas") är nu klickbart. Under det ligger det som tidigare stod öppet på varje rad: åtgärderna Visa undertexten, Skapa om, Ta bort och Kör igen, felmeddelandet från en misslyckad körning (varför den föll), samt vilken hårdvara och vilka modeller som användes. Pågående jobb visar fortfarande förlopp, meddelande och Avbryt direkt, och huvudåtgärden "Skapa svensk AI-undertext" ligger kvar synlig under märket.

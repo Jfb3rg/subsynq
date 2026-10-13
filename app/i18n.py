@@ -397,6 +397,8 @@ STRINGS = {
                    "en": "Scan only this folder when something changed in it. Files are read without being changed, and the track analysis can take a while. Progress is shown at the top of the page."},
     "scan_last": {"sv": "Senaste skanning av {folder}: {when}", "en": "Last scan of {folder}: {when}"},
     "scan_never": {"sv": "Ingen skanning ännu", "en": "No scan yet"},
+    "series_loading": {"sv": "Laddar säsongerna …", "en": "Loading the seasons …"},
+    "series_load_failed": {"sv": "Kunde inte ladda serien. Stäng den och öppna den igen.", "en": "Could not load the series. Close it and open it again."},
     "scan_busy": {"sv": "En skanning pågår redan.", "en": "A scan is already running."},
     "scan_optional_missing": {"sv": "{folder} är inte ansluten. Den är valfri: lägg till den i mallen om du har klipp eller övrigt.",
                               "en": "{folder} is not connected. It is optional: add it in the template if you have clips or other videos."},
