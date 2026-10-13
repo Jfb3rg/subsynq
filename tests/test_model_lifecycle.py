@@ -282,6 +282,10 @@ class ModelLifecycleTests(unittest.TestCase):
             self.assertEqual(worker.transcribe_and_release({}, 'media', model, 'cloud-vast'), ['row'])
 
     def setUp(self):
+        # The language-identification step has its own tests (tests/test_swedish_passthrough.py).
+        stub = patch.object(worker, 'identify_swedish_rows', return_value=set())
+        stub.start()
+        self.addCleanup(stub.stop)
         for state, name, value in ((worker.MODEL_JOB, 'active_model', None),
                                    (worker.MODEL_JOB, 'used', False),
                                    (worker.MODEL_JOB, 'cleanup_pending', None),

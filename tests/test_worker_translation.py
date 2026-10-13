@@ -23,6 +23,12 @@ def comparison_verdict(rows, flags=()):
 
 
 class WorkerTranslationTests(unittest.TestCase):
+    def setUp(self):
+        # The language-identification step has its own tests (tests/test_swedish_passthrough.py).
+        stub = patch.object(worker, 'identify_swedish_rows', return_value=set())
+        stub.start()
+        self.addCleanup(stub.stop)
+
     def test_cpu_translation_releases_between_complete_draft_and_review_requests(self):
         rows = [{'id': i, 'start': i * 2, 'end': i * 2 + 1, 'source': 'Hello.'}
                 for i in range(37)]

@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.229
+
+- **Svenskt tal behålls exakt som det sades.** Översättaren (och granskaren av utkastet) skrev tidigare om rader som redan var på svenska: "Vad fan?" blev "Vad i helvete?", "Snälla, ta en avståndning." blev "Snälla, ta lite avstånd.", och en regel i prompten hjälpte inte. Nu avgör språkmodellen först språket på varje rad (ett kort anrop per 40 rader). Rader som den läser som svenska och som inte innehåller något tydligt främmande ord kopieras oförändrade och går aldrig genom översättningen; övriga rader (tyska, engelska, franska, danska, norska, ljud) översätts som förut. Misslyckas steget används översättningen som förut för alla rader, och det körs bara för svenska undertexter. Provat med riktiga modellen på Shrek-trailern (tyskt tal följt av svenskt): 26 av 43 rader behålls, bland annat alla med svenska ord, medan de tyska och engelska översätts.
+
 ## 0.8.228
 
 - **Automatiken (`auto`) väljer `gemma4:31b` som granskare på kort med minst 32 GB VRAM.** Kombinationen `gemma3:27b` + `gemma4:31b` har körts på en hyrd RTX 5090 (Shrek, 43 repliker, cirka 22 minuter inklusive uppstart; VRAM-toppen 29,8 av 31,8 GiB). Kort med 24–31 GB får som förut `gemma3:27b` + `gemma4:26b`, mindre kort de vanliga modellerna.

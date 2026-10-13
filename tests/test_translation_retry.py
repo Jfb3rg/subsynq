@@ -89,6 +89,12 @@ class TranslateAndReviewTests(unittest.TestCase):
 
 
 class RefusedWordingInThePromptTests(unittest.TestCase):
+    def setUp(self):
+        # The language-identification step has its own tests (tests/test_swedish_passthrough.py).
+        stub = patch.object(worker, 'identify_swedish_rows', return_value=set())
+        stub.start()
+        self.addCleanup(stub.stop)
+
     def test_selective_retry_gets_readonly_neighbors_in_both_requests(self):
         requests = []
         def fake(request):
