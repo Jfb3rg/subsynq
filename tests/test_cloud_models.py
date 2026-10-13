@@ -105,6 +105,51 @@ class WorkerPlanTests(unittest.TestCase):
         models, aliases, _ = self.plan('cuda', 'gemma3:27b', 'gemma4:26b', local=('gemma3:12b', 'gemma3:12b'))
         self.assertEqual((models, aliases), (['gemma3:27b', 'gemma3:27b'], {'gemma3:12b': 'gemma3:27b'}))
 
+class AutoModelTests(unittest.TestCase):
+    """"auto" picks the models from the VRAM of the card that is actually rented (only combinations that have run)."""
 
-if __name__ == '__main__':
+    def plan(self, vram, translation='auto', review='auto', mode='cuda'):
+        with patch.object(worker, 'MODEL_NAME', 'gemma3:12b'), patch.object(worker, 'REVIEW_MODEL_NAME', 'gemma4:12b'), \
+                patch.object(worker, 'CLOUD_TRANSLATION_MODEL', translation), patch.object(worker, 'CLOUD_REVIEW_MODEL', review):
+            return worker.cloud_model_plan(mode, vram)
+
+    def test_a_24_gb_card_gets_the_large_models_and_a_16_gb_card_the_usual_ones(self):
+        self.assertEqual(self.plan(23.99)[0], ['gemma3:27b', 'gemma4:26b'])
+        self.assertEqual(self.plan(24.0)[1], {'gemma3:12b': 'gemma3:27b', 'gemma4:12b': 'gemma4:26b'})
+        self.assertEqual(self.plan(31.8)[0], ['gemma3:27b', 'gemma4:26b'], 'bigger cards use the tested pair until a larger one has been tried')
+        self.assertEqual(self.plan(15.9), (['gemma3:12b', 'gemma4:12b'], {}, None))
+        self.assertEqual(self.plan(22.9), (['gemma3:12b', 'gemma4:12b'], {}, None))
+
+    def test_unknown_vram_and_cpu_rentals_keep_the_usual_models(self):
+        for vram in (None, 0, -1, 'x', True):
+            self.assertEqual(self.plan(vram)[0], ['gemma3:12b', 'gemma4:12b'], vram)
+        self.assertEqual(self.plan(48.0, mode='cpu')[0], ['gemma3:12b', 'gemma4:12b'])
+
+    def test_auto_can_be_mixed_with_a_named_model_and_is_case_insensitive(self):
+        self.assertEqual(self.plan(24.0, 'AUTO', 'gemma4:31b')[0], ['gemma3:27b', 'gemma4:31b'])
+        self.assertEqual(self.plan(16.0, 'Auto', 'gemma4:31b')[0], ['gemma3:12b', 'gemma4:31b'])
+        self.assertEqual(self.plan(24.0, 'gemma3:27b', 'auto')[0], ['gemma3:27b', 'gemma4:26b'])
+        self.assertEqual(self.plan(24.0, '', 'auto')[0], ['gemma3:12b', 'gemma4:26b'])
+
+    def test_the_vram_guard_follows_the_chosen_models(self):
+        self.assertEqual(self.plan(24.0)[2], worker.CLOUD_LARGE_MODEL_MIN_VRAM_GIB)
+        self.assertEqual(self.plan(24.0, 'auto', 'gemma4:31b')[2], worker.CLOUD_HUGE_MODEL_MIN_VRAM_GIB)
+
+
+class OfferVramTests(unittest.TestCase):
+    def test_offers_carry_their_vram_so_the_models_can_follow_it(self):
+        import cloud_market
+        vast = cloud_market.normalize_vast({'offers': [
+            {'id': 1, 'gpu_name': 'RTX 4090', 'dph_total': 0.4, 'gpu_ram': 24564},
+            {'id': 2, 'gpu_name': 'RTX 5090', 'dph_total': 0.7, 'gpu_ram': 32607},
+            {'id': 3, 'gpu_name': 'Mystery', 'dph_total': 0.1}]})
+        self.assertEqual({offer['gpu']: offer['vram_gb'] for offer in vast},
+                         {'Mystery': None, 'RTX 4090': 24.0, 'RTX 5090': 31.8})
+        runpod = cloud_market.normalize_runpod_chain_gpus({'data': {'gpuTypes': [{
+            'id': 'NVIDIA GeForce RTX 4090', 'displayName': 'RTX 4090', 'memoryInGb': 24, 'secureCloud': True,
+            'lowestPrice': {'uninterruptablePrice': 0.69, 'stockStatus': 'High', 'availableGpuCounts': [1]}}]}})
+        self.assertEqual(runpod[0]['vram_gb'], 24.0)
+
+
+if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.226
+
+- **Automatiskt val av moln-modeller efter VRAM.** Skriver du `auto` i `SUBSYNQ_CLOUD_TRANSLATION_MODEL` och/eller `SUBSYNQ_CLOUD_REVIEW_MODEL` väljs modellerna efter VRAM på det kort som faktiskt hyrs: minst 24 GB ger `gemma3:27b` + `gemma4:26b`, mindre kort de vanliga modellerna. Hyrerbjudandena (Vast.ai och Runpod) bär nu sitt VRAM (`vram_gb`), och startskriptet byggs per erbjudande, så valet följer exakt det kort som beställs. Bara kombinationer som har körts på riktig hårdvara ingår i automatiken; `gemma4:31b` måste anges för hand.
+- **Jobbets modellrad visar de modeller som verkligen kördes på den hyrda servern** (till exempel `gemma3:27b · granskare gemma4:26b`), inte hemmaservens namn.
+
 ## 0.8.225
 
 - **Lägsta VRAM för stora moln-modeller följer modellstorleken.** Modeller upp till cirka 27B (till exempel `gemma3:27b`, `gemma4:26b`) kräver en hyrd server med minst 22 GiB VRAM (ett 24 GB-kort). Från 30B (till exempel `gemma4:31b`) krävs minst 30 GiB (ett 32 GB-kort, till exempel RTX 5090), eftersom vikterna ensamma är 20 GB och Whisper och Qwen ligger kvar i minnet. Den hyrda servern vägrar starta på mindre.

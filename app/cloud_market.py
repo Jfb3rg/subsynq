@@ -110,7 +110,9 @@ def normalize_vast(payload):
             continue
         if offer.get('rentable') is False or offer.get('rented') is True or offer.get('num_gpus', 1) != 1:
             continue
+        vram = offer.get('gpu_ram')
         result.append({'id': str(offer_id), 'gpu': gpu, 'price': price,
+                       'vram_gb': round(vram / 1024, 1) if isinstance(vram, (int, float)) and vram > 0 else None,
                        'detail': f"{offer.get('gpu_ram', 0) / 1024:.0f} GB VRAM" if isinstance(offer.get('gpu_ram'), (int, float)) else ''})
     return sorted(result, key=lambda item: (item['price'], item['gpu']))
 
@@ -281,7 +283,7 @@ def normalize_runpod_chain_gpus(payload):
         if isinstance(counts, list) and 1 not in counts:
             continue
         name = str(gpu.get('displayName') or gpu_id)[:60]
-        result.append({'id': gpu_id, 'gpu': name, 'price': price,
+        result.append({'id': gpu_id, 'gpu': name, 'price': price, 'vram_gb': float(memory),
                        'detail': f'{memory:g} GB VRAM · Secure Cloud'})
     return sorted(result, key=lambda item: (item['price'], item['gpu']))
 

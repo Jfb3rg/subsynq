@@ -96,11 +96,31 @@ CLOUD_LARGE_MODEL_MIN_VRAM_GIB = 22      # a 24 GB card; the rented server refus
 CLOUD_HUGE_MODEL_MIN_VRAM_GIB = 30       # a 32 GB card, for models of 30B and up
 
 
-def cloud_model_plan(mode):
+# "auto" in the two settings above picks the models from the rented card's VRAM. Only combinations that have run
+# on real hardware are listed: (lowest VRAM in GiB, translation model, review model), largest first.
+CLOUD_AUTO_MODEL_TIERS = ((23.0, 'gemma3:27b', 'gemma4:26b'),)
+
+
+def cloud_auto_models(vram_gb):
+    """(translation, review) for a card with this much VRAM, or None when it only fits the usual models."""
+    if isinstance(vram_gb, (int, float)) and not isinstance(vram_gb, bool):
+        for lowest, translation, review in CLOUD_AUTO_MODEL_TIERS:
+            if vram_gb >= lowest:
+                return translation, review
+    return None
+
+
+def cloud_model_plan(mode, vram_gb=None):
     """(models the rented server pulls, {worker's name: server's name}, lowest VRAM in GiB or None)."""
     large = mode == 'cuda'
-    translation = CLOUD_TRANSLATION_MODEL if large and CLOUD_TRANSLATION_MODEL else MODEL_NAME
-    review = CLOUD_REVIEW_MODEL if large and CLOUD_REVIEW_MODEL else REVIEW_MODEL_NAME
+    auto = cloud_auto_models(vram_gb) if large else None
+    translation, review = MODEL_NAME, REVIEW_MODEL_NAME
+    if large and CLOUD_TRANSLATION_MODEL:
+        translation = (auto[0] if auto else MODEL_NAME) if CLOUD_TRANSLATION_MODEL.lower() == 'auto' \
+            else CLOUD_TRANSLATION_MODEL
+    if large and CLOUD_REVIEW_MODEL:
+        review = (auto[1] if auto else REVIEW_MODEL_NAME) if CLOUD_REVIEW_MODEL.lower() == 'auto' \
+            else CLOUD_REVIEW_MODEL
     if MODEL_NAME == REVIEW_MODEL_NAME:
         review = translation
     aliases = {local: remote for local, remote in ((MODEL_NAME, translation), (REVIEW_MODEL_NAME, review))
@@ -116,7 +136,7 @@ def cloud_min_vram_gib(models):
     return CLOUD_HUGE_MODEL_MIN_VRAM_GIB if sizes and max(sizes) >= 30 else CLOUD_LARGE_MODEL_MIN_VRAM_GIB
 
 
-FOCUSED_REVIEW =os.environ.get('SUBSYNQ_FOCUSED_REVIEW', '0') == '1'
+FOCUSED_REVIEW = os.environ.get('SUBSYNQ_FOCUSED_REVIEW', '0') == '1'
 # What the flag validator (validate_translation_flags) will accept, stated to the reviewer up
 # front. A real defect once failed a job only because the reviewer quoted the whole line as
 # source_quote for an `untranslated` flag (the validator requires every quoted source word to
@@ -974,13 +994,16 @@ def rent_cloud_chain(job, provider, mode):
     except (OSError, subprocess.SubprocessError) as error:
         raise RuntimeError('Kunde inte skapa krypteringscertifikat; inget hyrdes.') from error
     tls_context = pinned_tls_context(tls_cert)
-    cloud_models, cloud_aliases, cloud_min_vram = cloud_model_plan(mode)
-    onstart = cloud_gpu.build_chain_onstart_script(
-        token, cloud_models, device=mode, tls_cert=tls_cert, tls_key=tls_key,
-        gateway_source=sources['cloud_cpu_service.py'], qwen_source=sources['qwen_asr_service.py'],
-        qwen_constraints=sources['constraints-qwen.txt'],
-        whisper_constraints=sources['constraints-worker.txt'],
-        model_aliases=cloud_aliases or None, min_vram_gib=cloud_min_vram)
+    def onstart_for(offer):
+        # Built per offer: with "auto" the models follow the VRAM of the very card that is rented.
+        models, aliases, min_vram = cloud_model_plan(mode, offer.get('vram_gb'))
+        script = cloud_gpu.build_chain_onstart_script(
+            token, models, device=mode, tls_cert=tls_cert, tls_key=tls_key,
+            gateway_source=sources['cloud_cpu_service.py'], qwen_source=sources['qwen_asr_service.py'],
+            qwen_constraints=sources['constraints-qwen.txt'],
+            whisper_constraints=sources['constraints-worker.txt'],
+            model_aliases=aliases or None, min_vram_gib=min_vram)
+        return script, models
     # Stock is thin (Runpod often shows `Low` for every cheap card) and offers disappear between
     # listing and ordering, so try the cheapest few in turn. A refused order creates nothing and
     # costs nothing; only a successful one is billed, and it is stored below at once.
@@ -993,8 +1016,10 @@ def rent_cloud_chain(job, provider, mode):
                    + (f', ~{price:.3f} USD/h' if price else '')
                    + (f' (försök {len(refusals) + 1})' if refusals else ''))
         try:
+            onstart, cloud_models = onstart_for(offer)
             instance_id, cost = cloud_gpu.create_chain_instance(
                 provider, api_key, offer, onstart, device=mode)
+            MODEL_JOB.cloud_models = tuple(cloud_models)     # what really runs there (shown on the job)
             break
         except RuntimeError as error:
             refusals.append(f'{offer.get("gpu") or offer.get("id")}: {str(error)[:160]}')
@@ -3718,8 +3743,9 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
                        'Slutkontrollen underkände översättningen - gör om den en gång med de '
                        'refuserade formuleringarna (källtexten behålls)')
         else:
+            shown = getattr(MODEL_JOB, 'cloud_models', None) or (MODEL_NAME, REVIEW_MODEL_NAME)
             update_job(job['id'], 'verifying', 97, 'Slutkontrollerar den svenska undertexten',
-                       model=f'{asr_name} + {MODEL_NAME} · granskare {REVIEW_MODEL_NAME}')
+                       model=f'{asr_name} + {shown[0]} · granskare {shown[1]}')
             MODEL_JOB.phase = 'final_review'
     translated = translate_and_review(job, rows, announce=announce)
     check_cancelled(job['id'])
@@ -3887,6 +3913,7 @@ def main():
         MODEL_JOB.active_model = None
         MODEL_JOB.phase = None
         MODEL_JOB.device = None
+        MODEL_JOB.cloud_models = None
         try:
             if job['status'] == 'delete_queued':
                 delete_rejected(job)
