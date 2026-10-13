@@ -54,6 +54,9 @@ services:
     entrypoint: ["python", "-u", "/ai/worker.py"]
     environment:
       SUBSYNQ_TRANSLATE_URL: http://translate-engine:11434/api/generate
+      # Valfritt: större Gemma-modeller bara på hyrda NVIDIA-servrar (hemmaservern hämtar dem aldrig). Tomt = som hemma.
+      SUBSYNQ_CLOUD_TRANSLATION_MODEL: ${SUBSYNQ_CLOUD_TRANSLATION_MODEL:-}
+      SUBSYNQ_CLOUD_REVIEW_MODEL: ${SUBSYNQ_CLOUD_REVIEW_MODEL:-}
       SUBSYNQ_CLOUD_IMAGE: ${SUBSYNQ_CLOUD_IMAGE:-}
       SUBSYNQ_FOCUSED_REVIEW: "1"
       SUBSYNQ_GPU_ASR_ENABLED: "1"

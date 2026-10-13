@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.224
+
+- **Större Gemma-modeller bara på hyrda NVIDIA-servrar (valfritt, av som standard).** Nya variabler `SUBSYNQ_CLOUD_TRANSLATION_MODEL` och `SUBSYNQ_CLOUD_REVIEW_MODEL` (till exempel `gemma3:27b` och `gemma4:26b`) gör att den hyrda servern hämtar och kör dem, medan hemservern aldrig hämtar dem. Workern frågar fortfarande efter sina vanliga modellnamn; gatewayn på den hyrda servern byter namn (`SUBSYNQ_CLOUD_MODEL_ALIASES`) och kräver minst 22 GiB VRAM. CPU-hyra påverkas inte, och tomt betyder som förut. Variablerna finns som valfria fält i mallen `subsynq-worker`. Provat på en hyrd RTX 4090: hela kedjan klar på cirka 16 minuter inklusive uppstart och nedladdning; VRAM-toppen blev 23,2 av 24 GiB, alltså ett 24 GB-kort är på gränsen.
+
 ## 0.8.223
 
 - **Bättre svenska uttryck när en replik rättas efter en meningsanmärkning.** Steget som skriver om en hel kort replik från en beskrivning av betydelsen fick bara beskrivningen och återgav den ("Fortsätt titta, fortsätt lyssna"). Nu får det även originalraden som källa och en allmän regel: är raden ett fast uttryck, en hälsning, en avslutningsfras eller en catchphrase ska svaret vara det ETT naturliga svenska uttryck man faktiskt säger, aldrig en beskrivning och aldrig två sätt att säga samma sak. Provat mot den riktiga modellen på orelaterade uttryck (till exempel "Long time no see": "Vilken trevlig överraskning!" blev "Vad länge sen!"). Den felaktiga formuleringen som redan avvisats hålls fortfarande utanför.

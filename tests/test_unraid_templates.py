@@ -20,6 +20,12 @@ OURS = {"subsynq": "subsynq", "subsynq-worker": "subsynq-worker", "subsynq-qwen-
 MEDIA = {"/movies", "/tv", "/extra"}
 
 
+def compose_default(raw):
+    """compose.yaml may write a variable as ${NAME:-default}; the template carries the default."""
+    match = re.fullmatch(r"\$\{[A-Z0-9_]+:-(.*)\}", str(raw))
+    return match.group(1) if match else str(raw)
+
+
 def load(name):
     root = ET.parse(UNRAID / f"{name}.xml").getroot()
     configs = [dict(c.attrib, value=(c.text or "")) for c in root.findall("Config")]
@@ -112,7 +118,7 @@ class UnraidTemplateTests(unittest.TestCase):
             compose_env = self.compose[service].get("environment", {})
             for config in load(name)[1]:
                 if config["Type"] == "Variable" and config["Target"] != "TZ" and not config["Target"].endswith("_URL"):
-                    self.assertEqual(str(compose_env.get(config["Target"])), config["value"], (name, config["Target"]))
+                    self.assertEqual(compose_default(compose_env.get(config["Target"])), config["value"], (name, config["Target"]))
         # The Windows-only GPU service must not be wired up on Unraid.
         self.assertNotIn("SUBSYNQ_GPU_ASR_URL", self.targets("subsynq-worker", "Variable"))
 
@@ -183,6 +189,14 @@ class UnraidTemplateTests(unittest.TestCase):
         for name in ("subsynq", "subsynq-worker", "subsynq-qwen-asr"):
             description = next(c["Description"] for c in (dict(e.attrib) for e in load(name)[0].findall("Config")) if c.get("Target") == "/models")
             self.assertIn("chown 99:100", description, name)
+
+
+    def test_larger_cloud_models_are_optional_and_empty_by_default(self):
+        for target in ("SUBSYNQ_CLOUD_TRANSLATION_MODEL", "SUBSYNQ_CLOUD_REVIEW_MODEL"):
+            config = next(c for c in load("subsynq-worker")[1] if c["Target"] == target)
+            self.assertEqual((config["Default"], config["value"], config["Required"], config["Display"]),
+                             ("", "", "false", "advanced"))
+            self.assertEqual(compose_default(self.compose["worker"]["environment"][target]), "")
 
 
 if __name__ == "__main__":

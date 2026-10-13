@@ -351,7 +351,8 @@ def require_prepared_image():
 
 def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_key,
                                gateway_source, qwen_source,
-                               qwen_constraints, whisper_constraints, prepared=False):
+                               qwen_constraints, whisper_constraints, prepared=False,
+                               model_aliases=None, min_vram_gib=None):
     """Boot script for a rental running the whole AI chain on `device`
     ("cpu" or "cuda").
 
@@ -402,6 +403,18 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
                    f"SUBSYNQ_CLOUD_DEVICE={device} "
                    "SUBSYNQ_CLOUD_TLS_CERT=/root/server.crt SUBSYNQ_CLOUD_TLS_KEY=/root/server.key "
                    f"SUBSYNQ_CLOUD_OLLAMA_MODELS={','.join(models)}")
+    # The worker keeps asking for its usual model names; the rented server answers with the (larger) ones it pulled.
+    aliases = []
+    for local, remote in (model_aliases or {}).items():
+        if not (_SAFE_MODEL.fullmatch(local or "") and _SAFE_MODEL.fullmatch(remote or "")):
+            raise ValueError(f"Ogiltigt modellnamn för Ollama: {local!r} / {remote!r}")
+        aliases.append(f"{local}={remote}")
+    if aliases:
+        gateway_env += f" SUBSYNQ_CLOUD_MODEL_ALIASES={','.join(aliases)}"
+    if min_vram_gib is not None:
+        if not isinstance(min_vram_gib, (int, float)) or isinstance(min_vram_gib, bool) or not 1 <= min_vram_gib <= 200:
+            raise ValueError("Ogiltig lägsta VRAM för molntjänsten.")
+        gateway_env += f" SUBSYNQ_CLOUD_MIN_VRAM_GIB={min_vram_gib:g}"
     pulls = "\n".join(f"  tstep 'hämtar {name}'\n  ollama pull {name}" for name in models)
     # The ~40 GB of packages and models are fetched by FOUR parallel tracks instead of one
     # long chain (a measured Vast rental spent 31 minutes just installing, serially):

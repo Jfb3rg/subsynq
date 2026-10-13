@@ -88,7 +88,26 @@ TRANSLATE_URL = os.environ.get('SUBSYNQ_TRANSLATE_URL', 'http://translate-engine
 # The Gemma model names come from models.json (an environment variable still overrides).
 MODEL_NAME = os.environ.get('SUBSYNQ_TRANSLATION_MODEL') or model_manager.configured_name('translation', 'gemma3:12b')
 REVIEW_MODEL_NAME = os.environ.get('SUBSYNQ_REVIEW_MODEL') or model_manager.configured_name('review', MODEL_NAME)
-FOCUSED_REVIEW = os.environ.get('SUBSYNQ_FOCUSED_REVIEW', '0') == '1'
+# Optional larger Gemma models for rented NVIDIA servers ONLY: the home server never downloads them, and the
+# worker keeps asking for its usual names (the rented server answers with these). Empty = same models as at home.
+CLOUD_TRANSLATION_MODEL = os.environ.get('SUBSYNQ_CLOUD_TRANSLATION_MODEL', '').strip()
+CLOUD_REVIEW_MODEL = os.environ.get('SUBSYNQ_CLOUD_REVIEW_MODEL', '').strip()
+CLOUD_LARGE_MODEL_MIN_VRAM_GIB = 22      # a 24 GB card; the rented server refuses to start on less
+
+
+def cloud_model_plan(mode):
+    """(models the rented server pulls, {worker's name: server's name}, lowest VRAM in GiB or None)."""
+    large = mode == 'cuda'
+    translation = CLOUD_TRANSLATION_MODEL if large and CLOUD_TRANSLATION_MODEL else MODEL_NAME
+    review = CLOUD_REVIEW_MODEL if large and CLOUD_REVIEW_MODEL else REVIEW_MODEL_NAME
+    if MODEL_NAME == REVIEW_MODEL_NAME:
+        review = translation
+    aliases = {local: remote for local, remote in ((MODEL_NAME, translation), (REVIEW_MODEL_NAME, review))
+               if local != remote}
+    return [translation, review], aliases, (CLOUD_LARGE_MODEL_MIN_VRAM_GIB if aliases else None)
+
+
+FOCUSED_REVIEW =os.environ.get('SUBSYNQ_FOCUSED_REVIEW', '0') == '1'
 # What the flag validator (validate_translation_flags) will accept, stated to the reviewer up
 # front. A real defect once failed a job only because the reviewer quoted the whole line as
 # source_quote for an `untranslated` flag (the validator requires every quoted source word to
@@ -946,11 +965,13 @@ def rent_cloud_chain(job, provider, mode):
     except (OSError, subprocess.SubprocessError) as error:
         raise RuntimeError('Kunde inte skapa krypteringscertifikat; inget hyrdes.') from error
     tls_context = pinned_tls_context(tls_cert)
+    cloud_models, cloud_aliases, cloud_min_vram = cloud_model_plan(mode)
     onstart = cloud_gpu.build_chain_onstart_script(
-        token, [MODEL_NAME, REVIEW_MODEL_NAME], device=mode, tls_cert=tls_cert, tls_key=tls_key,
+        token, cloud_models, device=mode, tls_cert=tls_cert, tls_key=tls_key,
         gateway_source=sources['cloud_cpu_service.py'], qwen_source=sources['qwen_asr_service.py'],
         qwen_constraints=sources['constraints-qwen.txt'],
-        whisper_constraints=sources['constraints-worker.txt'])
+        whisper_constraints=sources['constraints-worker.txt'],
+        model_aliases=cloud_aliases or None, min_vram_gib=cloud_min_vram)
     # Stock is thin (Runpod often shows `Low` for every cheap card) and offers disappear between
     # listing and ordering, so try the cheapest few in turn. A refused order creates nothing and
     # costs nothing; only a successful one is billed, and it is stored below at once.

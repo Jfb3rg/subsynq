@@ -36,6 +36,17 @@ QWEN_PORT = int(os.environ.get("SUBSYNQ_QWEN_PORT", "8091"))
 OLLAMA_PORT = int(os.environ.get("SUBSYNQ_OLLAMA_PORT", "11434"))
 WHISPER_NAME = os.environ.get("SUBSYNQ_CLOUD_WHISPER_MODEL", "large-v3")
 REQUIRED_MODELS = [name for name in os.environ.get("SUBSYNQ_CLOUD_OLLAMA_MODELS", "").split(",") if name]
+def parse_model_aliases(text):
+    """`local=remote,local2=remote2`: the worker asks for its usual model names, this server runs the remote ones."""
+    aliases = {}
+    for pair in (text or "").split(","):
+        local, separator, remote = pair.partition("=")
+        if separator and local.strip() and remote.strip():
+            aliases[local.strip()] = remote.strip()
+    return aliases
+
+
+MODEL_ALIASES = parse_model_aliases(os.environ.get("SUBSYNQ_CLOUD_MODEL_ALIASES", ""))
 DEVICE = os.environ.get("SUBSYNQ_CLOUD_DEVICE", "cpu")
 if DEVICE not in ("cpu", "cuda"):
     raise SystemExit(f"Ogiltig SUBSYNQ_CLOUD_DEVICE: {DEVICE!r}")
@@ -200,6 +211,21 @@ def track(name):
 
 def qwen_phase(path):
     return {"/transcribe": "qwen-alignment", "/identify": "qwen-identify"}.get(path)
+
+
+def apply_model_alias(body, aliases=None):
+    """Swap the model name of an Ollama request for the one this server runs; other bytes stay untouched."""
+    aliases = MODEL_ALIASES if aliases is None else aliases
+    if not aliases:
+        return body
+    try:
+        request = json.loads(body)
+    except ValueError:
+        return body
+    if isinstance(request, dict) and request.get("model") in aliases:
+        request["model"] = aliases[request["model"]]
+        return json.dumps(request).encode("utf-8")
+    return body
 
 
 def ollama_phase(body):
@@ -435,7 +461,7 @@ class Handler(BaseHTTPRequestHandler):
                 with track(qwen_phase(path[len("/qwen"):])):
                     self.forward("POST", QWEN_PORT, path[len("/qwen"):], self.read_body(MAX_AUDIO_BYTES))
             elif path.startswith("/ollama/"):
-                body = self.read_body(16 * 1024 * 1024)
+                body = apply_model_alias(self.read_body(16 * 1024 * 1024))
                 with track(ollama_phase(body)):
                     self.forward("POST", OLLAMA_PORT, path[len("/ollama"):], body)
             else:
