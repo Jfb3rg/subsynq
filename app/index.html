@@ -195,6 +195,11 @@ td, th { padding: 10px 0; border-bottom: 1px solid var(--bd); }
 .subtitle-status.available { color: var(--ok); background: var(--okb); border: 1px solid var(--ok); }
 .subtitle-status.working, .subtitle-status.update { color: var(--ac); background: var(--acb); border: 1px solid var(--ac); }
 .subtitle-status.failed { color: var(--dg); background: var(--dgb); border: 1px solid var(--dg); }
+details.row-more > summary { cursor: pointer; list-style: none; display: inline-block; }
+details.row-more > summary::-webkit-details-marker { display: none; }
+details.row-more > summary::after { content: " ▾"; color: var(--sec); font-size: 12px; }
+details.row-more[open] > summary::after { content: " ▴"; }
+.row-more-body { margin-top: 6px; }
 .job-message { display: block; margin: 6px 0; }
 .job-hardware { display: block; margin: 6px 0; color: var(--sec); }
 .start-job-form { margin-top: 8px; }

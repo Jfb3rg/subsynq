@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.230
+
+- **Lugnare högerkolumn i biblioteket.** Statusmärket (till exempel "AI-undertext skapad" eller "Svensk undertext saknas") är nu klickbart. Under det ligger det som tidigare stod öppet på varje rad: åtgärderna Visa undertexten, Skapa om, Ta bort och Kör igen, felmeddelandet från en misslyckad körning (varför den föll), samt vilken hårdvara och vilka modeller som användes. Pågående jobb visar fortfarande förlopp, meddelande och Avbryt direkt, och huvudåtgärden "Skapa svensk AI-undertext" ligger kvar synlig under märket.
+
 ## 0.8.229
 
 - **Svenskt tal behålls exakt som det sades.** Översättaren (och granskaren av utkastet) skrev tidigare om rader som redan var på svenska: "Vad fan?" blev "Vad i helvete?", "Snälla, ta en avståndning." blev "Snälla, ta lite avstånd.", och en regel i prompten hjälpte inte. Nu avgör språkmodellen först språket på varje rad (ett kort anrop per 40 rader). Rader som den läser som svenska och som inte innehåller något tydligt främmande ord kopieras oförändrade och går aldrig genom översättningen; övriga rader (tyska, engelska, franska, danska, norska, ljud) översätts som förut. Misslyckas steget används översättningen som förut för alla rader, och det körs bara för svenska undertexter. Provat med riktiga modellen på Shrek-trailern (tyskt tal följt av svenskt): 26 av 43 rader behålls, bland annat alla med svenska ord, medan de tyska och engelska översätts.

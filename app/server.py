@@ -28,7 +28,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.229"
+VERSION = "0.8.230"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -427,8 +427,9 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
                      f"{escape(t('action_view_english_subtitle', lang))}</a>")
     can_start = missing and (not job or job.get("status") in (
         "failed", "quality_failed", "completed", "deleted", "cancelled"))
+    start_html = ""
     if can_start and token:
-        job_html += (
+        start_html = (
             "<form action='/jobs/start' method='post' class='start-job-form preserve-seasons'>"
             f"<input type='hidden' name='token' value='{escape(token)}'>"
             f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>"
@@ -444,11 +445,22 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
         bulk_box = (f"<input type='checkbox' class='bulk-check' name='media_path' form='bulk-form' "
                     f"value='{escape(item['path'], quote=True)}' data-start='{int(bool(can_start))}' "
                     f"data-delete='{int(can_delete)}' data-recreate='{int(can_delete)}' aria-label='{escape(item['name'], quote=True)}'> ")
+    pill = f"<span class='subtitle-status {status_class}'>{status}</span>"
+    if not not_active:
+        # A job is working: its progress, message and cancel button stay in view.
+        status_cell = pill + job_html
+    elif job_html.strip():
+        # Everything else (the reason a run failed, the models used, view / recreate / delete) sits behind the
+        # status pill, so the list stays quiet; the main action (create the subtitle) stays visible below it.
+        status_cell = (f"<details class='row-more'><summary title='{escape(t('row_more_hint', lang), quote=True)}'>"
+                       f"{pill}</summary><div class='row-more-body'>{job_html}</div></details>{start_html}")
+    else:
+        status_cell = pill + start_html
     return (
         f"<tr{row_class}><td class='filename'>{bulk_box}{episode}{escape(item['name'])}<br>"
         f"<small>{escape(kind_label)} · "
         f"{format_file_size(item['size_bytes'])}</small>{render_tracks(item)}</td>"
-        f"<td><span class='subtitle-status {status_class}'>{status}</span>{job_html}</td></tr>"
+        f"<td>{status_cell}</td></tr>"
     )
 
 

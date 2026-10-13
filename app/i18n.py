@@ -82,6 +82,7 @@ STRINGS = {
                         "en": "Delete the old subtitle and run it again from scratch?"},
     "action_rerun": {"sv": "Kör igen", "en": "Run again"},
     "action_recreate": {"sv": "Skapa om undertexten", "en": "Recreate subtitle"},
+    "row_more_hint": {"sv": "Klicka för att visa åtgärder och detaljer", "en": "Click to show actions and details"},
     "confirm_recreate": {"sv": "Ta bort den nuvarande AI-undertexten och skapa en ny från grunden? Den gamla tas bort först.",
                          "en": "Delete the current AI subtitle and create a new one from scratch? The old one is deleted first."},
     "action_retry_failed": {"sv": "Kör om", "en": "Retry"},

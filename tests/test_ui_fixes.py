@@ -59,5 +59,55 @@ class BulkConfirmationIsOnThePageTests(unittest.TestCase):
         self.assertIn("bulkBar.dataset.confirmed", script)
 
 
+class RowDetailsTests(unittest.TestCase):
+    """The right column of the library is quiet: the status pill opens the details, the main action stays visible."""
+
+    AI = {"path": "/movies/a.mkv", "name": "a.mkv", "kind": "movie", "size_bytes": 1, "ai_sv_exists": True,
+          "ai_sv_path": "/movies/a.ai.sv.srt", "embedded_sv_exists": False, "probe": {}}
+    MISSING = {"path": "/movies/b.mkv", "name": "b.mkv", "kind": "movie", "size_bytes": 1, "ai_sv_exists": False,
+               "embedded_sv_exists": False, "probe": {}}
+
+    def test_a_row_with_an_ai_subtitle_hides_its_actions_behind_the_green_pill(self):
+        html = server.render_media_row(self.AI, token="tok")
+        self.assertIn("<details class='row-more'>", html)
+        summary, body = html.split("</summary>", 1)
+        self.assertIn("subtitle-status available", summary)
+        for action in ("/jobs/delete", "/jobs/restart", "Visa undertexten"):
+            self.assertIn(action, body)
+            self.assertNotIn(action, summary)
+        self.assertNotIn("/jobs/start", html)
+
+    def test_a_missing_subtitle_keeps_its_main_action_visible_without_any_details(self):
+        html = server.render_media_row(self.MISSING, token="tok")
+        self.assertNotIn("<details", html)
+        self.assertIn("subtitle-status missing", html)
+        self.assertIn("/jobs/start", html)
+
+    def test_why_a_run_failed_sits_behind_the_pill_and_the_start_button_stays_outside(self):
+        job = {"id": 5, "status": "failed", "progress": 0, "message": "Översättningsmotorn svarade HTTP 500",
+               "hardware": "Moln-GPU (vast)", "model": "Granskning med gemma4:31b"}
+        html = server.render_media_row(self.MISSING, token="tok", job=job)
+        summary, body = html.split("</summary>", 1)
+        self.assertIn("subtitle-status failed", summary)
+        details, after = body.split("</details>", 1)
+        self.assertIn("HTTP 500", details)
+        self.assertIn("gemma4:31b", details)
+        self.assertIn("/jobs/start", after)
+        self.assertNotIn("/jobs/start", details)
+
+    def test_a_running_job_keeps_its_progress_and_cancel_button_in_view(self):
+        job = {"id": 6, "status": "translating", "progress": 70, "message": "Översätter 40 repliker",
+               "hardware": "Moln-GPU (vast)", "model": "Översättning med gemma3:27b"}
+        html = server.render_media_row(self.MISSING, token="tok", job=job)
+        self.assertNotIn("<details", html)
+        for needle in ("Översätter 40 repliker", "/jobs/cancel", "gemma3:27b"):
+            self.assertIn(needle, html)
+
+    def test_the_pill_says_it_can_be_clicked_and_the_style_exists(self):
+        self.assertIn("Klicka för att visa åtgärder och detaljer", server.render_media_row(self.AI, token="tok"))
+        self.assertIn("details.row-more > summary", INDEX)
+        self.assertIn("Click to show actions and details", server.render_media_row(self.AI, token="tok", lang="en"))
+
+
 if __name__ == "__main__":
     unittest.main()
