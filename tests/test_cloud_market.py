@@ -7,6 +7,7 @@ from pathlib import Path
 import cloud_market
 from cloud_cost import render_cloud_market
 from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, country_from_geolocation, fetch_offers, flag_emoji,
+                          order_offers_for_rental,
                           fetch_vast_chain_gpu_offers, region_group,
                           load_keys, normalize_gpu_query, normalize_runpod, normalize_vram_bands,
                           normalize_vast, remove_key, save_key)
@@ -344,6 +345,33 @@ class RegionTests(unittest.TestCase):
         page = self.render('vast', [self.vast_offer('1', 'RTX 3090', .1, '<script>x</script>, US', 'US', 'north-america')])
         self.assertNotIn('<script>x', page)
         self.assertIn('&lt;script&gt;', page)
+
+
+
+class RentalOrderTests(unittest.TestCase):
+    def offer(self, offer_id, price, region):
+        return {'id': offer_id, 'gpu': 'RTX 4090', 'price': price, 'region': region}
+
+    def test_nearest_region_first_then_cheapest_and_nothing_above_the_limit(self):
+        offers = [self.offer('cn', .20, 'world'), self.offer('us', .30, 'north-america'),
+                  self.offer('no', .60, 'europe'), self.offer('pl', .40, 'europe'),
+                  self.offer('de-dear', 1.50, 'europe'), self.offer('unknown', .10, '')]
+        ordered = [item['id'] for item in order_offers_for_rental(offers, 1.0)]
+        self.assertEqual(ordered, ['pl', 'no', 'us', 'cn', 'unknown'])
+
+    def test_the_limit_is_inclusive_and_can_leave_nothing(self):
+        offers = [self.offer('a', .5, 'europe'), self.offer('b', .5000001, 'europe')]
+        self.assertEqual([item['id'] for item in order_offers_for_rental(offers, .5)], ['a'])
+        self.assertEqual(order_offers_for_rental(offers, .1), [])
+
+    def test_offers_without_a_region_keep_their_price_order(self):
+        offers = [{'id': 'x', 'price': .9}, {'id': 'y', 'price': .1}, {'id': 'z', 'price': .5}]
+        self.assertEqual([item['id'] for item in order_offers_for_rental(offers, 2.0)], ['y', 'z', 'x'])
+
+    def test_no_limit_means_no_filter_and_a_missing_price_is_not_dropped(self):
+        offers = [self.offer('a', 9.0, 'europe'), {'id': 'b', 'region': 'europe'}]
+        self.assertEqual(len(order_offers_for_rental(offers, None)), 2)
+        self.assertEqual([item['id'] for item in order_offers_for_rental(offers, 1.0)], ['b'])
 
 
 if __name__ == "__main__":

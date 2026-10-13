@@ -69,6 +69,7 @@ import cloud_gpu
 import cloud_cost
 import model_manager
 from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, CHAIN_GPU_MIN_DISK_GB, CHAIN_GPU_MIN_RELIABILITY,
+                          order_offers_for_rental,
                           fetch_cpu_offers, fetch_runpod_chain_offers, fetch_vast_chain_gpu_offers,
                           load_keys as load_cloud_keys)
 from qwen_quality import alignment_quality, reliable_alignment_islands
@@ -972,6 +973,16 @@ def cloud_health_failure(health, kind):
     return None
 
 
+def cloud_price_limit():
+    """USD per hour a rental may cost: the user's limit from the cost plan, never above the fixed ceiling."""
+    try:
+        chosen = (load_cloud_profile() or {}).get('max_hourly')
+    except (sqlite3.Error, TypeError, ValueError):
+        chosen = None
+    return min(chosen, CLOUD_MAX_USD_PER_HOUR) if isinstance(chosen, (int, float)) and chosen > 0 \
+        else CLOUD_MAX_USD_PER_HOUR
+
+
 def rent_cloud_chain(job, provider, mode):
     """Rent a server for THIS job and run the WHOLE AI chain there (Whisper,
     Qwen3-ASR and the Gemma models) on its CPU (`mode` 'cpu') or its NVIDIA GPU
@@ -1004,6 +1015,16 @@ def rent_cloud_chain(job, provider, mode):
         update_job(job['id'], 'transcribing', 1,
                    f'Letar efter en ledig {wanted}-instans med snabbt nätverk ({provider})')
         offers = fetch_vast_chain_gpu_offers(api_key, wanted)
+    limit = cloud_price_limit()
+    cheapest = min((offer['price'] for offer in offers if isinstance(offer.get('price'), (int, float))), default=None)
+    # Nearest region first (Europe, then the USA and Canada, then the rest), cheapest first within a region,
+    # and never above the user's price limit.
+    offers = order_offers_for_rental(offers, limit)
+    if not offers and cheapest is not None:
+        raise RuntimeError(
+            f'Alla lediga {wanted}-servrar hos {provider} kostar mer än din gräns på {limit:.2f} USD/tim '
+            f'(billigaste {cheapest:.2f} USD/tim). Inget hyrdes. Höj "Högsta pris vid hyrning" under Moln-GPU, '
+            'välj en annan GPU-modell eller försök igen senare.')
     if not offers:
         raise RuntimeError(
             f'Inga lediga {wanted}-servrar som uppfyller kraven hittades hos {provider}'
@@ -1068,8 +1089,8 @@ def rent_cloud_chain(job, provider, mode):
                    cloud_instance_id=cloud_gpu.stored_instance_id(provider, instance_id))
         try:
             try:
-                if cost and cost > CLOUD_MAX_USD_PER_HOUR:
-                    raise RuntimeError(f'Hyran blev {cost:.2f} USD/h, över gränsen {CLOUD_MAX_USD_PER_HOUR:.2f} '
+                if cost and cost > limit:
+                    raise RuntimeError(f'Hyran blev {cost:.2f} USD/h, över gränsen {limit:.2f} '
                                        'USD/h. Servern förstördes; ingen undertext skapades.')
                 started = time.monotonic()
                 deadline = started + CLOUD_CHAIN_SPINUP_SECONDS

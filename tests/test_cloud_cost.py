@@ -65,5 +65,38 @@ class CloudCostTests(unittest.TestCase):
         self.assertIn('name="currency" value="USD"', page)
 
 
+class MaxHourlyPriceTests(unittest.TestCase):
+    def form(self, **changes):
+        form = {key: [value if value is not None else ''] for key, value in DEFAULT_PROFILE.items()}
+        form.update({key: [value] for key, value in changes.items()})
+        return form
+
+    def test_the_default_limit_is_one_dollar_an_hour(self):
+        self.assertEqual(DEFAULT_PROFILE['max_hourly'], 1.0)
+        self.assertEqual(load_profile(None)['max_hourly'], 1.0)
+
+    def test_an_older_saved_plan_without_the_field_gets_the_default(self):
+        older = {key: value for key, value in DEFAULT_PROFILE.items() if key != 'max_hourly'}
+        self.assertEqual(load_profile(json.dumps(older))['max_hourly'], 1.0)
+
+    def test_a_chosen_limit_is_saved_and_an_empty_one_means_the_fixed_ceiling(self):
+        self.assertEqual(parse_profile(self.form(max_hourly='0.75'))['max_hourly'], 0.75)
+        self.assertIsNone(parse_profile(self.form(max_hourly=''))['max_hourly'])
+        saved = json.dumps(parse_profile(self.form(max_hourly='')))
+        self.assertIsNone(load_profile(saved)['max_hourly'], 'a cleared limit stays cleared')
+
+    def test_zero_negative_and_nonfinite_limits_are_refused(self):
+        for bad in ('0', '-1', 'NaN', 'inf', 'abc'):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                parse_profile(self.form(max_hourly=bad))
+
+    def test_the_settings_page_has_the_field_with_the_saved_value(self):
+        page = render_cloud_cost({**DEFAULT_PROFILE, 'max_hourly': 0.75}, 'token')
+        self.assertIn('name="max_hourly"', page)
+        self.assertIn('value="0.75"', page)
+        self.assertIn('Högsta pris vid hyrning', page)
+        self.assertIn('value=""', render_cloud_cost({**DEFAULT_PROFILE, 'max_hourly': None}, 'token'))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -217,7 +217,7 @@ class KeptServerSafetyTests(KeepServerBase):
 class SlowHostTests(KeepServerBase):
     """A host that cannot finish installing is replaced by the next one."""
 
-    def run_rent(self, offers, *, slow=('501',), keep_going=True):
+    def run_rent(self, offers, *, slow=('501',), profile=None):
         self.created = []
         self.destroyed = []
         counter = itertools.count(501)
@@ -246,7 +246,7 @@ class SlowHostTests(KeepServerBase):
         clock = itertools.count(0, 60)
         with patch.object(worker, 'load_cloud_keys', return_value={'vast': 'secret'}), \
                 patch.object(worker, 'fetch_vast_chain_gpu_offers', return_value=offers), \
-                patch.object(worker, 'load_cloud_profile', return_value={'gpu': 'RTX 4090'}), \
+                patch.object(worker, 'load_cloud_profile', return_value=profile or {'gpu': 'RTX 4090'}), \
                 patch.object(worker.cloud_gpu, 'create_instance', side_effect=create), \
                 patch.object(worker.cloud_gpu, 'show_instance', return_value={}), \
                 patch.object(worker.cloud_gpu, 'public_service_url', return_value='http://cloud:41000'), \
@@ -295,6 +295,63 @@ class SlowHostTests(KeepServerBase):
         self.assertIsInstance(error, RuntimeError)
         self.assertEqual(len(self.created), 1)
         self.assertEqual(self.destroyed, [501])
+
+
+
+class PriceLimitTests(unittest.TestCase):
+    def limit(self, profile):
+        with patch.object(worker, 'load_cloud_profile', return_value=profile):
+            return worker.cloud_price_limit()
+
+    def test_the_users_limit_is_used_but_never_above_the_fixed_ceiling(self):
+        self.assertEqual(self.limit({'max_hourly': 0.5}), 0.5)
+        self.assertEqual(self.limit({'max_hourly': 5}), worker.CLOUD_MAX_USD_PER_HOUR)
+
+    def test_no_or_unusable_limit_means_the_fixed_ceiling(self):
+        for profile in ({}, {'max_hourly': None}, {'max_hourly': 0}, {'max_hourly': 'abc'}, {'max_hourly': -1}):
+            self.assertEqual(self.limit(profile), worker.CLOUD_MAX_USD_PER_HOUR, profile)
+
+    def test_an_unreadable_plan_means_the_fixed_ceiling(self):
+        with patch.object(worker, 'load_cloud_profile', side_effect=sqlite3.OperationalError('no table')):
+            self.assertEqual(worker.cloud_price_limit(), worker.CLOUD_MAX_USD_PER_HOUR)
+
+
+class RentalChoiceTests(KeepServerBase):
+    """The rented server is the nearest affordable one, not the cheapest in the world and not the dearest."""
+    run_rent = SlowHostTests.run_rent
+
+    def offers(self):
+        def make(offer_id, price, region):
+            return {'id': offer_id, 'gpu': 'RTX 4090', 'price': price, 'detail': 'x', 'vram_gb': 24.0,
+                    'region': region, 'machine_id': f'm{offer_id}'}
+        return [make('201', .20, 'world'), make('202', .30, 'north-america'), make('203', .60, 'europe'),
+                make('204', .40, 'europe'), make('205', 1.50, 'europe')]
+
+    def test_europe_first_cheapest_there_and_within_the_limit(self):
+        result, error = self.run_rent(self.offers(), slow=(), profile={'gpu': 'RTX 4090', 'max_hourly': 1.0})
+        self.assertIsNone(error)
+        self.assertEqual([offer for _, offer in self.created], [204], 'Europe at 0.40, not Asia at 0.20 or Europe at 1.50')
+
+    def test_a_dearer_limit_still_picks_the_cheapest_in_europe(self):
+        self.run_rent(self.offers(), slow=(), profile={'gpu': 'RTX 4090', 'max_hourly': 2.0})
+        self.assertEqual([offer for _, offer in self.created], [204])
+
+    def test_without_a_saved_limit_the_fixed_ceiling_applies(self):
+        offers = [offer for offer in self.offers() if offer['id'] == '205'] + [
+            dict(self.offers()[0], id='206', price=2.5, region='europe')]
+        self.run_rent(offers, slow=())
+        self.assertEqual([offer for _, offer in self.created], [205], 'the 2.50 offer is above the 2.00 ceiling')
+
+    def test_when_everything_is_above_the_limit_nothing_is_rented(self):
+        result, error = self.run_rent(self.offers(), slow=(), profile={'gpu': 'RTX 4090', 'max_hourly': 0.1})
+        self.assertIsInstance(error, RuntimeError)
+        self.assertRegex(str(error), 'kostar mer än din gräns på 0.10 USD/tim \\(billigaste 0.20 USD/tim\\)')
+        self.assertEqual(self.created, [])
+
+    def test_a_replacement_for_a_slow_host_also_stays_within_the_limit(self):
+        result, error = self.run_rent(self.offers(), slow=('501',), profile={'gpu': 'RTX 4090', 'max_hourly': 1.0})
+        self.assertIsNone(error)
+        self.assertEqual([offer for _, offer in self.created], [204, 203])
 
 
 if __name__ == '__main__':

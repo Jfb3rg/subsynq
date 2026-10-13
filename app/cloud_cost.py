@@ -10,7 +10,7 @@ from cloud_market import (REGION_GROUP_RANK, REGION_GROUPS, VRAM_BAND_LABELS, VR
 DEFAULT_PROFILE = {
     'provider': 'vast', 'gpu': 'RTX 5060 Ti', 'mode': 'test',
     'compute_hourly': None, 'storage_hourly': None,
-    'transfer_per_gb': None, 'max_minutes': 60, 'currency': 'USD',
+    'transfer_per_gb': None, 'max_minutes': 60, 'currency': 'USD', 'max_hourly': 1.0,
 }
 
 
@@ -41,12 +41,15 @@ def parse_profile(form, *, allow_legacy_currency=False):
         raise ValueError('Ange ett helt antal minuter.') from error
     if not 1 <= minutes <= 10080:
         raise ValueError('Maximal tid måste vara 1–10 080 minuter.')
+    max_hourly = _price(field('max_hourly'))
+    if max_hourly is not None and max_hourly <= 0:
+        raise ValueError('Högsta pris per timme måste vara större än 0 (eller tomt).')
     return {
         'provider': provider, 'gpu': gpu, 'mode': mode,
         'compute_hourly': _price(field('compute_hourly')),
         'storage_hourly': _price(field('storage_hourly')),
         'transfer_per_gb': _price(field('transfer_per_gb')),
-        'max_minutes': minutes, 'currency': currency,
+        'max_minutes': minutes, 'currency': currency, 'max_hourly': max_hourly,
     }
 
 
@@ -109,6 +112,10 @@ def render_cloud_cost(profile, token, saved=False):
         f'<input id="cloud-storage" name="storage_hourly" type="number" min="0" max="10000" step="0.0001" value="{value("storage_hourly")}">'
         '<label for="cloud-transfer">Dataöverföring per GB (USD)</label>'
         f'<input id="cloud-transfer" name="transfer_per_gb" type="number" min="0" max="10000" step="0.0001" value="{value("transfer_per_gb")}">'
+        '<label for="cloud-max-hourly">Högsta pris vid hyrning, per timme (USD)</label>'
+        f'<input id="cloud-max-hourly" name="max_hourly" type="number" min="0.01" max="10000" step="0.01" value="{value("max_hourly")}">'
+        '<p class="muted">När ett jobb körs på moln-GPU väljer SubSynq servern efter läge (Europa först, sedan USA och Kanada, sedan övriga '
+        'världen) och hyr aldrig en server som kostar mer än så. Tomt = den fasta spärren 2 USD/tim.</p>'
         '<label for="cloud-minutes">Planerad eller maximal tid i minuter</label>'
         f'<input id="cloud-minutes" name="max_minutes" type="number" min="1" max="10080" value="{value("max_minutes")}">'
         '<input type="hidden" name="currency" value="USD">'

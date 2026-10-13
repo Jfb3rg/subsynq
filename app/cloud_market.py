@@ -150,6 +150,18 @@ def region_group(country):
     return 'world'
 
 
+def order_offers_for_rental(offers, max_hourly):
+    """Offers a rental may pick from: nothing above the user's price limit, nearest region first
+    (Europe, then the USA and Canada, then the rest), cheapest first within each region.
+    Offers without a region (Runpod, CPU) keep their price order. Never reorders beyond the limit."""
+    allowed = [offer for offer in offers
+               if max_hourly is None or offer.get('price') is None or offer['price'] <= max_hourly]
+    unknown = len(REGION_GROUPS)
+    return sorted(allowed, key=lambda offer: (
+        REGION_GROUP_RANK.get(offer.get('region'), unknown),
+        offer['price'] if isinstance(offer.get('price'), (int, float)) else float('inf')))
+
+
 def _read_json(request):
     with urlopen(request, timeout=10) as response:
         return json.load(response)

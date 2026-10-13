@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.235
+
+- **Servern väljs efter läge, med ett högsta pris.** När ett jobb körs på moln-GPU hyr SubSynq nu den billigaste lämpliga servern i Europa först, därefter USA och Kanada, därefter övriga världen (tidigare bara den billigaste i världen). Ny inställning under Inställningar → Moln-GPU → Egen kostnadsplan: **Högsta pris vid hyrning, per timme (USD)** (standard 1,00; tomt = den fasta spärren 2 USD/tim). Ingen server över gränsen hyrs någonsin, så den dyraste väljs aldrig; finns ingen server under gränsen hyrs ingenting och jobbet berättar billigaste pris och vad du kan göra. Även en ersättare för en långsam värd följer samma gräns och ordning.
+
 ## 0.8.234
 
 - **Moln-GPU-servern behålls mellan jobb i kön.** Förut hyrdes en ny server för varje jobb och förstördes när jobbet var klart, så alla modeller (flera GB) hämtades på nytt varje gång. Nu behålls en färdig server så länge ett annat molnjobb väntar i kön och används direkt av nästa jobb (ingen ny installation, ingen ny nedladdning); när kön är tom förstörs den genast, så ingen betalar för en tom server. Servern förstörs också om den inte längre svarar, om du byter GPU-modell eller hårdvaruval, eller om ingen tar den inom 3 minuter. Den förstörs även när workern stoppas (`docker stop`) eller startas om. Stäng av med miljövariabeln `SUBSYNQ_CLOUD_KEEP_SERVER=0`.
