@@ -6,7 +6,8 @@ from pathlib import Path
 
 import cloud_market
 from cloud_cost import render_cloud_market
-from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, fetch_offers, fetch_vast_chain_gpu_offers,
+from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, country_from_geolocation, fetch_offers, flag_emoji,
+                          fetch_vast_chain_gpu_offers, region_group,
                           load_keys, normalize_gpu_query, normalize_runpod, normalize_vram_bands,
                           normalize_vast, remove_key, save_key)
 from server import jobs_signature, library_return_path, render_queue_content
@@ -275,6 +276,74 @@ class VramFilterTests(unittest.TestCase):
         self.assertEqual(page.count('<input type="hidden" name="vram" value="24">'), 2)
         self.assertIn('Visar bara 24 GB (1 st)', page)
         self.assertEqual(self.render(offers=offers).count('type="hidden" name="vram"'), 0)
+
+
+
+class RegionTests(unittest.TestCase):
+    def test_the_country_is_read_from_vasts_location_text(self):
+        for text, code in (('Texas, US', 'US'), ('Norway, NO', 'NO'), ('Kosovo, XK', 'XK'), ('Jiangsu, CN', 'CN'),
+                           ('SE', 'SE'), ('Somewhere', ''), ('lower, us', ''), ('', ''), (None, ''), (12, '')):
+            self.assertEqual(country_from_geolocation(text), code, text)
+
+    def test_flags_are_built_from_the_country_code_only(self):
+        self.assertEqual(flag_emoji('SE'), '\U0001F1F8\U0001F1EA')
+        self.assertEqual(flag_emoji('US'), '\U0001F1FA\U0001F1F8')
+        for bad in ('', 'se', 'SWE', 'S', None, '<s'):
+            self.assertEqual(flag_emoji(bad), '')
+
+    def test_europe_comes_first_then_north_america_then_the_rest(self):
+        for code in ('SE', 'NO', 'DK', 'FI', 'DE', 'NL', 'GB', 'FR', 'ES', 'PL', 'RO', 'CZ', 'BG', 'XK', 'UA'):
+            self.assertEqual(region_group(code), 'europe', code)
+        for code in ('US', 'CA'):
+            self.assertEqual(region_group(code), 'north-america', code)
+        for code in ('CN', 'JP', 'TW', 'KR', 'TH', 'AU', 'CL', 'MX', 'ZA', 'RU', 'TR', 'IN'):
+            self.assertEqual(region_group(code), 'world', code)
+
+    def test_vast_offers_carry_where_the_server_stands(self):
+        offers = normalize_vast({'offers': [
+            {'id': 1, 'gpu_name': 'RTX 3090', 'dph_total': .2, 'gpu_ram': 24576, 'geolocation': 'Norway, NO'},
+            {'id': 2, 'gpu_name': 'RTX 3090', 'dph_total': .3, 'gpu_ram': 24576, 'geolocation': 'Texas, US'},
+            {'id': 3, 'gpu_name': 'RTX 3090', 'dph_total': .1, 'gpu_ram': 24576, 'geolocation': 'Jiangsu, CN'},
+            {'id': 4, 'gpu_name': 'RTX 3090', 'dph_total': .4, 'gpu_ram': 24576},
+        ]})
+        by_id = {offer['id']: offer for offer in offers}
+        self.assertEqual((by_id['1']['country'], by_id['1']['region']), ('NO', 'europe'))
+        self.assertEqual((by_id['2']['country'], by_id['2']['region']), ('US', 'north-america'))
+        self.assertEqual((by_id['3']['country'], by_id['3']['region']), ('CN', 'world'))
+        self.assertEqual((by_id['4']['country'], by_id['4']['region'], by_id['4']['location']), ('', '', ''))
+
+    def render(self, provider, offers):
+        return render_cloud_market(provider, False, {'offers': offers, 'fetched_at': 'now', 'error': None}, 'token')
+
+    def vast_offer(self, offer_id, gpu, price, location, country, region):
+        return {'id': offer_id, 'gpu': gpu, 'price': price, 'detail': '24 GB VRAM', 'vram_mb': 24576,
+                'location': location, 'country': country, 'region': region}
+
+    def test_the_list_is_grouped_europe_first_each_group_cheapest_first_with_flags(self):
+        page = self.render('vast', [
+            self.vast_offer('1', 'RTX 3090 cn', .10, 'Jiangsu, CN', 'CN', 'world'),
+            self.vast_offer('2', 'RTX 3090 us', .20, 'Texas, US', 'US', 'north-america'),
+            self.vast_offer('3', 'RTX 3090 de', .30, 'Germany, DE', 'DE', 'europe'),
+            self.vast_offer('4', 'RTX 3090 no', .25, 'Norway, NO', 'NO', 'europe'),
+            self.vast_offer('5', 'RTX 3090 ??', .05, '', '', ''),
+        ])
+        labels = [label for label in ('Europa (närmast Sverige)', 'USA och Kanada', 'Övriga världen', 'Okänd plats')
+                  if f'<optgroup label="{label}">' in page]
+        self.assertEqual(labels, ['Europa (närmast Sverige)', 'USA och Kanada', 'Övriga världen', 'Okänd plats'])
+        order = [page.index(name) for name in ('RTX 3090 no', 'RTX 3090 de', 'RTX 3090 us', 'RTX 3090 cn', 'RTX 3090 ??')]
+        self.assertEqual(order, sorted(order), 'Norway (0.25) before Germany (0.30), then the USA, China, unknown')
+        self.assertIn('\U0001F1F3\U0001F1F4 Norway, NO · RTX 3090 no', page)
+        self.assertIn('Flaggan visar landet', page)
+
+    def test_runpod_has_no_location_so_its_list_stays_flat(self):
+        page = self.render('runpod', [{'id': 'A', 'gpu': 'RTX 4090', 'price': .7, 'detail': '24 GB VRAM', 'vram_mb': 24576}])
+        self.assertNotIn('<optgroup', page)
+        self.assertNotIn('Flaggan visar landet', page)
+
+    def test_a_hostile_location_text_is_escaped(self):
+        page = self.render('vast', [self.vast_offer('1', 'RTX 3090', .1, '<script>x</script>, US', 'US', 'north-america')])
+        self.assertNotIn('<script>x', page)
+        self.assertIn('&lt;script&gt;', page)
 
 
 if __name__ == "__main__":

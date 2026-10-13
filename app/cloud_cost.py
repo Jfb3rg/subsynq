@@ -3,7 +3,8 @@ import json
 import math
 from html import escape
 
-from cloud_market import VRAM_BAND_LABELS, VRAM_BANDS, normalize_vram_bands
+from cloud_market import (REGION_GROUP_RANK, REGION_GROUPS, VRAM_BAND_LABELS, VRAM_BANDS, flag_emoji,
+                          normalize_vram_bands)
 
 
 DEFAULT_PROFILE = {
@@ -119,6 +120,28 @@ def render_cloud_cost(profile, token, saved=False):
     )
 
 
+def _offer_option(item):
+    flag = flag_emoji(item.get('country', ''))
+    place = escape(item.get('location') or '')
+    where = ' '.join(part for part in (flag, place) if part)
+    return (f'<option value="{escape(item["id"], quote=True)}">'
+            f'{(where + " · ") if where else ""}{escape(item["gpu"])} · {item["price"]:.4f} USD/tim'
+            f'{(" · " + escape(item["detail"])) if item.get("detail") else ""}</option>')
+
+
+def _offer_options(offers):
+    """Options for the offer list; Vast offers are grouped by where the server stands."""
+    if not any(item.get('region') for item in offers):
+        return ''.join(_offer_option(item) for item in offers), False
+    labels = dict(REGION_GROUPS, unknown='Okänd plats')
+    rank = dict(REGION_GROUP_RANK, unknown=len(REGION_GROUPS))
+    groups = {}
+    for item in sorted(offers, key=lambda offer: (rank[offer.get('region') or 'unknown'], offer['price'], offer['gpu'])):
+        groups.setdefault(item.get('region') or 'unknown', []).append(item)
+    return ''.join(f'<optgroup label="{labels[key]}">' + ''.join(_offer_option(item) for item in items) + '</optgroup>'
+                   for key, items in groups.items()), True
+
+
 def render_cloud_market(provider, connected, result, token, notice='', gpu_query='', vram_bands=()):
     """Render only offers returned by the selected provider's current API response."""
     vram_bands = normalize_vram_bands(vram_bands)
@@ -177,11 +200,11 @@ def render_cloud_market(provider, connected, result, token, notice='', gpu_query
     if result.get('error'):
         catalog_html = f'<p class="job-message">{escape(result["error"])}</p>'
     elif offers:
-        options = ''.join(
-            f'<option value="{escape(item["id"], quote=True)}">'
-            f'{escape(item["gpu"])} · {item["price"]:.4f} USD/tim'
-            f'{(" · " + escape(item["detail"])) if item.get("detail") else ""}</option>'
-            for item in offers)
+        options, grouped = _offer_options(offers)
+        where_hint = ('<p class="muted">Listan är ordnad efter var servern står: Europa (närmast Sverige) först, sedan '
+                      'USA och Kanada, sedan övriga världen, billigast först i varje grupp. Flaggan visar landet. '
+                      'Närmare Sverige ger oftast kortare svarstid; hur snabbt en server hämtar modellerna skiljer '
+                      'sig ändå från värd till värd.</p>') if grouped else ''
         catalog_html = (
             f'<p class="muted">Hämtat {escape(result.get("fetched_at") or "")}. '
             + (f'Visar bara {chosen_text} ({len(offers)} st). ' if vram_bands else '') +
@@ -192,6 +215,7 @@ def render_cloud_market(provider, connected, result, token, notice='', gpu_query
             f'<label for="live-offer">Aktuellt erbjudande från {label}</label>'
             f'<select id="live-offer" name="offer_id">{options}</select>'
             '<button type="submit">Använd priset i min kostnadsplan</button></form>'
+            + where_hint +
             '<p class="muted">Det väljer bara ett prisunderlag. Det hyr, startar eller överför inget.</p>'
         )
     else:

@@ -118,6 +118,38 @@ def vram_matches(offer, bands):
                for key, low, high in VRAM_BANDS if key in bands)
 
 
+# Where a rented server stands. Servers closer to Sweden answer faster and, in
+# practice, the hosts in Europe and North America have been the dependable ones,
+# so the market page lists Europe first, then the USA and Canada, then the rest.
+EUROPE_CODES = frozenset((
+    'SE NO DK FI IS EE LV LT PL DE NL BE LU GB IE FR CH AT CZ SK HU SI HR RS BA ME MK AL XK BG RO GR MT CY IT ES PT '
+    'UA MD AD MC LI SM').split())
+NORTH_AMERICA_CODES = frozenset(('US', 'CA'))
+REGION_GROUPS = (('europe', 'Europa (närmast Sverige)'), ('north-america', 'USA och Kanada'),
+                 ('world', 'Övriga världen'))
+REGION_GROUP_RANK = {key: rank for rank, (key, _label) in enumerate(REGION_GROUPS)}
+
+
+def country_from_geolocation(value):
+    """Two-letter country code from Vast's "Texas, US" / "Norway, NO" text, else ''."""
+    match = re.search(r'(?:^|,)\s*([A-Z]{2})\s*$', value) if isinstance(value, str) else None
+    return match.group(1) if match else ''
+
+
+def flag_emoji(country):
+    if not re.fullmatch(r'[A-Z]{2}', country or ''):
+        return ''
+    return ''.join(chr(0x1F1E6 + ord(letter) - ord('A')) for letter in country)
+
+
+def region_group(country):
+    if country in EUROPE_CODES:
+        return 'europe'
+    if country in NORTH_AMERICA_CODES:
+        return 'north-america'
+    return 'world'
+
+
 def _read_json(request):
     with urlopen(request, timeout=10) as response:
         return json.load(response)
@@ -146,9 +178,14 @@ def normalize_vast(payload):
             continue
         vram = offer.get('gpu_ram')
         known = isinstance(vram, (int, float)) and vram > 0
+        location = offer.get('geolocation')
+        location = location.strip()[:60] if isinstance(location, str) else ''
+        country = country_from_geolocation(location)
         result.append({'id': str(offer_id), 'gpu': gpu, 'price': price,
                        'vram_gb': round(vram / 1024, 1) if known else None,
                        'vram_mb': vram if known else None,
+                       'location': location, 'country': country,
+                       'region': region_group(country) if country else '',
                        'detail': f"{offer.get('gpu_ram', 0) / 1024:.0f} GB VRAM" if isinstance(offer.get('gpu_ram'), (int, float)) else ''})
     return sorted(result, key=lambda item: (item['price'], item['gpu']))
 
