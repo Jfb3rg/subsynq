@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.227
+
+- **Aktiva jobb visar vilken modell varje steg verkligen använder.** Raden under ett jobb sa tidigare alltid "… + Gemma 3 12B", även när översättningen körde med en annan modell (till exempel `gemma3:27b` på en hyrd server). Nu visar den stegets modell: avlyssningen visar Whisper/Qwen, källkontrollen "Källkontroll med <modell>", översättningen "Översättning med <modell>" (även omgörningen och den engelska undertexten), och slutgranskningen "Granskning med <modell>". På en hyrd server visas de modeller som körs där, inte hemmaservens namn.
+
 ## 0.8.226
 
 - **Automatiskt val av moln-modeller efter VRAM.** Skriver du `auto` i `SUBSYNQ_CLOUD_TRANSLATION_MODEL` och/eller `SUBSYNQ_CLOUD_REVIEW_MODEL` väljs modellerna efter VRAM på det kort som faktiskt hyrs: minst 24 GB ger `gemma3:27b` + `gemma4:26b`, mindre kort de vanliga modellerna. Hyrerbjudandena (Vast.ai och Runpod) bär nu sitt VRAM (`vram_gb`), och startskriptet byggs per erbjudande, så valet följer exakt det kort som beställs. Bara kombinationer som har körts på riktig hårdvara ingår i automatiken; `gemma4:31b` måste anges för hand.

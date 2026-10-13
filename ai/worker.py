@@ -128,6 +128,12 @@ def cloud_model_plan(mode, vram_gb=None):
     return [translation, review], aliases, (cloud_min_vram_gib([translation, review]) if aliases else None)
 
 
+def active_gemma_models():
+    """(translation, review) as they really run: the rented server's models when there are any, else the home ones."""
+    shown = getattr(MODEL_JOB, 'cloud_models', None)
+    return tuple(shown) if shown else (MODEL_NAME, REVIEW_MODEL_NAME)
+
+
 def cloud_min_vram_gib(models):
     """Lowest VRAM the rented server must have: a 24 GB card for models up to ~27B, a 32 GB card from ~30B
     (their weights alone are 20 GB; Whisper and Qwen stay in memory next to them)."""
@@ -629,7 +635,7 @@ def wait_for_gpu(job, wait_seconds=GPU_WAIT_SECONDS):
         update_job(job['id'], 'transcribing', 1,
                    f'Väntar på AMD Radeon RX 9070 XT · högst {remaining} sekunder',
                    hardware='AMD Radeon RX 9070 XT',
-                   model='Whisper large-v3 + Qwen3-ASR 1.7B + Gemma 3 12B')
+                   model='Whisper large-v3 + Qwen3-ASR 1.7B')
         set_hardware(True, device='amd-rx-9070-xt', health=None,
                      fallback_reason=('GPU:n laddar eller är frånkopplad. Jobbet väntar och '
                                       'startar inte tyst på CPU.'))
@@ -3710,7 +3716,7 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
     # size+mtime is the same cheap fingerprint scan_library() already reads.
     media_stat = media.stat()
     update_job(job['id'], 'transcribing', 2, f'{asr_name} lyssnar i överlappande fönster',
-               hardware=hardware_name, model=f'{asr_name} + Gemma 3 12B',
+               hardware=hardware_name, model=asr_name,
                media_size_bytes=media_stat.st_size, media_mtime_ns=media_stat.st_mtime_ns)
     raw_rows = transcribe_and_release(job, media, model, device)
     if job.get('forced_source_language'):
@@ -3719,7 +3725,7 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
         asr_name += ' + automatisk språkavläsning (filnamnsspråket ej bekräftat)'
     update_job(job['id'], 'transcribing', 59,
                f'Avlyssningen gav {len(raw_rows)} repliker',
-               model=f'{asr_name} + Gemma 3 12B')
+               model=asr_name)
     save_source_transcript(job, media, raw_rows, hardware_name, asr_name, raw=True)
     rows, reviewed = apply_verified_source_edits(raw_rows, media, Path('/config'))
     save_source_transcript(job, media, rows, hardware_name, asr_name,
@@ -3727,25 +3733,27 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
     if reviewed:
         update_job(job['id'], 'verifying', 59,
                    f'{len(reviewed)} avlyssnade källrättelser tillämpade',
-                   model=f'{asr_name} + Gemma 3 12B · {len(reviewed)} verifierade rättelser')
+                   model=f'{asr_name} · {len(reviewed)} verifierade rättelser')
     update_job(job['id'], 'verifying', 60,
-               f'Kvalitetskontrollerar tider och {len(rows)} repliker')
+               f'Kvalitetskontrollerar tider och {len(rows)} repliker',
+               model=f'Källkontroll med {active_gemma_models()[0]}')
     validate_episode_segments(rows)
     MODEL_JOB.phase = 'source_review'
     assess_source_quality(rows, media.name, use_filename_hint=(
         job.get('language_policy', {}).get('status') == 'confirmed'))
-    update_job(job['id'], 'translating', 61, f'Översätter {len(rows)} repliker till svenska')
+    update_job(job['id'], 'translating', 61, f'Översätter {len(rows)} repliker till svenska',
+               model=f'Översättning med {active_gemma_models()[0]}')
     MODEL_JOB.phase = 'translation'
     def announce(stage):
         if stage == 'retry':
             MODEL_JOB.phase = 'translation'
             update_job(job['id'], 'translating', 90,
                        'Slutkontrollen underkände översättningen - gör om den en gång med de '
-                       'refuserade formuleringarna (källtexten behålls)')
+                       'refuserade formuleringarna (källtexten behålls)',
+                       model=f'Översättning med {active_gemma_models()[0]}')
         else:
-            shown = getattr(MODEL_JOB, 'cloud_models', None) or (MODEL_NAME, REVIEW_MODEL_NAME)
             update_job(job['id'], 'verifying', 97, 'Slutkontrollerar den svenska undertexten',
-                       model=f'{asr_name} + {shown[0]} · granskare {shown[1]}')
+                       model=f'Granskning med {active_gemma_models()[1]}')
             MODEL_JOB.phase = 'final_review'
     translated = translate_and_review(job, rows, announce=announce)
     check_cancelled(job['id'])
@@ -3763,7 +3771,8 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
         # succeeded and was written above.
         try:
             update_job(job['id'], 'translating', 100, f'Klar · {len(rows)} repliker{note} · '
-                       'översätter även till engelska')
+                       'översätter även till engelska',
+                       model=f'Engelsk översättning med {active_gemma_models()[0]}')
             MODEL_JOB.phase = 'english_translation'
             english_rows = translate(job, rows, target_key='en', target_language='English')
             check_cancelled(job['id'])

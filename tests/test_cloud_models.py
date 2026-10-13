@@ -151,5 +151,26 @@ class OfferVramTests(unittest.TestCase):
         self.assertEqual(runpod[0]['vram_gb'], 24.0)
 
 
+class ActiveModelLabelTests(unittest.TestCase):
+    """The queue shows which model a job is using right now, never a stale or hard-coded name."""
+
+    def test_home_models_are_shown_when_nothing_runs_in_the_cloud(self):
+        worker.MODEL_JOB.cloud_models = None
+        with patch.object(worker, 'MODEL_NAME', 'gemma3:12b'), patch.object(worker, 'REVIEW_MODEL_NAME', 'gemma4:12b'):
+            self.assertEqual(worker.active_gemma_models(), ('gemma3:12b', 'gemma4:12b'))
+
+    def test_the_rented_servers_models_are_shown_when_they_differ(self):
+        worker.MODEL_JOB.cloud_models = ('gemma3:27b', 'gemma4:31b')
+        self.addCleanup(setattr, worker.MODEL_JOB, 'cloud_models', None)
+        self.assertEqual(worker.active_gemma_models(), ('gemma3:27b', 'gemma4:31b'))
+
+    def test_no_stage_label_in_the_worker_is_a_hard_coded_gemma_name(self):
+        source = open(worker.__file__, encoding='utf-8').read()
+        self.assertNotIn('Gemma 3 12B', source)
+        for label in ("f'Översättning med {active_gemma_models()[0]}'", "f'Granskning med {active_gemma_models()[1]}'",
+                      "f'Källkontroll med {active_gemma_models()[0]}'"):
+            self.assertIn(label, source)
+
+
 if __name__ == "__main__":
     unittest.main()
