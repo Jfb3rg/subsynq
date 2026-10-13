@@ -119,12 +119,13 @@ större Gemma-modeller än hemma. Fyll i `subsynq-worker`-variablerna **Moln: st
 `gemma3:27b`) och **Moln: större granskningsmodell** (till exempel `gemma4:26b`). Då hämtar bara den hyrda servern
 modellerna (cirka 36 GB extra); din egen server hämtar dem aldrig, och CPU-hyra påverkas inte. Lämnar du fälten tomma
 används samma modeller som hemma. Hyrda 16 GB-kort räcker inte för de stora modellerna: servern kräver minst 22 GiB VRAM, och minst 30 GiB (ett 32 GB-kort) för modeller på 30B och uppåt.
-`gemma4:31b` är för stor för 24 GB tillsammans med Whisper och Qwen och kräver ett 32 GB-kort, till exempel RTX 5090 (ej provat).
+`gemma4:31b` är för stor för 24 GB tillsammans med Whisper och Qwen och kräver ett 32 GB-kort, till exempel RTX 5090.
 
-Skriv `auto` i fälten i stället för ett modellnamn om du vill att SubSynq väljer efter det hyrda kortets VRAM: ett kort med
-minst 24 GB får `gemma3:27b` och `gemma4:26b` (det som har provats), mindre kort de vanliga modellerna. Valet görs för just
-det kort som hyrs, och jobbets modellrad visar vilka modeller som verkligen kördes på servern. Vill du ha `gemma4:31b` på ett
-32 GB-kort skriver du det namnet för hand; det väljs inte automatiskt eftersom det ännu inte har provats.
+Skriv `auto` i fälten i stället för ett modellnamn om du vill att SubSynq väljer efter det hyrda kortets VRAM:
+ett kort med minst 24 GB får `gemma3:27b` och `gemma4:26b`, ett kort med minst 32 GB får `gemma3:27b` och `gemma4:31b`,
+och mindre kort de vanliga modellerna. Bägge nivåerna har körts på riktig hårdvara (RTX 4090 respektive RTX 5090;
+VRAM-toppen var 23,2 av 24,0 GiB respektive 29,8 av 31,8 GiB, alltså på gränsen). Valet görs för just det kort
+som hyrs, och jobbets modellrad visar vilka modeller som verkligen kördes på servern.
 
 ## Uppdateringar
 

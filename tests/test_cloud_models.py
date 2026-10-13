@@ -116,7 +116,9 @@ class AutoModelTests(unittest.TestCase):
     def test_a_24_gb_card_gets_the_large_models_and_a_16_gb_card_the_usual_ones(self):
         self.assertEqual(self.plan(23.99)[0], ['gemma3:27b', 'gemma4:26b'])
         self.assertEqual(self.plan(24.0)[1], {'gemma3:12b': 'gemma3:27b', 'gemma4:12b': 'gemma4:26b'})
-        self.assertEqual(self.plan(31.8)[0], ['gemma3:27b', 'gemma4:26b'], 'bigger cards use the tested pair until a larger one has been tried')
+        self.assertEqual(self.plan(31.8)[0], ['gemma3:27b', 'gemma4:31b'], 'a 32 GB card gets the 31B reviewer')
+        self.assertEqual(self.plan(30.9)[0], ['gemma3:27b', 'gemma4:26b'], 'just below a 32 GB card is still a 24 GB case')
+        self.assertEqual(self.plan(80.0)[1], {'gemma3:12b': 'gemma3:27b', 'gemma4:12b': 'gemma4:31b'})
         self.assertEqual(self.plan(15.9), (['gemma3:12b', 'gemma4:12b'], {}, None))
         self.assertEqual(self.plan(22.9), (['gemma3:12b', 'gemma4:12b'], {}, None))
 
@@ -133,6 +135,7 @@ class AutoModelTests(unittest.TestCase):
 
     def test_the_vram_guard_follows_the_chosen_models(self):
         self.assertEqual(self.plan(24.0)[2], worker.CLOUD_LARGE_MODEL_MIN_VRAM_GIB)
+        self.assertEqual(self.plan(32.0)[2], worker.CLOUD_HUGE_MODEL_MIN_VRAM_GIB)
         self.assertEqual(self.plan(24.0, 'auto', 'gemma4:31b')[2], worker.CLOUD_HUGE_MODEL_MIN_VRAM_GIB)
 
 

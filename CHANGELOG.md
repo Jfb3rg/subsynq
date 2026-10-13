@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.228
+
+- **Automatiken (`auto`) väljer `gemma4:31b` som granskare på kort med minst 32 GB VRAM.** Kombinationen `gemma3:27b` + `gemma4:31b` har körts på en hyrd RTX 5090 (Shrek, 43 repliker, cirka 22 minuter inklusive uppstart; VRAM-toppen 29,8 av 31,8 GiB). Kort med 24–31 GB får som förut `gemma3:27b` + `gemma4:26b`, mindre kort de vanliga modellerna.
+
 ## 0.8.227
 
 - **Aktiva jobb visar vilken modell varje steg verkligen använder.** Raden under ett jobb sa tidigare alltid "… + Gemma 3 12B", även när översättningen körde med en annan modell (till exempel `gemma3:27b` på en hyrd server). Nu visar den stegets modell: avlyssningen visar Whisper/Qwen, källkontrollen "Källkontroll med <modell>", översättningen "Översättning med <modell>" (även omgörningen och den engelska undertexten), och slutgranskningen "Granskning med <modell>". På en hyrd server visas de modeller som körs där, inte hemmaservens namn.

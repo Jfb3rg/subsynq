@@ -98,7 +98,10 @@ CLOUD_HUGE_MODEL_MIN_VRAM_GIB = 30       # a 32 GB card, for models of 30B and u
 
 # "auto" in the two settings above picks the models from the rented card's VRAM. Only combinations that have run
 # on real hardware are listed: (lowest VRAM in GiB, translation model, review model), largest first.
-CLOUD_AUTO_MODEL_TIERS = ((23.0, 'gemma3:27b', 'gemma4:26b'),)
+CLOUD_AUTO_MODEL_TIERS = (
+    (31.0, 'gemma3:27b', 'gemma4:31b'),    # 32 GB card: ran on an RTX 5090, VRAM peak 29.8 of 31.8 GiB
+    (23.0, 'gemma3:27b', 'gemma4:26b'),    # 24 GB card: ran on an RTX 4090, VRAM peak 23.2 of 24.0 GiB
+)
 
 
 def cloud_auto_models(vram_gb):
