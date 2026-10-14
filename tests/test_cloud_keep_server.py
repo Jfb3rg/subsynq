@@ -56,12 +56,14 @@ class KeepServerBase(unittest.TestCase):
 
 
 class FinishCloudChainTests(KeepServerBase):
-    def finish(self, *, reusable=True, preference='cloud-vast', keep=True):
+    def finish(self, *, reusable=True, preference='cloud-vast', keep=True, unloaded=True):
         with patch.object(worker, 'hardware_preference', return_value=preference), \
                 patch.object(worker, 'CLOUD_KEEP_SERVER', keep), \
                 patch.object(worker, 'destroy_cloud_gpu') as destroy, \
+                patch.object(worker, 'unload_cloud_models', return_value=unloaded) as unload, \
                 patch.object(worker, 'cloud_wanted_gpu', return_value='RTX 4090'):
             worker.finish_cloud_chain({'id': 1}, 'vast', 'cuda', 555, 'https://cloud:41000/token', 'ctx', reusable)
+        self.unload = unload
         return destroy
 
     def test_a_ready_server_is_kept_when_another_cloud_job_waits(self):
@@ -99,9 +101,70 @@ class FinishCloudChainTests(KeepServerBase):
         worker._KEPT_CLOUD = None
         with patch.object(worker, 'destroy_cloud_gpu') as destroy, \
                 patch.object(worker, 'hardware_preference', return_value='cloud-vast'), \
+                patch.object(worker, 'unload_cloud_models', return_value=True), \
                 patch.object(worker, 'cloud_wanted_gpu', return_value='RTX 4090'):
             worker.finish_cloud_chain({'id': 1}, 'vast', 'cuda', 556, 'u', 'ctx', True)
         destroy.assert_not_called()
+
+
+    def test_a_server_whose_gpu_memory_could_not_be_freed_is_destroyed_not_kept(self):
+        destroy = self.finish(unloaded=False)
+        destroy.assert_called_once_with('vast', 555)
+        self.assertIsNone(worker._KEPT_CLOUD)
+
+    def test_the_models_are_unloaded_before_the_server_is_kept(self):
+        worker.MODEL_JOB.cloud_models = ('gemma3:27b', 'gemma4:26b')
+        self.addCleanup(setattr, worker.MODEL_JOB, 'cloud_models', None)
+        self.finish()
+        self.unload.assert_called_once_with('https://cloud:41000/token', 'ctx', ('gemma3:27b', 'gemma4:26b'))
+
+
+class UnloadCloudModelsTests(unittest.TestCase):
+    class Reply:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, *args):
+            return json.dumps(self.payload).encode()
+
+    def run_unload(self, models, reply=None, error=None):
+        sent = []
+
+        def urlopen(request, timeout=0):
+            sent.append((request.full_url, request.get_method(), json.loads(request.data)))
+            if error:
+                raise error
+            return self.Reply(reply if reply is not None else {'done_reason': 'unload'})
+        with patch.object(worker, 'install_tls_opener'), patch.object(worker, 'reset_opener') as reset, \
+                patch.object(worker.urllib.request, 'urlopen', side_effect=urlopen):
+            result = worker.unload_cloud_models('https://cloud:41000/token', 'ctx', models)
+        reset.assert_called_once_with()
+        return result, sent
+
+    def test_each_model_gets_a_keep_alive_zero_request_through_the_gateway(self):
+        result, sent = self.run_unload(('gemma3:27b', 'gemma4:26b', 'gemma3:27b'))
+        self.assertTrue(result)
+        self.assertEqual(sent, [
+            ('https://cloud:41000/token/ollama/api/generate', 'POST', {'model': 'gemma3:27b', 'keep_alive': 0}),
+            ('https://cloud:41000/token/ollama/api/generate', 'POST', {'model': 'gemma4:26b', 'keep_alive': 0})])
+
+    def test_an_unacknowledged_unload_is_a_failure(self):
+        self.assertFalse(self.run_unload(('gemma3:27b',), reply={'done_reason': 'stop'})[0])
+
+    def test_a_network_error_is_a_failure_not_a_crash(self):
+        self.assertFalse(self.run_unload(('gemma3:27b',), error=OSError('down'))[0])
+
+    def test_without_known_models_nothing_is_sent_and_the_server_is_not_trusted(self):
+        for models in (None, (), ('',)):
+            with patch.object(worker.urllib.request, 'urlopen') as urlopen:
+                self.assertFalse(worker.unload_cloud_models('https://x/t', 'ctx', models))
+                urlopen.assert_not_called()
 
 
 class AcquireCloudChainTests(KeepServerBase):

@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.237
+
+- **Rättar ett fel i 0.8.234: återanvänd moln-GPU-server kunde ge "CUDA out of memory".** När servern behölls för nästa jobb låg Gemma-modellerna (27b/26b) kvar i GPU-minnet, så nästa jobbs Whisper/Qwen fick inget minne (HOPE, jobb 28: `Qwen3-ASR HTTP 500: CUDA out of memory`). Nu ber SubSynq serverns Ollama att släppa modellerna ur GPU-minnet innan servern behålls, och får det inte bekräftat förstörs servern i stället för att återanvändas. Har du kört 0.8.234–0.8.236 med flera jobb i kön: kör om de jobb som föll på minnesfelet.
+
 ## 0.8.236
 
 - **Bättre översättning av rader som saknar skiljetecken.** När Whisper skriver en hel sträcka som gemener utan en enda punkt eller kommatecken (typiskt för trailers med ljudeffekter) kan översättaren inte se var en mening slutar, och en rad som börjar mitt i en mening översätts som en egen mening. Exempel från PLANET 9: "...kommer från planeten" + "ahead how old is it" blev "Framåt. Hur gammal…" och "scan for" + "life scanning" blev "Skanna efter" + "Livsgenomskanning". Nu får sådana rader skiljetecken och versal först (modellen ser hela texten i följd, och resultatet delas tillbaka på raderna efter ordantal). Bara skiljetecken och versaler i meningsstarter ändras; om ett enda ord skiljer sig lämnas allt som det var, rader som redan har skiljetecken rörs aldrig, och tider och radordning är oförändrade. Prov på PLANET 9: "ahead. How old is it?" → "framför oss. Hur gammal är den?", "Scan for | life. Scanning." → "Skanna efter | liv. Skannar.", "What are | they showing?" → "Vad | visar de?".

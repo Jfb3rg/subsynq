@@ -29,7 +29,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.236"
+VERSION = "0.8.237"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved

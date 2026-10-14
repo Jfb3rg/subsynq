@@ -1309,6 +1309,29 @@ def acquire_cloud_chain(job, provider, mode):
     return rent_cloud_chain(job, provider, mode)
 
 
+def unload_cloud_models(base_url, context, models):
+    """Make the rented server's Ollama drop its Gemma models from GPU memory. True only when every unload was
+    acknowledged. A server kept for the next job must have a free GPU: the next job loads Whisper and Qwen
+    first, and a resident 27b model left them without memory ("CUDA out of memory", real job 28)."""
+    names = [name for name in dict.fromkeys(models or ()) if name]
+    if not names:
+        return False
+    try:
+        install_tls_opener(context)
+        for name in names:
+            request = urllib.request.Request(
+                f'{base_url}/ollama/api/generate', data=json.dumps({'model': name, 'keep_alive': 0}).encode(),
+                headers={'Content-Type': 'application/json'}, method='POST')
+            with urllib.request.urlopen(request, timeout=60) as response:
+                if json.load(response).get('done_reason') != 'unload':
+                    return False
+        return True
+    except Exception:
+        return False
+    finally:
+        reset_opener()
+
+
 def finish_cloud_chain(job, provider, mode, instance_id, base_url, tls_context, reusable):
     """After a job: keep the ready server for the next queued cloud job, else destroy it (no idle billing)."""
     global _KEPT_CLOUD
@@ -1318,6 +1341,9 @@ def finish_cloud_chain(job, provider, mode, instance_id, base_url, tls_context, 
             waiting = cloud_jobs_are_waiting(hardware_preference())
         except RuntimeError:
             waiting = False
+    if waiting and not unload_cloud_models(base_url, tls_context, getattr(MODEL_JOB, 'cloud_models', None)):
+        print('Molnservern kunde inte frigöra GPU-minnet; den förstörs i stället för att behållas.', flush=True)
+        waiting = False
     if waiting:
         _KEPT_CLOUD = {'provider': provider, 'mode': mode, 'gpu': cloud_wanted_gpu(provider, mode),
                        'instance_id': instance_id, 'base_url': base_url, 'tls_context': tls_context,
