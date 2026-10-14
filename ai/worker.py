@@ -45,7 +45,7 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
                          plan_v2_timing_windows, plan_v2_word_check_windows, plan_windows,
                          prefer_fuller_reading, prefer_fuller_window_readings,
                          drop_misplaced_duplicate_cues, plan_consensus_windows, prefer_consensus_reading,
-                         prefer_forced_language_reading,
+                         prefer_confident_reading, prefer_forced_language_reading,
                          prefer_precision_for_unpunctuated_runs, restore_multi_pass_agreed_speech,
                          prefer_precision_pauses, prefer_precision_sentence_boundaries,
                          reconcile_corroborated_rephrasings,
@@ -2296,6 +2296,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged = prefer_forced_language_reading(
         merged, consensus_readings.get("forced", []),
         {name: rows for name, rows in consensus_readings.items() if name != "forced"})
+    # What the merge left at a very low confidence (garbled text, mixed scripts) is replaced by the most confident
+    # reading of the same place.
+    merged = prefer_confident_reading(merged, consensus_readings)
     trace_payload.update(profile_evidence=profile_evidence, consensus_windows=consensus_windows,
                          consensus_qwen=consensus_readings.get("qwen", []),
                          consensus_forced=consensus_readings.get("forced", []),

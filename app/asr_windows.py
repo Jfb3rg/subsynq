@@ -1447,6 +1447,46 @@ def prefer_forced_language_reading(merged, forced, others=None, *, maximum_confi
     return final
 
 
+def _mixes_scripts(text):
+    """Latin letters inside text that is mostly in another script: a sign of a garbled reading."""
+    letters = [char for char in str(text) if char.isalpha()]
+    latin = sum(1 for char in letters if char.isascii())
+    return bool(letters) and 0 < latin < len(letters) * .5
+
+
+def prefer_confident_reading(merged, readings, *, maximum_confidence=.4, minimum_confidence=.6, minimum_gain=.25):
+    """A cue the merge left at very low confidence takes a clearly more confident reading of the same time.
+
+    The final merge can end on a pass that read the place badly (Sigma, Tamil: "…தண்டmedenmadு முட்ட…" with Latin
+    letters in the middle of Tamil, confidence 0.27, while the quiet-gap pass read "ஆனால் தாயாமானது விட்டதே இல்லை."
+    at 0.75). A cue with a recorded confidence below `maximum_confidence` (0 means "not recorded", never "bad")
+    takes the most confident reading of the passes (joined pieces too) that covers most of the cue's time, is at
+    least `minimum_confidence` and `minimum_gain` better, and is not much shorter (a piece of the speech with a
+    higher confidence must not cost words; a garbled cue that mixes scripts may be replaced by a shorter one). Only
+    the text changes, never the timing, and boilerplate is never used.
+    """
+    final = [dict(item) for item in sorted(merged, key=lambda item: item['start'])]
+    everything = dict(readings)
+    everything.update(span_readings(final, readings))
+    for row in final:
+        confidence = float(row.get('confidence', 0))
+        if not 0 < confidence < maximum_confidence:
+            continue
+        needed = .3 if _mixes_scripts(row['text']) else .85
+        size = len(_normalized(str(row['text'])).replace(' ', ''))
+        better = [other for rows in everything.values() for other in (rows or ())
+                  if _normalized(str(other.get('text', ''))) and not _is_boilerplate(other.get('text', ''))
+                  and _overlap_seconds(row, other) >= .7 * (row['end'] - row['start'])
+                  and len(_normalized(str(other['text'])).replace(' ', '')) >= needed * size
+                  and float(other.get('confidence', 0)) >= max(minimum_confidence, confidence + minimum_gain)]
+        if better:
+            best = max(better, key=lambda other: (float(other.get('confidence', 0)), _span_overlap_ratio(row, other)))
+            text = str(best['text']).strip()
+            if text and _normalized(text) not in _STOCK_PHRASES:
+                row['text'] = text
+    return final
+
+
 def plan_consensus_windows(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),
                            maximum_total=8, maximum_confidence=.6):
     """Short time windows where a further independent reading (Qwen3-ASR) can settle the matter: speech the passes

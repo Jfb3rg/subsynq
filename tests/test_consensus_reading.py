@@ -3,7 +3,7 @@ import unittest
 
 sys.path.insert(0, '/app')
 from asr_windows import (plan_consensus_windows, prefer_consensus_reading, restore_multi_pass_agreed_speech,
-                         prefer_forced_language_reading, span_readings)
+                         prefer_confident_reading, prefer_forced_language_reading, span_readings)
 
 
 def cue(start, end, text, confidence=.5):
@@ -237,6 +237,51 @@ class ForcedReadingMustNotDropWordsTests(unittest.TestCase):
     def test_without_the_other_passes_the_confidence_alone_decides(self):
         result = prefer_forced_language_reading(FINAL_38, FORCED_38)
         self.assertEqual(result[0]['text'], '며칠 전에 친구들이랑 사냥을 있었어')
+
+
+
+# Real Sigma readings (Tamil, job 41): the merge ended on a forced re-read at confidence 0.27-0.32 although other
+# passes had read the same places at 0.75-0.8.
+SIGMA_FINAL = [cue(16.2, 18.2, 'அப்பா பயமாறு பா சூலிடு பா', .29), cue(97.7, 99.0, 'நான் மிக்க தீவிக்கிறேன்.', .32),
+               cue(99.2, 101.7, 'ஆனால் நான் உங்களின் வணக்கைகளை தண்டmedenmadு முட்ட விட்டிய பிடிய இருக்கிறேன்.', .27)]
+SIGMA_READINGS = {
+    'rescue': [cue(15.6, 18.1, 'அப்பா பயமாறு பா சூலிடு பா', .73), cue(97.4, 99.3, 'நான் நிறைய தூத்தைப் பழகினேன்.', .76),
+               cue(99.3, 101.7, 'ஆனால் தாயாமானது விட்டதே இல்லை.', .75)],
+    'v2': [cue(15.5, 17.3, 'அப்பா பயமா இருப்பா', .81), cue(17.3, 18.1, 'சுலிடுப்பா', .78)],
+    'precision': [cue(15.9, 17.7, 'அப்பா, பயமாக இருபவன், சொல்லிடு.', .44), cue(97.4, 101.7, 'நான் யாமாவெந்து விட்டதே இல்லை.', .62)],
+}
+
+
+class ConfidentReadingTests(unittest.TestCase):
+    def test_cues_the_merge_left_at_a_very_low_confidence_take_the_pass_readings_that_are_much_more_confident(self):
+        result = prefer_confident_reading(SIGMA_FINAL, SIGMA_READINGS)
+        self.assertEqual(result[0]['text'], 'அப்பா பயமா இருப்பா சுலிடுப்பா', 'two v2 pieces joined (0.795)')
+        self.assertEqual(result[1]['text'], 'நான் நிறைய தூத்தைப் பழகினேன்.')
+        self.assertEqual(result[2]['text'], 'ஆனால் தாயாமானது விட்டதே இல்லை.', 'a garbled cue with Latin letters may shrink')
+        self.assertEqual([(row['start'], row['end']) for row in result], [(row['start'], row['end']) for row in SIGMA_FINAL])
+
+    def test_a_cue_without_a_recorded_confidence_is_never_touched(self):
+        unknown = [dict(row, confidence=0) for row in SIGMA_FINAL]
+        self.assertEqual(prefer_confident_reading(unknown, SIGMA_READINGS), unknown)
+
+    def test_a_cue_at_an_ordinary_confidence_is_never_touched(self):
+        fine = [dict(row, confidence=.5) for row in SIGMA_FINAL]
+        self.assertEqual(prefer_confident_reading(fine, SIGMA_READINGS), fine)
+
+    def test_a_confident_piece_that_would_cost_words_is_not_used(self):
+        row = [cue(1.0, 4.0, 'we have been waiting for you now', .35)]
+        piece = {'precision': [cue(1.0, 3.0, 'we have been waiting', .9)]}
+        self.assertEqual(prefer_confident_reading(row, piece), row)
+
+    def test_a_reading_that_is_only_a_little_better_is_not_used(self):
+        row = [cue(1.0, 4.0, 'we have been waiting for you now', .35)]
+        close = {'precision': [cue(1.0, 4.0, 'we have been waiting for you right now', .55)]}
+        self.assertEqual(prefer_confident_reading(row, close), row)
+
+    def test_boilerplate_is_never_used(self):
+        row = [cue(90.0, 100.0, 'தண்டmedenmad', .3)]
+        credit = {'precision': [cue(90.0, 100.0, '한글자막 제공 및 광고를 포함하고 있습니다.', .9)]}
+        self.assertEqual(prefer_confident_reading(row, credit), row)
 
 
 if __name__ == '__main__':

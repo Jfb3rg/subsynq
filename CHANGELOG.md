@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.243
+
+- **Sigma (tamil): rader som slutavläsningen lämnade nästan oläsliga byts mot passens mycket säkrare läsning.** Den sista avläsningen kan hamna på ett pass som läst stället dåligt (Sigma: `தண்டmedenmadு முட்ட…` med latinska bokstäver mitt i tamilsk text, säkerhet 0,27, medan tysta-luckor-passet läste `ஆனால் தாயாமானது விட்டதே இல்லை.` med 0,75). En rad med noterad säkerhet under 0,4 tar nu den säkraste läsningen av samma ställe när den är minst 0,6 och minst 0,25 bättre, täcker det mesta av radens tid och inte är mycket kortare (en rad med blandade skrifter får bytas mot en kortare). Rader utan noterad säkerhet (0) rörs aldrig. Bara texten ändras, aldrig tiderna.
+- Provat på verkliga körningar: Sigma får tre rättade rader (bland annat `அப்பா பயமா இருப்பா சுலிடுப்பா` i stället för `பயமாறு`), HOPE och Ray en var; övriga oförändrade.
+
 ## 0.8.242
 
 - **Rättar 0.8.241: en säker men ofullständig tvingad avläsning får inte ersätta en rad som övriga pass är överens om.** I HOPE (jobb 38) bytte den tvingade avläsningen ut `며칠 전에 친구들이랑 사냥을 해나갔었어.` mot `…사냥을 있었어` (ord saknades men avläsningens egen säkerhet var högre). Nu byts en rads text bara när övriga pass inte stämmer bättre med radens egna ord än med den tvingade avläsningens. Rättningarna som 0.8.241 gjorde i samma jobb finns kvar: `갑자기 기적이 들리는` (förut `기증이`) och `미끄러운 거리` (förut `삐끄러운 거를`).
