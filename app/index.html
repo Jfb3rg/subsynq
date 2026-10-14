@@ -260,10 +260,26 @@ const scrollKey='subsynq-scroll';
 // <reload-guard>
 // Every automatic reload (job list, scan card, models, hardware) goes through autoReload. A page that reloads itself
 // again and again (seen once: about every 3.7 s for 80 s after a scan) pauses its own reloading instead. Six reloads
-// within 25 s is the limit: a running job reloads the list at most about every 4.3 s (4 s poll + page load = five in
-// 25 s), a loop like the one above needs under 4.2 s. After that the tab stays calm for 5 minutes and says why.
+// within 25 s is the limit (the per-kind minimum gaps below keep a running job far under it: the job list reloads at
+// most every 15 s). After that the tab stays calm for 5 minutes and says why.
 const reloadLogKey='subsynq-reload-log',reloadPauseKey='subsynq-reload-pause';
 const reloadWindowMs=25000,reloadLimit=6,reloadPauseMs=300000;
+// A reload of the same kind waits at least this long after the last one, so a running job (its progress changes the
+// list every second or two) cannot make the page blink and fetch itself again every few seconds.
+const reloadMinGapMs={queue:15000,status:15000,hardware:15000,models:5000,scan:3000};
+// Real log, dev 2026-10-14: the user tapped "Kö" while a job ran; the page's own reload was issued before the new page
+// had arrived and replaced the tap, so the queue page could not be opened at all. A tap on a link or a form submit
+// therefore blocks every automatic reload for 15 s (3 s for a finger that only touched a link).
+let navigationUntil=0;
+function noteNavigation(ms){navigationUntil=Math.max(navigationUntil,Date.now()+ms)}
+function linkOf(event){
+  const link=event.target&&event.target.closest?event.target.closest('a[href]'):null;
+  if(!link||link.target==='_blank'||link.hasAttribute('download')||(link.getAttribute('href')||'').startsWith('#'))return null;
+  return link;
+}
+document.addEventListener('pointerdown',event=>{if(linkOf(event))noteNavigation(3000)},true);
+document.addEventListener('click',event=>{if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&linkOf(event))noteNavigation(15000)},true);
+document.addEventListener('submit',()=>noteNavigation(15000),true);
 const reloadReasons={queue:'jobblistan',scan:'skanningskortet',models:'modellkortet',hardware:'hårdvarukortet',status:'statusraden'};
 function reloadState(){
   let log=[],until=0;
@@ -294,7 +310,10 @@ function showReloadPaused(why){
 }
 function autoReload(why,before){
   const now=Date.now(),state=reloadState();
+  if(now<navigationUntil)return false;
   if(state.until>now){showReloadPaused(why);return false}
+  const last=state.log.reduce((latest,entry)=>entry&&entry.why===why?Math.max(latest,entry.t):latest,0);
+  if(now-last<(reloadMinGapMs[why]||5000))return false;
   const recent=state.log.filter(entry=>entry&&now-entry.t<reloadWindowMs);
   if(recent.length>=reloadLimit){
     try{sessionStorage.setItem(reloadPauseKey,String(now+reloadPauseMs))}catch(error){}

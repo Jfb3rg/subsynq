@@ -33,6 +33,24 @@ class ReloadGuardTests(unittest.TestCase):
         self.assertIn("Ladda om nu", PAGE)
         self.assertIn("sessionStorage.removeItem(reloadPauseKey)", PAGE)
 
+    def test_a_tap_on_a_link_or_a_submit_blocks_automatic_reloads(self):
+        """Real log, dev 2026-10-14: the user tapped "Kö" while a job ran; the page's own reload replaced the tap."""
+        guard = PAGE[PAGE.index("// <reload-guard>"):PAGE.index("// </reload-guard>")]
+        self.assertIn("document.addEventListener('pointerdown'", guard)
+        self.assertIn("noteNavigation(3000)", guard)
+        self.assertIn("noteNavigation(15000)", guard)
+        self.assertIn("document.addEventListener('submit'", guard)
+        body = guard[guard.index("function autoReload"):]
+        self.assertLess(body.index("now<navigationUntil"), body.index("showReloadPaused(why);return false"),
+                        "a navigation in progress is checked before anything else")
+
+    def test_every_reason_has_its_own_minimum_gap_and_the_job_list_waits_15_seconds(self):
+        gaps = PAGE[PAGE.index("const reloadMinGapMs="):].split(";")[0]
+        self.assertIn("queue:15000", gaps)
+        for reason in ("queue", "status", "hardware", "models", "scan"):
+            self.assertRegex(gaps, rf"{reason}:\d+")
+        self.assertIn("reloadMinGapMs[why]||5000", PAGE)
+
 
 if __name__ == "__main__":
     unittest.main()

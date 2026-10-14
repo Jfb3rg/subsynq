@@ -1,4 +1,5 @@
 """SubSynq bootstrap: local status UI and persistent application identity."""
+import gzip
 import json
 import hashlib
 import logging
@@ -29,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.246"
+VERSION = "0.8.247"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1377,6 +1378,7 @@ def status():
 
 
 SLOW_REQUEST_SECONDS = 2.0
+GZIP_MIN_BYTES = 1024
 
 
 def format_request_time(seconds):
@@ -2074,7 +2076,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'image/svg+xml' if icon_match.group(2) == 'svg' else 'image/png')
             self.send_header('Content-Length', str(len(data)))
-            self.send_header('Cache-Control', 'no-store')
+            # The icons never change within a version: let the phone keep them instead of fetching nine files per page.
+            self.send_header('Cache-Control', 'public, max-age=86400')
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.end_headers()
             self.wfile.write(data)
@@ -2384,8 +2387,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def respond(self, code, content_type, body):
         payload = body.encode("utf-8")
+        compressed = len(payload) >= GZIP_MIN_BYTES and "gzip" in self.headers.get("Accept-Encoding", "").lower()
+        if compressed:      # pages are 40-70 KB of text and travel over a phone link: ~10 KB instead
+            payload = gzip.compress(payload, compresslevel=5, mtime=0)
         self.send_response(code)
         self.send_header("Content-Type", content_type + "; charset=utf-8")
+        if compressed:
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")

@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.247
+
+- **Du kommer åt Kö-sidan (och alla andra sidor) även när jobb körs.** Sidans egen omladdning kunde ersätta ett tryck på en länk, så att Kö-sidan inte gick att öppna medan ett jobb pågick. Nu väntar sidan med att ladda om sig själv 15 sekunder efter att du tryckt på en länk eller skickat ett formulär, och en sida med körande jobb laddas om högst var 15:e sekund (förut så ofta som framsteget ändrades).
+- **Snabbare gränssnitt, särskilt på mobil.** Sidorna skickas komprimerade (ungefär en fjärdedel av storleken) och ikonerna sparas i webbläsaren i ett dygn i stället för att hämtas på nytt vid varje sida.
+
 ## 0.8.246
 
 - **Skydd mot en sida som laddar om sig själv gång på gång.** Laddar en flik om sig själv sex gånger på 25 sekunder pausas den automatiska omladdningen i fem minuter. Ett kort överst säger vad som utlöste det och har en knapp "Ladda om nu".
