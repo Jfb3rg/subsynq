@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, '/ai')
 import worker
-from translation_qa import name_key, proper_name_forms, quote_is_only_names
+from translation_qa import capitalizes_common_nouns, name_key, proper_name_forms, quote_is_only_names
 
 
 def rows(*pairs):
@@ -91,6 +91,59 @@ class NameNotFlaggedTests(unittest.TestCase):
                 patch.object(worker, 'repair_target_grammar', side_effect=lambda job, r, *a, **k: r):
             worker.repair_flagged_translation({'id': 9}, data, [flag])
         self.assertIn('Gunn', model.call_args.args[0]['system'])
+
+
+GERMAN = [
+    'Ich habe das Messer in der Küche gefunden.',
+    'Das ist ein Meisterwerk, nicht wahr?',
+    'Wir müssen mit den Kollegen über den Mord sprechen.',
+    'Nein, ich glaube nicht, dass die Leute das Frühstück mögen.',
+    'Der Mörder ist noch immer im Haus.',
+    'Sie hat das Geld in die Tasche gesteckt und ist gegangen.',
+    'Und was hat der Mann zu dem Angriff gesagt?',
+    'Meine Großtante kocht gern, aber sie kann das Kochen nicht erklären.',
+    'Ich sehe kein Monster, nur ein Kind mit einem Spielzeug.',
+    'Wir haben das Leben und den Tod gesehen.',
+    'Auf dem Tisch liegt ein Brief für die Frau.',
+    'Das ist der Name von dem Mann mit dem Hut.',
+    'Ihr habt die Wahl zwischen dem Feuer und dem Wasser.',
+    'Nein, es ist nicht der Hund, es ist die Katze.',
+]
+
+
+class GermanNounsAreNotNamesTests(unittest.TestCase):
+    """Real jobs 43 and 44: German writes every noun with a capital, so "Messer", "Mord", "Kollegen" were
+    handed to the translator as names to copy unchanged and the Swedish came back full of German nouns."""
+
+    def test_a_german_text_has_no_names_from_capitals_alone(self):
+        self.assertTrue(capitalizes_common_nouns(GERMAN))
+        self.assertEqual(proper_name_forms(GERMAN), {})
+        self.assertEqual(proper_name_forms(row for row in GERMAN), {})      # also from a generator
+
+    def test_the_translator_is_not_told_to_keep_german_nouns(self):
+        data = rows(*[(line, 'x') for line in GERMAN])
+        self.assertEqual(worker.name_instruction(data), '')
+
+    def test_an_english_text_keeps_its_names(self):
+        english = ['Welcome to Venus Nova.', 'Mr. Smith left London and went home to John.',
+                   'We told Anna that the plane was late and that Paris would have to wait.',
+                   'The captain said they would reach Berlin before the storm hit Madrid.',
+                   'I know that you were with Peter in Rome when the lights went out.',
+                   'Not here, not now, and not with them around the house, you understand.',
+                   'He gave the letter to Maria and told her to meet him at Union Station.']
+        self.assertFalse(capitalizes_common_nouns(english * 3))
+        forms = proper_name_forms(english * 3)
+        self.assertEqual(forms[name_key('Venus')], ['Venus'])
+        self.assertIn(name_key('Maria'), forms)
+
+    def test_a_short_text_is_never_taken_for_german(self):
+        self.assertFalse(capitalizes_common_nouns(['Ich sehe Hans nicht.']))
+        self.assertEqual(proper_name_forms(['Ich sehe Hans nicht.']), {name_key('Hans'): ['Hans']})
+
+    def test_a_swedish_text_with_names_is_not_german(self):
+        swedish = ['Vi åkte till Stockholm med Anna och Erik.', 'Han sa att Karin skulle komma till Göteborg.',
+                   'Det var inte jag som ringde Olle på måndagen.', 'Hon träffade Johan och Maria utanför Malmö.'] * 4
+        self.assertFalse(capitalizes_common_nouns(swedish))
 
 
 if __name__ == '__main__':

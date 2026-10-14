@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.244
+
+- **Tyska filmer och serier: tyska ord som "Messer", "Mord" och "Kollegen" hamnar inte längre oöversatta i den svenska texten.** På tyska skrivs alla substantiv med stor bokstav, och SubSynq tolkade dem som namn som skulle behållas oförändrade – de stora översättningsmodellerna följde det till punkt och pricka, och granskningen underkände sedan texten. Nu känns tysk text igen på sina vanligaste ord, och då räknas inga ord som namn bara för att de har stor bokstav. Engelska, svenska och andra texter behåller sina namn som förut.
+
 ## 0.8.243
 
 - **Sigma (tamil): rader som slutavläsningen lämnade nästan oläsliga byts mot passens mycket säkrare läsning.** Den sista avläsningen kan hamna på ett pass som läst stället dåligt (Sigma: `தண்டmedenmadு முட்ட…` med latinska bokstäver mitt i tamilsk text, säkerhet 0,27, medan tysta-luckor-passet läste `ஆனால் தாயாமானது விட்டதே இல்லை.` med 0,75). En rad med noterad säkerhet under 0,4 tar nu den säkraste läsningen av samma ställe när den är minst 0,6 och minst 0,25 bättre, täcker det mesta av radens tid och inte är mycket kortare (en rad med blandade skrifter får bytas mot en kortare). Rader utan noterad säkerhet (0) rörs aldrig. Bara texten ändras, aldrig tiderna.

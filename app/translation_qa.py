@@ -151,12 +151,47 @@ def name_key(word):
     return re.sub(r'(.)\1+', r'\1', str(word).casefold())
 
 
+# Words that are unmistakably German; a text full of them writes every noun with a capital letter.
+GERMAN_FUNCTION_WORDS = frozenset((
+    'ich', 'und', 'nicht', 'ist', 'sind', 'der', 'die', 'das', 'den', 'dem', 'ein', 'eine', 'einen', 'mit', 'auf',
+    'für', 'von', 'zu', 'nein', 'aber', 'wir', 'ihr', 'haben', 'hat', 'noch', 'auch', 'schon', 'mir', 'mich', 'dich',
+    'ihnen', 'sie', 'wie', 'wer', 'wenn', 'dann', 'ganz', 'jetzt', 'doch', 'kein', 'keine', 'nur'))
+
+
+def capitalizes_common_nouns(texts):
+    """True for German and other languages that write every noun with a capital letter.
+
+    There a capital in the middle of a sentence says nothing about a name: "Messer", "Mord", "Kollegen" are
+    ordinary nouns. Telling them apart takes a real language reading, so such a text is recognised by its sums:
+    a large share of the mid-sentence words (>= 15 %) capitalised AND a large share of all words (>= 8 %) German
+    function words. English, French, Korean and the other test files stay far below (<= 9 %).
+    """
+    texts = list(texts)
+    middle = capitalised = words = german = 0
+    for text in texts:
+        previous_is_word = False
+        for token in re.findall(r'[^\W\d_]+|[.!?…]+', str(text)):
+            if not token[0].isalpha():
+                previous_is_word = False
+                continue
+            words += 1
+            german += token.casefold() in GERMAN_FUNCTION_WORDS
+            if previous_is_word and len(token) >= 3:
+                middle += 1
+                capitalised += token[0].isupper() and token[1:].islower()
+            previous_is_word = True
+    return middle >= 30 and capitalised >= .15 * middle and german >= .08 * words
+
+
 def proper_name_forms(texts):
     """Map name_key -> sorted written forms of every word the texts write as a name.
 
     A row's first word is ignored (a capital there says nothing), unless it follows a title,
     also across a row boundary ("Mr." / "Gunn, I presume?").
     """
+    texts = list(texts)
+    if capitalizes_common_nouns(texts):
+        return {}      # every German noun has a capital: none of them is a name just because of it
     forms = {}
     after_title = False
     for text in texts:
