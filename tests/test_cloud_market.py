@@ -444,7 +444,7 @@ class OneSearchFormTests(unittest.TestCase):
         self.assertEqual(page.count('class="vram-filter"'), 1)
 
     def test_the_page_script_swaps_only_the_list_and_keeps_the_scroll(self):
-        shell = (Path(__file__).resolve().parents[1] / 'app' / 'index.html').read_text(encoding='utf-8')
+        shell = Path(cloud_market.__file__).with_name('index.html').read_text(encoding='utf-8')
         self.assertIn('#cloud-search input[name="vram"]', shell)
         self.assertIn("getElementById('cloud-results')", shell)
         self.assertIn('history.replaceState', shell)
