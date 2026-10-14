@@ -637,5 +637,26 @@ if(bulkBar){
   }
   refresh();
 }
+// Report how long this page took to open, as the browser itself measured it, so the server log can tell a slow
+// network from a slow phone ("pressing Kö takes 6 s", dev 2026-10-14). Nothing but these numbers is sent.
+window.addEventListener('load',()=>setTimeout(()=>{
+  try{
+    const nav=performance.getEntriesByType('navigation')[0];
+    if(!nav||!navigator.sendBeacon)return;
+    const ms=value=>String(Math.max(0,Math.round(value||0)));
+    const slowest=performance.getEntriesByType('resource').reduce((worst,entry)=>entry.duration>worst.duration?entry:worst,{duration:-1,name:''});
+    const connection=navigator.connection||{};
+    const data=new URLSearchParams({
+      page:location.pathname,type:nav.type,protocol:nav.nextHopProtocol||'',ect:connection.effectiveType||'',
+      total:ms(nav.loadEventStart),blocked:ms(nav.requestStart-nav.fetchStart-(nav.connectEnd-nav.domainLookupStart)),
+      dns:ms(nav.domainLookupEnd-nav.domainLookupStart),connect:ms(nav.connectEnd-nav.connectStart),
+      ttfb:ms(nav.responseStart-nav.requestStart),download:ms(nav.responseEnd-nav.responseStart),
+      dom:ms(nav.domContentLoadedEventEnd-nav.responseEnd),load:ms(nav.loadEventStart-nav.domContentLoadedEventEnd),
+      unload:ms(nav.unloadEventEnd-nav.unloadEventStart),redirect:ms(nav.redirectEnd-nav.redirectStart),
+      rtt:ms(connection.rtt),size:ms(nav.encodedBodySize),
+      slowest:slowest.duration>=0?new URL(slowest.name,location.href).pathname:'',slowest_ms:ms(slowest.duration)});
+    navigator.sendBeacon('/api/client-timing',data);
+  }catch(error){/* A measurement must never disturb the page. */}
+},0));
 </script>
 </html>

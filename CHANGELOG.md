@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.250
+
+- **Sidans laddningstid mäts i webbläsaren och skrivs i loggen.** Efter att en sida öppnats skickar webbläsaren sina egna tider (anslutning, svar, nedladdning, uppritning) till servern, som skriver en rad som `Klienttid /queue (navigate, http/1.0, nät 4g): total 6120 ms, connect 3003 ms, …`. Det gör det möjligt att se om en sida känns seg på grund av nätet eller telefonen när servern själv svarar på millisekunder. Inget annat än dessa siffror skickas, och med lösenord krävs inloggning.
+
 ## 0.8.249
 
 - **Ett jobb stoppas inte längre av ett hårfint tidsöverlapp.** Två textrader som överlappade med några hundradelar (en rad slutade 0,02 s efter att nästa började) fick hela körningen att avbrytas. Nu justeras den tidigare radens slut till nästa rads början när överlappet är högst en kvarts sekund; större överlapp stoppar som förut.

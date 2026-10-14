@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.249"
+VERSION = "0.8.250"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1386,6 +1386,35 @@ def format_request_time(seconds):
     return f" {seconds:.3f}s" + (" LÅNGSAM" if seconds >= SLOW_REQUEST_SECONDS else "")
 
 
+CLIENT_TIMING_MS = ("total", "blocked", "dns", "connect", "ttfb", "download", "dom", "load", "unload", "redirect",
+                    "rtt", "slowest_ms")
+
+
+def format_client_timing(form):
+    """A log line from the numbers the browser measured for its own page load (Navigation Timing), so a page that
+    "takes 6 seconds" can be told apart: the network (connect, ttfb, download) or the phone (dom, load). Everything
+    the browser sends is cut down to digits and a few safe characters first."""
+    def clean(name, allowed, limit):
+        return re.sub(rf"[^{allowed}]", "", form.get(name, [""])[0])[:limit]
+
+    def milliseconds(name):
+        try:
+            value = int(float(form.get(name, [""])[0]))
+        except ValueError:
+            return None
+        return value if 0 <= value <= 3_600_000 else None
+
+    measured = ", ".join(f"{name} {value} ms" for name in CLIENT_TIMING_MS
+                         if (value := milliseconds(name)) is not None and name != "slowest_ms")
+    slowest = clean("slowest", "A-Za-z0-9/_.:-", 60)
+    slowest_ms = milliseconds("slowest_ms")
+    size = clean("size", "0-9", 9)
+    return (f"Klienttid {clean('page', 'A-Za-z0-9/_.-', 60) or '?'} ({clean('type', 'a-z_-', 16) or '?'}, "
+            f"{clean('protocol', 'A-Za-z0-9./-', 12) or '?'}, nät {clean('ect', 'a-z0-9-', 8) or '?'}): {measured or 'inga tider'}"
+            + (f", {size} B" if size else "")
+            + (f", långsammast {slowest} {slowest_ms} ms" if slowest and slowest_ms is not None else ""))
+
+
 class Handler(BaseHTTPRequestHandler):
     def parse_request(self):
         parsed = super().parse_request()
@@ -1409,7 +1438,8 @@ class Handler(BaseHTTPRequestHandler):
                              '/cloud-cost', '/cloud-key', '/cloud-key/remove', '/cloud-refresh',
                              '/cloud-offer', '/jobs/start', '/jobs/retry', '/jobs/delete', '/jobs/restart', '/jobs/cancel',
                              '/cleanup/trash', '/cleanup/restore', '/cleanup/empty', '/cleanup/retention',
-                             '/jobs/bulk', '/models/remove', '/models/update', '/login', '/settings/security'):
+                             '/jobs/bulk', '/models/remove', '/models/update', '/login', '/settings/security',
+                             '/api/client-timing'):
             self.respond(404, "text/plain", "Sidan saknas")
             return
         try:
@@ -1428,6 +1458,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if password_hash and not self.authenticated(session_secret):
             self.respond(403, "text/plain", "Logga in först.")
+            return
+        if self.path == "/api/client-timing":
+            # Only written to the log (a browser's sendBeacon cannot carry the page token); a logged-in session is
+            # still required when a password is set.
+            logging.info("%s", format_client_timing(form))
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
             return
         if not secrets.compare_digest(form.get("token", [""])[0], SCAN_TOKEN):
             self.respond(403, "text/plain", "Ladda om sidan och försök igen.")
