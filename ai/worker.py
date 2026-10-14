@@ -2570,7 +2570,26 @@ def _audit_source_chunk(chunk, media_name, *, use_filename_hint=True):
     return bad_ids, language_mismatch, reason
 
 
-def assess_source_quality(rows, media_name='', *, use_filename_hint=True):
+# The writing system a filename language is written in, where it is not Latin.
+_HINT_SCRIPTS = {'ta': 'Tamil', 'ko': 'Hangul'}
+
+
+def credible_language_mismatch(rows, hinted_language, acoustic_language):
+    """May a source reviewer's `language_mismatch` verdict stop the job?
+
+    Real job 40 (dev 0.8.246): a perfectly good German transcript was rejected because the reviewer set
+    language_mismatch to true while its own reason said the text was German and consistent with the file name.
+    When speech recognition itself heard the file name's language (the probe windows detected it: status
+    'confirmed'), a text reader's contrary guess is not evidence. Only a script that cannot belong to that
+    language keeps the claim alive: Korean letters under a German name, or Latin letters where Tamil is named."""
+    if not acoustic_language or acoustic_language != hinted_language:
+        return True
+    script = dominant_non_latin_script(rows)
+    expected = _HINT_SCRIPTS.get(hinted_language)
+    return script != expected if expected else script is not None
+
+
+def assess_source_quality(rows, media_name='', *, use_filename_hint=True, acoustic_language=None):
     """Use a conservative per-row ASR error audit before translating or writing an SRT.
 
     A single holistic "usable/unusable" verdict on a whole sampled transcript
@@ -2605,10 +2624,13 @@ def assess_source_quality(rows, media_name='', *, use_filename_hint=True):
         chunk = rows[start:start + chunk_size]
         bad_ids, language_mismatch, reason = _audit_source_chunk(
             chunk, media_name, use_filename_hint=use_filename_hint)
-        if language_mismatch:
+        if language_mismatch and credible_language_mismatch(rows, hinted_language, acoustic_language):
             raise SourceQualityError(
                 'Källtranskriberingen underkändes innan någon SRT skrevs: '
                 f'{reason or "Språket stämmer inte med filnamnets märkning."}')
+        if language_mismatch:
+            print(f'Källgranskaren påstod språkmismatch mot filnamnets "{hinted_language}", men taligenkänningen '
+                  f'hörde samma språk och texten har rätt skrift; påståendet ignoreras ({reason[:160]}).', flush=True)
         bad_total += len(bad_ids)
         if bad_ids and reason:
             reasons.append(reason)
@@ -4216,8 +4238,10 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
                model=f'Källkontroll med {active_gemma_models()[0]}')
     validate_episode_segments(rows)
     MODEL_JOB.phase = 'source_review'
-    assess_source_quality(rows, media.name, use_filename_hint=(
-        job.get('language_policy', {}).get('status') == 'confirmed'))
+    policy = job.get('language_policy') or {}
+    confirmed = policy.get('status') == 'confirmed'
+    assess_source_quality(rows, media.name, use_filename_hint=confirmed,
+                          acoustic_language=policy.get('effective_language') if confirmed else None)
     update_job(job['id'], 'translating', 61, f'Översätter {len(rows)} repliker till svenska',
                model=f'Översättning med {active_gemma_models()[0]}')
     MODEL_JOB.phase = 'translation'

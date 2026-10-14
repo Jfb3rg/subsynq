@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.248
+
+- **Tyska (och andra språkmärkta) filer underkänns inte längre av ett felaktigt språkpåstående.** Källgranskaren kunde säga att språket inte stämde med filnamnet fast texten var rätt språk och taligenkänningen hörde samma språk (filen stoppades då utan SRT). Nu räknas påståendet bara när det finns belägg för det, till exempel text i en helt annan skrift än språket har.
+
 ## 0.8.247
 
 - **Du kommer åt Kö-sidan (och alla andra sidor) även när jobb körs.** Sidans egen omladdning kunde ersätta ett tryck på en länk, så att Kö-sidan inte gick att öppna medan ett jobb pågick. Nu väntar sidan med att ladda om sig själv 15 sekunder efter att du tryckt på en länk eller skickat ett formulär, och en sida med körande jobb laddas om högst var 15:e sekund (förut så ofta som framsteget ändrades).

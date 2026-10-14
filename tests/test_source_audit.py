@@ -61,5 +61,55 @@ class SourceAuditTests(unittest.TestCase):
         self.assertEqual(request['format']['properties']['language_mismatch']['enum'], [False])
 
 
+class LanguageMismatchEvidenceTests(unittest.TestCase):
+    """Real job 40 (dev 0.8.246): a good German transcript was rejected because the reviewer set language_mismatch
+    to true while its own reason said the text was German and matched the file name."""
+
+    GERMAN = [{'id': index, 'source': text} for index, text in enumerate(
+        ['Ich weiß, wer Sie sind.', 'Warum hat man Sie geschickt?', 'Wir haben alle eine dunkle Seite.'])]
+    KOREAN = [{'id': index, 'source': '며칠 전에 친구들이랑 사냥을 하러 갔었어.'} for index in range(4)]
+    TAMIL = [{'id': index, 'source': 'அப்பா பயமா இருப்பா சுலிடுப்பா'} for index in range(4)]
+
+    def answer(self, mismatch, reason='The text is German, consistent with the filename hint.'):
+        return {'response': json.dumps({'bad_ids': [], 'language_mismatch': mismatch, 'reason': reason})}
+
+    def assess(self, rows, name, acoustic, mismatch=True):
+        with patch.object(worker, 'call_ollama', return_value=self.answer(mismatch)):
+            return worker.assess_source_quality(rows, name, acoustic_language=acoustic)
+
+    def test_a_mismatch_claim_against_what_the_speech_recognition_heard_is_ignored(self):
+        with patch('builtins.print') as log:
+            self.assertTrue(self.assess(self.GERMAN, 'EIN TALENT Trailer German Deutsch.mp4', 'de'))
+        self.assertIn('ignoreras', ' '.join(str(call.args[0]) for call in log.call_args_list))
+
+    def test_without_acoustic_confirmation_the_claim_still_stops_the_job(self):
+        with self.assertRaisesRegex(worker.SourceQualityError, 'Källtranskriberingen'):
+            self.assess(self.GERMAN, 'EIN TALENT Trailer German Deutsch.mp4', None)
+        with self.assertRaises(worker.SourceQualityError):
+            self.assess(self.GERMAN, 'EIN TALENT Trailer German Deutsch.mp4', 'fr')
+
+    def test_the_wrong_script_keeps_the_claim_alive_even_when_the_speech_was_confirmed(self):
+        with self.assertRaises(worker.SourceQualityError):
+            self.assess(self.KOREAN, 'HOPE tyska.mp4', 'de')
+
+    def test_languages_with_their_own_script_must_match_it(self):
+        self.assertTrue(self.assess(self.TAMIL, 'Sigma tamil.mp4', 'ta'))
+        self.assertTrue(self.assess(self.KOREAN, 'HOPE koreansk.mp4', 'ko'))
+        with self.assertRaises(worker.SourceQualityError):
+            self.assess(self.GERMAN, 'Sigma tamil.mp4', 'ta')
+
+    def test_no_claim_means_nothing_changes(self):
+        self.assertTrue(self.assess(self.GERMAN, 'EIN TALENT German.mp4', 'de', mismatch=False))
+
+    def test_credible_language_mismatch_directly(self):
+        credible = worker.credible_language_mismatch
+        self.assertTrue(credible(self.GERMAN, 'de', None))
+        self.assertTrue(credible(self.GERMAN, 'de', 'en'))
+        self.assertFalse(credible(self.GERMAN, 'de', 'de'))
+        self.assertTrue(credible(self.KOREAN, 'de', 'de'))
+        self.assertFalse(credible(self.KOREAN, 'ko', 'ko'))
+        self.assertTrue(credible(self.GERMAN, 'ko', 'ko'))
+
+
 if __name__ == '__main__':
     unittest.main()
