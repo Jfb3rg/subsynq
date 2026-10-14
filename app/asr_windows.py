@@ -1106,7 +1106,7 @@ def _match_precision_run(block, shorter, v2):
     return None
 
 
-def prefer_precision_for_unpunctuated_runs(merged, precision, v2=()):
+def prefer_precision_for_unpunctuated_runs(merged, precision, v2=(), corroboration=()):
     """Where the long pass wrote a run of cues with no sentence end at all, use the short pass's sentences.
 
     Long-context Whisper on noisy audio sometimes writes whole stretches in lower case without a full stop, cut in
@@ -1115,11 +1115,12 @@ def prefer_precision_for_unpunctuated_runs(merged, precision, v2=()):
     consecutive cues without a sentence end is replaced only when consecutive confident short-pass sentences hold
     exactly the same words (extra edge words need confidence or v2 corroboration), cover the same time and do not
     overlap the neighbouring cues. The wording never changes otherwise; cues that already end a sentence are never
-    touched.
+    touched. `corroboration` (for example a Qwen3-ASR reading) may confirm an extra edge word but never supplies text.
     """
     rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
     shorter = [dict(row) for row in sorted(precision, key=lambda item: item['start'])]
     second_opinion = [dict(row) for row in sorted(v2 or (), key=lambda item: item['start'])]
+    extra = [dict(row) for row in corroboration or ()]
     result = []
     index = 0
     while index < len(rows):
@@ -1133,8 +1134,8 @@ def prefer_precision_for_unpunctuated_runs(merged, precision, v2=()):
             limit += 1
         chosen = None
         for last in range(limit, index - 1, -1):
-            match = (_match_precision_run(rows[index:last + 1], shorter, second_opinion)
-                     or _match_precision_run(rows[index:last + 1], second_opinion, shorter))
+            match = (_match_precision_run(rows[index:last + 1], shorter, second_opinion + extra)
+                     or _match_precision_run(rows[index:last + 1], second_opinion, shorter + extra))
             if match is None:
                 continue
             replacement, lead_extra, trail_extra = match
@@ -1180,6 +1181,164 @@ def drop_misplaced_duplicate_cues(merged, precision, strict_speech, *, minimum_s
         if not misplaced:
             kept.append(row)
     return kept
+
+
+_STOCK_PHRASES = {
+    'thank you', 'thanks', 'thank you very much', 'merci', 'merci beaucoup',
+    'you', 'okay', 'ok', 'bye', 'goodbye', 'subscribe', 'we ll be right back',
+}
+
+
+def _similarity(a, b):
+    return SequenceMatcher(None, _normalized(str(a)), _normalized(str(b))).ratio()
+
+
+def _overlap_seconds(a, b):
+    return min(a['end'], b['end']) - max(a['start'], b['start'])
+
+
+def _cluster_readings(readings):
+    """Group the passes' cues into clusters of readings of the same speech (same time, similar text)."""
+    items = [(name, row) for name, rows in readings.items() for row in (rows or ())
+             if _normalized(str(row.get('text', '')))]
+    clusters = []
+    for name, row in sorted(items, key=lambda item: item[1]['start']):
+        for cluster in clusters:
+            if any(_overlap_seconds(row, other) > .4 * min(row['end'] - row['start'], other['end'] - other['start'])
+                   and _similarity(row['text'], other['text']) >= .5 for _, other in cluster):
+                cluster.append((name, row))
+                break
+        else:
+            clusters.append([(name, row)])
+    return clusters
+
+
+# The passes that run Whisper large-v3 share their mistakes, so they vote as ONE family; Whisper v2 and Qwen3-ASR are
+# other models and each vote as a family of their own.
+_FAMILIES = {'context': 'whisper-v3', 'precision': 'whisper-v3', 'rescue': 'whisper-v3',
+             'whispered_gap': 'whisper-v3', 'v2': 'whisper-v2', 'qwen': 'qwen'}
+
+
+def _mean_agreement(text, cluster, skip=None):
+    """How well `text` agrees with the readings of a cluster: the mean over model families of its mean similarity
+    to that family's readings (the reading `skip`, which is the text itself, does not vote)."""
+    families = {}
+    for name, other in cluster:
+        if other is not skip:
+            families.setdefault(_FAMILIES.get(name, name), []).append(_similarity(text, other['text']))
+    return sum(sum(values) / len(values) for values in families.values()) / len(families) if families else 0.0
+
+
+def _medoid(cluster):
+    """The reading that agrees best with the others (ties: the most confident one)."""
+    def score(entry):
+        _, row = entry
+        return _mean_agreement(row['text'], cluster, skip=row), float(row.get('confidence', 0))
+    return max(cluster, key=score)
+
+
+def _eligible_cluster(cluster, minimum_passes, vad_passes):
+    names = {name for name, _ in cluster}
+    return len(names) >= minimum_passes and bool(names.intersection(vad_passes))
+
+
+def _chosen_row(cluster, name, chosen):
+    """The chosen reading with the cluster's typical timing: a Qwen clip's window is only a bound."""
+    row = dict(chosen)
+    others = [item for other_name, item in cluster if other_name != 'qwen']
+    if name == 'qwen' and others:
+        row['start'] = sorted(item['start'] for item in others)[len(others) // 2]
+        row['end'] = sorted(item['end'] for item in others)[len(others) // 2]
+    return row
+
+
+def restore_multi_pass_agreed_speech(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),
+                                     minimum_agreement=.85):
+    """Add speech that several independent passes read alike but that no final cue covers.
+
+    The final cues can miss real lines in music-heavy audio: voice-activity filtering fails them as unsupported
+    although the short pass, the no-VAD rescue, the quiet-gap pass and Whisper v2 all read the same words
+    (HOPE: "...저희 집에 있다니까요" in five passes, "Tristan" in Lou in three). A cluster is added only when at
+    least `minimum_passes` distinct passes agree, one of them voice-activity filtered (a no-VAD pass alone is what
+    hallucinates in music), the readings are not a stock phrase, a lone word is confident, and the cue would not
+    overlap a final cue. The text is the reading closest to all the others, and the passes must agree on it
+    (minimum_agreement): where they read different words ("국회" or "괴물") the line is left out rather than guessed.
+    """
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    additions = []
+    for cluster in _cluster_readings(readings):
+        if not _eligible_cluster(cluster, minimum_passes, vad_passes):
+            continue
+        name, best = _medoid(cluster)
+        if _mean_agreement(best['text'], cluster, skip=best) < minimum_agreement:
+            continue
+        row = _chosen_row(cluster, name, best)
+        words = _normalized(str(row['text'])).split()
+        span = max(item['end'] for _, item in cluster) - min(item['start'] for _, item in cluster)
+        if (not words or _normalized(str(row['text'])) in _STOCK_PHRASES or span > 12
+                or (len(words) == 1 and max(float(item.get('confidence', 0)) for _, item in cluster) < .55)
+                or any(_overlap_seconds(row, existing) > .05 for existing in rows + additions)):
+            continue
+        additions.append(row)
+    return sorted(rows + additions, key=lambda item: (item['start'], item['end']))
+
+
+def prefer_consensus_reading(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),
+                             maximum_confidence=.6, margin=.15):
+    """Replace the wording of a doubtful cue when the passes clearly read something else.
+
+    A cue's text can come from a single pass that heard it differently from all the others (HOPE: "승리를 받자
+    8명인데요" from the forced re-read, while four passes read "대비…"). Only cues below `maximum_confidence`
+    change, only their text (never the timing), only to the reading closest to all passes when that reading
+    agrees with the passes clearly better (`margin`) than the cue's own text does, and only when the two are
+    recognizably the same utterance.
+    """
+    clusters = [cluster for cluster in _cluster_readings(readings)
+                if _eligible_cluster(cluster, minimum_passes, vad_passes)]
+    result = []
+    for row in (dict(item) for item in sorted(merged, key=lambda item: item['start'])):
+        if float(row.get('confidence', 0)) < maximum_confidence:
+            near = [cluster for cluster in clusters if any(
+                _overlap_seconds(row, other) > .5 * min(row['end'] - row['start'], other['end'] - other['start'])
+                for _, other in cluster)]
+            if len(near) == 1:
+                cluster = near[0]
+                name, best = _medoid(cluster)
+                text = str(best['text']).strip()
+                if (text and text != str(row['text']).strip() and _similarity(row['text'], text) >= .5
+                        and _normalized(text) not in _STOCK_PHRASES
+                        and _mean_agreement(text, cluster, skip=best)
+                        >= _mean_agreement(row['text'], cluster) + margin):
+                    row['text'] = text
+        result.append(row)
+    return result
+
+
+def plan_consensus_windows(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),
+                           maximum_total=8, maximum_confidence=.6):
+    """Short time windows where a further independent reading (Qwen3-ASR) can settle the matter: speech the passes
+    agree on that no final cue covers, and doubtful final cues the passes read differently."""
+    final = sorted(merged, key=lambda item: item['start'])
+    planned = []
+    for cluster in _cluster_readings(readings):
+        if not _eligible_cluster(cluster, minimum_passes, vad_passes):
+            continue
+        start = min(item['start'] for _, item in cluster)
+        end = max(item['end'] for _, item in cluster)
+        if end - start > 12:
+            continue
+        covering = [row for row in final if _overlap_seconds(row, {'start': start, 'end': end}) > .3]
+        if not covering:
+            priority, confidence = 0, max(float(item.get('confidence', 0)) for _, item in cluster)
+        else:
+            row = max(covering, key=lambda item: _overlap_seconds(item, {'start': start, 'end': end}))
+            if (float(row.get('confidence', 0)) >= maximum_confidence
+                    or _mean_agreement(row['text'], cluster) >= .85):
+                continue
+            priority, confidence = 1, float(row.get('confidence', 0))
+        planned.append((priority, confidence, {'start': round(max(0.0, start - .3), 3), 'end': round(end + .3, 3)}))
+    planned.sort(key=lambda item: (item[0], item[1], item[2]['start']))
+    return [window for _, _, window in planned[:maximum_total]]
 
 
 def plan_v2_fragment_windows(context, precision, duration, *, maximum_total=8):

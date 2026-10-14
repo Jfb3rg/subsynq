@@ -65,6 +65,13 @@ class UnpunctuatedRunTests(unittest.TestCase):
         confident = [dict(row, confidence=.9) if row['text'].startswith('Captain') else row for row in SHORT_FIRST]
         self.assertEqual(texts(prefer_precision_for_unpunctuated_runs(LONG_FIRST, confident, [])), EXPECTED_FIRST)
 
+    def test_another_model_family_can_confirm_an_extra_edge_word_but_never_supplies_text(self):
+        qwen = [cue(28.0, 34.0, "Captain, we have intercepted a transmission from Earth. Negative. The signal", .5)]
+        result = prefer_precision_for_unpunctuated_runs(LONG_FIRST, SHORT_FIRST, [], corroboration=qwen)
+        self.assertEqual(texts(result), EXPECTED_FIRST)
+        self.assertEqual(texts(prefer_precision_for_unpunctuated_runs(LONG_FIRST, [], [], corroboration=qwen)),
+                         texts(LONG_FIRST), "a corroborating reading is never used as the text")
+
     def test_a_word_that_differs_in_the_middle_keeps_the_long_pass(self):
         # Houston is only in the long pass.
         long = [cue(49.7, 56.4, "transmission active houston i hope you're receiving this"),

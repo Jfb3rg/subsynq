@@ -10,6 +10,14 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.240
+
+- **Fler ASR-pass får rösta om texten (HOPE).** I musiktunga trailers (HOPE) föll SRT-skapandet på att några rader var felhörda och att det mesta av talet efter 32 s inte alls kom med. Tre förbättringar som delar samma grund: de olika avlyssningspassen (långa läsningen, kortläsningen, no-VAD-räddningen, tysta-luckor-passet och Whisper large-v2) jämförs rad för rad.
+  1. **Rösta fram texten:** en rad med låg säkerhet (under 0,6) byts mot den läsning som stämmer bäst med övriga pass, när den klart stämmer bättre än radens egen text. Passen som kör samma modell (large-v3) räknas som EN röst, large-v2 och Qwen3-ASR (andra modeller) är egna röster. Bara texten ändras, aldrig tiden. Exempel i HOPE: "승리를 받자 8명인데요" (hördes i ingen annan läsning) blir "대비군이라고 하자 8명인데요?"; "상황실." blir "상황실, 상황실!" (så som det sägs).
+  2. **Lägg tillbaka tal som flera pass hör men ingen rad täcker:** minst tre pass (varav ett med röstaktivitetsfilter) måste läsa samma sak och vara överens om orden (inte ett stockfras som "Thank you", ensamt ord bara om det är säkert). Där passen hör olika ord (HOPE: "국회" eller "괴물") lämnas raden hellre utanför än gissas. Exempel: "Tristan" i Lou.
+  3. **Qwen3-ASR som extra röst:** högst sex korta fönster per fil, bara där passen är oense om en osäker rad eller är överens om tal utan rad, och Qwen kan också bekräfta ett ord i kanten som bara kortläsningen hört (PLANET 9: "Captain,"). Misslyckas Qwen avgör passen själva; jobbet misslyckas aldrig för att Qwen fallerar.
+  Provat mot tolv riktiga körningar och två nya helkörningar på dev (HOPE, PLANET 9): bara de aktuella filerna ändras. HOPE får nu rätt rad 5; talet efter 32 s kommer fortfarande inte med eftersom passen hör olika ord där.
+
 ## 0.8.239
 
 - **PLANET 9: delade meningar slås ihop och en felplacerad kopia tas bort.** (1) Två repliker som den långa läsningen bröt mitt i en mening ("What are" + "they showing?") slås nu ihop när kontrollläsningen hörde dem som en mening (det blev annars "Vad är / vad de visar?"). (2) En replik som brusfria tysta-luckor-passet stämplat där ingen talar (och där röstaktiviteten inte hittar tal) tas bort när samma ord hörs på ett annat ställe med tal: "Record everything." stod vid 1:17 men sägs vid 1:30, och visades två gånger. En replik som verkligen upprepas (tal vid båda tiderna) rörs aldrig.

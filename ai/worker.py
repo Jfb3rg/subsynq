@@ -44,7 +44,8 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
                          plan_v2_fragment_windows, plan_v2_second_opinion_windows,
                          plan_v2_timing_windows, plan_v2_word_check_windows, plan_windows,
                          prefer_fuller_reading, prefer_fuller_window_readings,
-                         drop_misplaced_duplicate_cues, prefer_precision_for_unpunctuated_runs,
+                         drop_misplaced_duplicate_cues, plan_consensus_windows, prefer_consensus_reading,
+                         prefer_precision_for_unpunctuated_runs, restore_multi_pass_agreed_speech,
                          prefer_precision_pauses, prefer_precision_sentence_boundaries,
                          reconcile_corroborated_rephrasings,
                          reconcile_code_switch_readings,
@@ -2219,11 +2220,44 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                     gc.collect()
         merged = restore_corroborated_address_titles(merged,
             corroborate_rescue(late_first, late_second), late_v2, late_second)
+    # The passes' readings of the same speech. Where they disagree about a doubtful cue, or agree on speech no cue
+    # covers, Qwen3-ASR (another model family) gives one more opinion; it also confirms a word the short pass
+    # alone heard. An optional extra: a failure means the passes decide alone, never a failed job.
+    consensus_readings = {'context': context_profile, 'precision': precision_profile, 'rescue': rescue_profile,
+                          'whispered_gap': whispered_gap_profile, 'v2': v2_profile}
+    consensus_windows = (plan_consensus_windows(merged, consensus_readings, maximum_total=6)
+                         if QWEN_ASR_ENABLED and focus_intervals is None else [])
+    qwen_reading = []
+    if consensus_windows:
+        try:
+            with tempfile.TemporaryDirectory() as clip_folder:
+                for index, window in enumerate(consensus_windows):
+                    check_cancelled(job['id'])
+                    update_job(job['id'], 'transcribing', 59,
+                               f'Qwen3-ASR avgör oense stycken · {index + 1} av {len(consensus_windows)}')
+                    clip = Path(clip_folder) / 'consensus.wav'
+                    subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
+                                    '-t', str(window['end'] - window['start']), '-map', '0:a:0', '-ac', '1',
+                                    '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip)],
+                                   capture_output=True, timeout=90, check=True)
+                    text = models.qwen(qwen_identify, clip).get('text', '')
+                    if text.strip():
+                        qwen_reading.append({**window, 'text': text.strip(), 'confidence': .5})
+        except JobCancelled:
+            raise
+        except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+            print(f'VARNING: Qwen3-ASR kunde inte avgöra oense stycken: {error!r}', flush=True)
+        finally:
+            models.release_qwen()
+        consensus_readings['qwen'] = qwen_reading
     # Runs the long pass wrote without a single sentence end are replaced by the short passes' sentences when
     # those hold exactly the same words (PLANET 9: "...from the planet" + "ahead how old is it").
-    merged = prefer_precision_for_unpunctuated_runs(merged, precision_profile, v2_profile)
+    merged = prefer_precision_for_unpunctuated_runs(merged, precision_profile, v2_profile, corroboration=qwen_reading)
     merged = drop_misplaced_duplicate_cues(merged, precision_profile, strict_speech)
-    trace_payload.update(profile_evidence=profile_evidence,
+    merged = restore_multi_pass_agreed_speech(merged, consensus_readings)
+    merged = prefer_consensus_reading(merged, consensus_readings, margin=.05)
+    trace_payload.update(profile_evidence=profile_evidence, consensus_windows=consensus_windows,
+                         consensus_qwen=consensus_readings.get("qwen", []),
                          intervening_windows=intervening_windows, intervening_languages=intervening_languages,
                          intervening_first=intervening_first, intervening_second=intervening_second,
                          intervening_v2=intervening_v2,
