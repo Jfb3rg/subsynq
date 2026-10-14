@@ -1037,6 +1037,126 @@ def prefer_precision_sentence_boundaries(merged, precision):
     return result
 
 
+def _ends_sentence(row):
+    return str(row.get('text', '')).rstrip().endswith(('.', '?', '!'))
+
+
+def _edge_extras(have, words):
+    """(leading, trailing) extra words (at most two each) that turn `words` into `have`, or None."""
+    for total in range(0, 5):
+        for lead in range(0, min(total, 2) + 1):
+            trail = total - lead
+            if trail > 2 or len(have) - lead - trail != len(words) or len(have) - trail < lead:
+                continue
+            if have[lead:len(have) - trail] == words:
+                return lead, trail
+    return None
+
+
+def _corroborates_extras(row, extras, v2):
+    """Extra edge words are trusted when the short pass is confident about that cue or v2 heard them too."""
+    if not extras:
+        return True
+    if float(row.get('confidence', 0)) >= .85:
+        return True
+    needle = ' '.join(extras)
+    return any(_normalized(str(other.get('text', ''))).find(needle) >= 0
+               and other['end'] > row['start'] - .5 and other['start'] < row['end'] + .5 for other in v2)
+
+
+def _match_precision_run(block, shorter, v2):
+    """Consecutive short-pass sentences (`shorter`; `v2` is the OTHER short reading that may corroborate extra
+    words) holding exactly the words of `block` (plus at most two corroborated extra
+    words at each edge), or None."""
+    words = _normalized(' '.join(str(row['text']) for row in block)).split()
+    if not words:
+        return None
+    start, end = block[0]['start'], block[-1]['end']
+    pool = [row for row in shorter if row['end'] > start - 2.0 and row['start'] < end + 1.2]
+    block_stops = sum(_ends_sentence(row) for row in block)
+    for first in range(len(pool)):
+        if not start - 1.6 <= pool[first]['start'] <= start + .8:
+            continue
+        collected = []
+        for row in pool[first:]:
+            collected.append(row)
+            have = _normalized(' '.join(str(item['text']) for item in collected)).split()
+            if len(have) > len(words) + 4:
+                break
+            extras = _edge_extras(have, words)
+            if extras is None:
+                continue
+            lead, trail = extras
+            if not end - .8 <= collected[-1]['end'] <= end + 1.2:
+                continue
+            if (not all(_ends_sentence(item) for item in collected[:-1])
+                    or any(a['end'] > b['start'] + .001 for a, b in zip(collected, collected[1:]))):
+                continue
+            stops = sum(_ends_sentence(item) for item in collected)
+            first_words = _normalized(str(collected[0]['text'])).split()
+            last_words = _normalized(str(collected[-1]['text'])).split()
+            if (stops <= block_stops or len(first_words) <= lead or len(last_words) <= trail
+                    or (len(collected) <= len(block) and not lead and not trail)
+                    or not _corroborates_extras(collected[0], first_words[:lead], v2)
+                    or not _corroborates_extras(collected[-1], last_words[len(last_words) - trail:] if trail else [], v2)):
+                continue
+            return ([dict(item) for item in collected], first_words[:lead],
+                    last_words[len(last_words) - trail:] if trail else [])
+    return None
+
+
+def prefer_precision_for_unpunctuated_runs(merged, precision, v2=()):
+    """Where the long pass wrote a run of cues with no sentence end at all, use the short pass's sentences.
+
+    Long-context Whisper on noisy audio sometimes writes whole stretches in lower case without a full stop, cut in
+    the middle of sentences ("...from the planet" + "ahead how old is it...") and with a lost word at the edge
+    ("Captain,"). The short pass often heard the SAME words as properly punctuated sentences. A run of
+    consecutive cues without a sentence end is replaced only when consecutive confident short-pass sentences hold
+    exactly the same words (extra edge words need confidence or v2 corroboration), cover the same time and do not
+    overlap the neighbouring cues. The wording never changes otherwise; cues that already end a sentence are never
+    touched.
+    """
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    shorter = [dict(row) for row in sorted(precision, key=lambda item: item['start'])]
+    second_opinion = [dict(row) for row in sorted(v2 or (), key=lambda item: item['start'])]
+    result = []
+    index = 0
+    while index < len(rows):
+        if _ends_sentence(rows[index]):
+            result.append(rows[index])
+            index += 1
+            continue
+        limit = index
+        while (limit + 1 < len(rows) and not _ends_sentence(rows[limit])
+               and rows[limit + 1]['start'] - rows[limit]['end'] <= 3.0):
+            limit += 1
+        chosen = None
+        for last in range(limit, index - 1, -1):
+            match = (_match_precision_run(rows[index:last + 1], shorter, second_opinion)
+                     or _match_precision_run(rows[index:last + 1], second_opinion, shorter))
+            if match is None:
+                continue
+            replacement, lead_extra, trail_extra = match
+            # Extra edge words that the neighbouring cue already holds are repeats, not recovered words.
+            before = _normalized(str(result[-1]['text'])).split() if result else []
+            after = _normalized(str(rows[last + 1]['text'])).split() if last + 1 < len(rows) else []
+            if ((lead_extra and before[len(before) - len(lead_extra):] == lead_extra)
+                    or (trail_extra and after[:len(trail_extra)] == trail_extra)):
+                continue
+            if ((result and replacement[0]['start'] < result[-1]['end'] - .05)
+                    or (last + 1 < len(rows) and replacement[-1]['end'] > rows[last + 1]['start'] + .05)):
+                continue
+            chosen = (last, replacement)
+            break
+        if chosen:
+            result.extend(chosen[1])
+            index = chosen[0] + 1
+        else:
+            result.append(rows[index])
+            index += 1
+    return result
+
+
 def plan_v2_fragment_windows(context, precision, duration, *, maximum_total=8):
     """Bound a v2 second opinion to short v3 fragments with a missing long word."""
     planned = []

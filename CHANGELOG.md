@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.238
+
+- **Saknade ord och konstiga radbrytningar när Whisper skriver ett stycke utan skiljetecken (PLANET 9).** Långa Whisper-läsningen skrev ibland hela stycken i gemener utan en enda punkt, skurna mitt i meningar ("…från planeten" + "ahead how old is it…"), och tappade ibland ett ord i kanten ("Captain,", "Record"). Den korta kontrollläsningen (och Whisper large-v2) hade ofta hört exakt samma ord som riktiga, välpunkterade meningar. Nu ersätts en följd av repliker utan någon meningsslut med kontrollläsningens meningar, men bara när de innehåller exakt samma ord (högst två extra ord i kanten, och bara om kontrollläsningen är säker eller large-v2 hörde dem också), täcker samma tid och inte överlappar grannreplikerna. Repliker som redan slutar en mening rörs aldrig. Provat mot tio verkliga körningar: bara PLANET 9 ändrades. Där blir "Captain, we've intercepted a transmission. / From Earth? / Negative. / The signal originates from the planet ahead. / How old is it?" i stället för tre ihopklumpade rader, och "Record everything. / Recording. / Oh my god. / … / Scan for life. / Scanning." i stället för "everything recording" och "scan for | life scanning".
+
 ## 0.8.237
 
 - **Rättar ett fel i 0.8.234: återanvänd moln-GPU-server kunde ge "CUDA out of memory".** När servern behölls för nästa jobb låg Gemma-modellerna (27b/26b) kvar i GPU-minnet, så nästa jobbs Whisper/Qwen fick inget minne (HOPE, jobb 28: `Qwen3-ASR HTTP 500: CUDA out of memory`). Nu ber SubSynq serverns Ollama att släppa modellerna ur GPU-minnet innan servern behålls, och får det inte bekräftat förstörs servern i stället för att återanvändas. Har du kört 0.8.234–0.8.236 med flera jobb i kön: kör om de jobb som föll på minnesfelet.
