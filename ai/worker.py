@@ -2293,7 +2293,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged = drop_misplaced_duplicate_cues(merged, precision_profile, strict_speech)
     merged = restore_multi_pass_agreed_speech(merged, consensus_readings)
     merged = prefer_consensus_reading(merged, consensus_readings, margin=.05)
-    merged = prefer_forced_language_reading(merged, consensus_readings.get("forced", []))
+    merged = prefer_forced_language_reading(
+        merged, consensus_readings.get("forced", []),
+        {name: rows for name, rows in consensus_readings.items() if name != "forced"})
     trace_payload.update(profile_evidence=profile_evidence, consensus_windows=consensus_windows,
                          consensus_qwen=consensus_readings.get("qwen", []),
                          consensus_forced=consensus_readings.get("forced", []),

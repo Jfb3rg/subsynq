@@ -1402,19 +1402,24 @@ def prefer_consensus_reading(merged, readings, *, minimum_passes=3, vad_passes=(
     return final
 
 
-def prefer_forced_language_reading(merged, forced, *, maximum_confidence=.8, minimum_gain=.04):
+def prefer_forced_language_reading(merged, forced, others=None, *, maximum_confidence=.8, minimum_gain=.04,
+                                   tolerance=.03):
     """Take the wording of a more confident forced-language reading of the same speech.
 
     For a script that identifies the language (Hangul = Korean) the ordinary passes run in multilingual mode with
     voice-activity filtering, which misreads quiet speech ("갑자기 기침이" where the speaker says "기적이"). Whisper
     with the language fixed and no filter, given ten seconds of context, reads the same place better, and its own
     confidence says so. A cue takes the forced reading (or the joined pieces of it) when that reading belongs to the
-    cue (it overlaps no other cue more and covers most of it), is recognizably the same utterance (similarity >= 0.3), and is more
-    confident than the cue by `minimum_gain`. Only the text changes, never the timing, and boilerplate is never used.
+    cue (it overlaps no other cue more and covers most of it), is recognizably the same utterance (similarity >= 0.3),
+    is more confident than the cue by `minimum_gain`, and the other passes (`others`, name -> cues) do not agree with
+    the cue's own wording better than with the forced one (a confident reading can still have dropped words:
+    "사냥을 있었어" for "사냥을 해나갔었어"). Only the text changes, never the timing, and boilerplate is never used.
     """
     final = [dict(item) for item in sorted(merged, key=lambda item: item['start'])]
     usable = [row for row in (forced or ()) if _normalized(str(row.get('text', ''))) and not _is_boilerplate(row['text'])]
     candidates = usable + span_readings(final, {'forced': usable}).get('forced+', [])
+    everything = dict(others or {})
+    everything.update(span_readings(final, others or {}))
     wanted = {}
     for other in candidates:
         overlaps = [(_overlap_seconds(row, other), index) for index, row in enumerate(final)]
@@ -1424,6 +1429,13 @@ def prefer_forced_language_reading(merged, forced, *, maximum_confidence=.8, min
                 or float(row.get('confidence', 0)) >= maximum_confidence
                 or _similarity(row['text'], other['text']) < .3
                 or float(other.get('confidence', 0)) < float(row.get('confidence', 0)) + minimum_gain):
+            continue
+        pool = [(name, reading) for name, rows in everything.items() for reading in (rows or ())
+                if _normalized(str(reading.get('text', ''))) and not _is_boilerplate(reading.get('text', ''))
+                and _span_overlap_ratio(row, reading) >= .5]
+        members = _linked_readings(row, pool)
+        if members and (_mean_agreement(other['text'], members)
+                        < _mean_agreement(row['text'], members) - tolerance):
             continue
         wanted.setdefault(index, []).append(other)
     for index, options in wanted.items():

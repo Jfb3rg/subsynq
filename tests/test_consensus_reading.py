@@ -205,5 +205,39 @@ class ForcedLanguageReadingTests(unittest.TestCase):
         self.assertEqual(prefer_forced_language_reading(ORDINARY, None), ORDINARY)
 
 
+
+# Real HOPE readings (job 38): the forced reading was the most confident one for the first cue but had dropped words.
+OTHERS_38 = {
+    'precision': [cue(0.8, 5.5, '며칠 전에 친구들이랑 사냥을 해나갔었어.', .61),
+                  cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55), cue(13.1, 16.3, '갑자기 기증이.', .66)],
+    'rescue': [cue(1.6, 5.5, '이전에 친구들이랑 사냥을 해나갔었어', .65), cue(6.6, 7.9, '삐꾸라지 마냥', .71),
+               cue(8.6, 10.0, '미끄러운 거리', .70), cue(10.5, 13.2, '한 20분쯤 걸었는데', .59),
+               cue(14.3, 16.7, '갑자기 기적이 들리는 거야', .38)],
+    'v2': [cue(3.3, 6.3, '친구들이랑 사냥을 나갈 수 있었어.', .48), cue(7.0, 7.9, '삐꾸라지마냥', .77),
+           cue(7.9, 10.2, '미끄덩거려.', .78), cue(11.1, 13.4, '한 20분쯤 걸었는데', .85),
+           cue(13.9, 16.9, '갑자기 기적이 들린거야.', .49)],
+}
+FORCED_38 = [cue(0.7, 1.8, '며칠 전에', .81), cue(2.9, 5.6, '친구들이랑 사냥을 있었어', .89),
+             cue(6.7, 7.9, '삐꾸라지 마냥', .77), cue(8.6, 10.0, '미끄러운 거리', .72),
+             cue(10.4, 13.1, '한 20분쯤 걸었는데', .74), cue(13.1, 16.6, '갑자기 기적이 들리는', .85)]
+FINAL_38 = [cue(0.8, 5.5, '며칠 전에 친구들이랑 사냥을 해나갔었어.', .61),
+            cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55), cue(13.1, 16.3, '갑자기 기증이.', .66)]
+
+
+class ForcedReadingMustNotDropWordsTests(unittest.TestCase):
+    def test_a_confident_forced_reading_that_dropped_words_does_not_replace_a_cue_the_other_passes_agree_with(self):
+        result = prefer_forced_language_reading(FINAL_38, FORCED_38, OTHERS_38)
+        self.assertEqual(result[0]['text'], '며칠 전에 친구들이랑 사냥을 해나갔었어.')
+
+    def test_the_same_reading_still_corrects_the_cues_the_other_passes_disagree_with(self):
+        result = prefer_forced_language_reading(FINAL_38, FORCED_38, OTHERS_38)
+        self.assertEqual(result[2]['text'], '갑자기 기적이 들리는')
+        self.assertEqual(result[1]['text'], '삐꾸라지 마냥 미끄러운 거리 한 20분쯤 걸었는데')
+
+    def test_without_the_other_passes_the_confidence_alone_decides(self):
+        result = prefer_forced_language_reading(FINAL_38, FORCED_38)
+        self.assertEqual(result[0]['text'], '며칠 전에 친구들이랑 사냥을 있었어')
+
+
 if __name__ == '__main__':
     unittest.main()
