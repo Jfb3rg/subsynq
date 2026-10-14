@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.246
+
+- **Skydd mot en sida som laddar om sig själv gång på gång.** Laddar en flik om sig själv sex gånger på 25 sekunder pausas den automatiska omladdningen i fem minuter. Ett kort överst säger vad som utlöste det och har en knapp "Ladda om nu".
+- **Svarstid i loggen.** Varje rad i appens logg (t.ex. `"GET /library HTTP/1.1" 200 - 0.013s`) slutar nu med hur länge servern arbetade på anropet, och ett anrop som tar över 2 sekunder markeras med `LÅNGSAM`. Det gör det enkelt att se om något verkligen är segt.
+
 ## 0.8.245
 
 - **Moln-GPU: listan uppdateras utan att sidan blinkar eller hoppar upp.** När du kryssar i en minnesstorlek (t.ex. 24 GB) byts bara listan med erbjudanden; sidan laddas inte om och du stannar där du var.

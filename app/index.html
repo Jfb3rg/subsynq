@@ -257,6 +257,62 @@ const openSeasonsKey='subsynq-open-seasons';
 const openSeriesKey='subsynq-open-series';
 const openTracksKey='subsynq-open-tracks';
 const scrollKey='subsynq-scroll';
+// <reload-guard>
+// Every automatic reload (job list, scan card, models, hardware) goes through autoReload. A page that reloads itself
+// again and again (seen once: about every 3.7 s for 80 s after a scan) pauses its own reloading instead. Six reloads
+// within 25 s is the limit: a running job reloads the list at most about every 4.3 s (4 s poll + page load = five in
+// 25 s), a loop like the one above needs under 4.2 s. After that the tab stays calm for 5 minutes and says why.
+const reloadLogKey='subsynq-reload-log',reloadPauseKey='subsynq-reload-pause';
+const reloadWindowMs=25000,reloadLimit=6,reloadPauseMs=300000;
+const reloadReasons={queue:'jobblistan',scan:'skanningskortet',models:'modellkortet',hardware:'hårdvarukortet',status:'statusraden'};
+function reloadState(){
+  let log=[],until=0;
+  try{
+    log=JSON.parse(sessionStorage.getItem(reloadLogKey)||'[]');
+    until=Number(sessionStorage.getItem(reloadPauseKey)||0);
+  }catch(error){log=[];until=0}
+  return {log:Array.isArray(log)?log:[],until:until||0};
+}
+function showReloadPaused(why){
+  if(document.getElementById('reload-paused'))return;
+  const main=document.querySelector('main.content');
+  if(!main)return;
+  const box=document.createElement('div');
+  box.className='card';box.id='reload-paused';box.setAttribute('role','status');
+  const text=document.createElement('p');
+  text.style.color='var(--dg)';
+  text.textContent='Sidan laddade om sig själv många gånger på kort tid'+(reloadReasons[why]?` (utlöst av ${reloadReasons[why]})`:'')
+    +', så den automatiska omladdningen är pausad i 5 minuter. Ladda om själv när du vill.';
+  const button=document.createElement('button');
+  button.type='button';button.className='small-button';button.textContent='Ladda om nu';
+  button.addEventListener('click',()=>{
+    try{sessionStorage.removeItem(reloadLogKey);sessionStorage.removeItem(reloadPauseKey)}catch(error){}
+    location.reload();
+  });
+  box.append(text,button);
+  main.prepend(box);
+}
+function autoReload(why,before){
+  const now=Date.now(),state=reloadState();
+  if(state.until>now){showReloadPaused(why);return false}
+  const recent=state.log.filter(entry=>entry&&now-entry.t<reloadWindowMs);
+  if(recent.length>=reloadLimit){
+    try{sessionStorage.setItem(reloadPauseKey,String(now+reloadPauseMs))}catch(error){}
+    console.warn('SubSynq: automatisk omladdning pausad efter '+recent.length+' omladdningar på '+reloadWindowMs/1000+' s (senast: '+why+')');
+    showReloadPaused(why);
+    return false;
+  }
+  recent.push({t:now,why});
+  try{sessionStorage.setItem(reloadLogKey,JSON.stringify(recent))}catch(error){}
+  if(before)before();
+  location.reload();
+  return true;
+}
+{
+  const state=reloadState();
+  if(state.until>Date.now())showReloadPaused((state.log[state.log.length-1]||{}).why);
+}
+// </reload-guard>
 function rememberOpenSeasons(){
   const open=[...document.querySelectorAll('.season-group[open]')].map(folder=>folder.dataset.season);
   const openSeries=[...document.querySelectorAll('.series-group[open]')].map(folder=>folder.dataset.series);
@@ -352,8 +408,7 @@ document.querySelectorAll('details.series-group[data-lazy]').forEach(group=>{
 });
 if(document.querySelector('.subtitle-status.working'))setTimeout(()=>{
   if(hardwareChoicePending())return;
-  rememberOpenSeasons();
-  location.reload();
+  autoReload('status',rememberOpenSeasons);
 },10000);
 const queuePanel=document.querySelector('[data-jobs-signature]');
 if(queuePanel)setInterval(async()=>{
@@ -363,8 +418,7 @@ if(queuePanel)setInterval(async()=>{
     if(!response.ok)return;
     const data=await response.json();
     if(data.signature!==queuePanel.dataset.jobsSignature&&!hardwareChoicePending()){
-      rememberOpenSeasons();
-      location.reload();
+      autoReload('queue',rememberOpenSeasons);
     }
   }catch(error){/* Try again at the next interval. */}
 },4000);
@@ -398,8 +452,7 @@ if(hardwarePanel)setInterval(async()=>{
     const ids=(hardware.available||[]).filter(device=>device.available).map(device=>device.id).sort();
     const signature=`${hardware.recommended||'cpu'};${ids.join(';')}`;
     if(signature!==hardwarePanel.dataset.hardwareSignature&&!hardwareChoicePending()){
-      rememberOpenSeasons();
-      location.reload();
+      autoReload('hardware',rememberOpenSeasons);
     }
   }catch(error){/* The visible status stays honest until the next successful poll. */}
 },10000);
@@ -472,7 +525,7 @@ if(modelsCard)setInterval(async()=>{
     const response=await fetch('/api/models',{cache:'no-store'});
     if(!response.ok)return;
     const status=await response.json();
-    if(status.ready||status.state==='ready'){location.reload();return;}
+    if(status.ready||status.state==='ready'){autoReload('models');return;}
     const text=modelsCard.dataset;
     (status.models||[]).forEach(model=>{
       const row=modelsCard.querySelector(`[data-model="${model.id}"]`);
@@ -498,7 +551,7 @@ if(scanCard&&scanCard.dataset.state==='running')setInterval(async()=>{
     const response=await fetch('/api/scan-status',{cache:'no-store'});
     if(!response.ok)return;
     const status=await response.json();
-    if(status.state!=='running'){location.reload();return;}
+    if(status.state!=='running'){autoReload('scan');return;}
     const detail=scanCard.querySelector('[data-scan-detail]');
     if(detail)detail.textContent=(scanCard.dataset.tDetail||'').replace('{folder}',status.folder)
       .replace('{files}',status.files).replace('{seconds}',status.seconds);

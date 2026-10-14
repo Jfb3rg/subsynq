@@ -29,7 +29,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.245"
+VERSION = "0.8.246"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1376,7 +1376,27 @@ def status():
     }
 
 
+SLOW_REQUEST_SECONDS = 2.0
+
+
+def format_request_time(seconds):
+    """The ' 0.012s' that ends every access-log line; a request slower than SLOW_REQUEST_SECONDS is marked."""
+    return f" {seconds:.3f}s" + (" LÅNGSAM" if seconds >= SLOW_REQUEST_SECONDS else "")
+
+
 class Handler(BaseHTTPRequestHandler):
+    def parse_request(self):
+        parsed = super().parse_request()
+        self._request_started = time.monotonic()
+        return parsed
+
+    def log_request(self, code="-", size="-"):
+        """The standard access line plus how long the server worked on it (up to the moment the answer starts;
+        sending the body is not counted), so a slow page shows up in the log."""
+        started = getattr(self, "_request_started", None)
+        took = format_request_time(time.monotonic() - started) if started is not None else ""
+        self.log_message('"%s" %s %s%s', self.requestline, str(code), str(size), took)
+
     def do_POST(self):
         path = urlsplit(self.path).path
         if path in ('/webhooks/radarr', '/webhooks/sonarr', '/webhooks/jellyfin', '/webhooks/emby'):
