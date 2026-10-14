@@ -1,6 +1,7 @@
 """Local, user-editable cloud GPU estimates; no provider billing or rentals."""
 import json
 import math
+import re
 from html import escape
 
 from cloud_market import (REGION_GROUP_RANK, REGION_GROUPS, VRAM_BAND_LABELS, VRAM_BANDS, flag_emoji,
@@ -11,6 +12,9 @@ DEFAULT_PROFILE = {
     'provider': 'vast', 'gpu': 'RTX 5060 Ti', 'mode': 'test',
     'compute_hourly': None, 'storage_hourly': None,
     'transfer_per_gb': None, 'max_minutes': 60, 'currency': 'USD', 'max_hourly': 1.0,
+    # Where the offer picked in the list stands (two-letter country, Vast's machine number): the rental
+    # tries that machine and then that country first. Empty = nearest region first.
+    'country': '', 'machine_id': None,
 }
 
 
@@ -44,12 +48,26 @@ def parse_profile(form, *, allow_legacy_currency=False):
     max_hourly = _price(field('max_hourly'))
     if max_hourly is not None and max_hourly <= 0:
         raise ValueError('Högsta pris per timme måste vara större än 0 (eller tomt).')
+    country = str(field('country') or '').strip().upper()
+    if country and not re.fullmatch(r'[A-Z]{2}', country):
+        raise ValueError('Ogiltigt land.')
+    machine_id = None
+    if country:      # a machine is only remembered together with its country
+        raw_machine = str(field('machine_id') or '').strip()
+        if raw_machine:
+            try:
+                machine_id = int(raw_machine)
+            except ValueError as error:
+                raise ValueError('Ogiltigt maskinnummer.') from error
+            if not 0 < machine_id < 2 ** 53:
+                raise ValueError('Ogiltigt maskinnummer.')
     return {
         'provider': provider, 'gpu': gpu, 'mode': mode,
         'compute_hourly': _price(field('compute_hourly')),
         'storage_hourly': _price(field('storage_hourly')),
         'transfer_per_gb': _price(field('transfer_per_gb')),
         'max_minutes': minutes, 'currency': currency, 'max_hourly': max_hourly,
+        'country': country, 'machine_id': machine_id,
     }
 
 
@@ -91,6 +109,20 @@ def render_cloud_cost(profile, token, saved=False):
                     (' inklusive angiven lagring.' if storage is not None else
                      ' plus lagring och eventuell dataöverföring.'))
     saved_notice = '<p class="success" role="status">✓ Kostnadsantaganden sparade.</p>' if saved else ''
+    country = profile['country']
+    if country:
+        machine = profile['machine_id']
+        place = (
+            '<p><label class="vram-choice"><input type="checkbox" name="country" '
+            f'value="{escape(country, quote=True)}" checked> Hyr i första hand i '
+            f'<strong>{flag_emoji(country)} {escape(country)}</strong></label>'
+            + (f'<input type="hidden" name="machine_id" value="{machine}">' if machine else '')
+            + '</p><p class="muted">Landet kommer från erbjudandet du valde i listan ovan. Vid hyrning provas först samma '
+            'maskin (om den är ledig), sedan servrar i samma land, sedan närmaste region – aldrig över prisgränsen. '
+            'Avmarkera och spara för att gå tillbaka till "Europa först".</p>')
+    else:
+        place = ('<p class="muted">Ingen plats vald: servern väljs efter läge (Europa först). Välj ett erbjudande i listan '
+                 'ovan så provar SubSynq först samma maskin och land.</p>')
     return (
         '<div class="card"><h2>Egen kostnadsplan</h2>'
         '<p class="muted">Du kan ändra alla belopp manuellt för både test och längre användning. '
@@ -102,6 +134,7 @@ def render_cloud_cost(profile, token, saved=False):
         f'<p>Planens modell: <strong>{escape(profile["provider"].title())} · {escape(profile["gpu"])}</strong>. '
         'Välj ny GPU i listan ovan utan konto. Det här är ett kostnadsantagande, '
         'inte en garanterat tillgänglig GPU.</p>'
+        + place +
         '<label for="cloud-mode">Användning</label>'
         f'<select id="cloud-mode" name="mode"><option value="test"{selected("mode", "test")}>Test</option>'
         f'<option value="permanent"{selected("mode", "permanent")}>Längre användning</option></select>'
@@ -114,8 +147,9 @@ def render_cloud_cost(profile, token, saved=False):
         f'<input id="cloud-transfer" name="transfer_per_gb" type="number" min="0" max="10000" step="0.0001" value="{value("transfer_per_gb")}">'
         '<label for="cloud-max-hourly">Högsta pris vid hyrning, per timme (USD)</label>'
         f'<input id="cloud-max-hourly" name="max_hourly" type="number" min="0.01" max="10000" step="0.01" value="{value("max_hourly")}">'
-        '<p class="muted">När ett jobb körs på moln-GPU väljer SubSynq servern efter läge (Europa först, sedan USA och Kanada, sedan övriga '
-        'världen) och hyr aldrig en server som kostar mer än så. Tomt = den fasta spärren 2 USD/tim.</p>'
+        '<p class="muted">När ett jobb körs på moln-GPU väljer SubSynq servern i första hand där du valde i listan '
+        '(maskin, sedan land), annars efter läge (Europa först, sedan USA och Kanada, sedan övriga '
+        'världen), och hyr aldrig en server som kostar mer än så. Tomt = den fasta spärren 2 USD/tim.</p>'
         '<label for="cloud-minutes">Planerad eller maximal tid i minuter</label>'
         f'<input id="cloud-minutes" name="max_minutes" type="number" min="1" max="10080" value="{value("max_minutes")}">'
         '<input type="hidden" name="currency" value="USD">'
@@ -184,21 +218,25 @@ def render_cloud_market(provider, connected, result, token, notice='', gpu_query
     offers = result.get('offers') or []
     vram_boxes = ''.join(
         f'<label class="vram-choice"><input type="checkbox" name="vram" value="{key}"'
-        f'{" checked" if key in vram_bands else ""} onchange="this.form.submit()"> '
+        f'{" checked" if key in vram_bands else ""}> '
         f'{VRAM_BAND_LABELS[key]}</label>' for key, _low, _high in VRAM_BANDS)
     name_search = (
         '<label for="gpu-query">Sök exakt GPU-modell hos Vast.ai</label>'
-        f'<input id="gpu-query" name="gpu" value="{escape(gpu_query, quote=True)}" '
+        f'<input id="gpu-query" name="gpu_query" value="{escape(gpu_query, quote=True)}" '
         'placeholder="t.ex. RTX 5060 Ti" maxlength="80">'
     ) if provider == 'vast' else ''
+    # ONE form and ONE button: it fetches fresh prices from the provider (POST /cloud-refresh). Ticking a size
+    # needs no button: the script in index.html swaps the list below in place (no reload, no jump to the top).
     search = (
-        '<form action="/settings/cloud" method="get" class="vram-filter">'
+        '<form action="/cloud-refresh" method="post" class="vram-filter" id="cloud-search">'
+        f'<input type="hidden" name="token" value="{escape(token, quote=True)}">'
         f'<input type="hidden" name="provider" value="{provider}">'
         + name_search +
         '<fieldset><legend>Visa bara GPU med så här mycket minne</legend>' + vram_boxes + '</fieldset>'
-        f'<button type="submit">{"Sök GPU" if provider == "vast" else "Visa"}</button></form>'
+        f'<button type="submit">{"Sök och uppdatera" if provider == "vast" else "Uppdatera listan"}</button></form>'
         '<p class="muted">Ingen ruta ikryssad visar alla storlekar. 16 GB omfattar även 20 GB-kort, '
         '24 GB är 23–30 GB, 32 GB är 31–32 GB och över 32 GB är 40 GB och uppåt. '
+        'Rutorna filtrerar direkt; knappen hämtar nya priser från leverantören. '
         + ('Tom sökning visar ett urval av de billigaste en-GPU-erbjudandena; '
            'sök på modell för att hitta även mindre vanliga GPU:er.' if provider == 'vast' else '')
         + '</p>'
@@ -223,18 +261,13 @@ def render_cloud_market(provider, connected, result, token, notice='', gpu_query
             f'<select id="live-offer" name="offer_id">{options}</select>'
             '<button type="submit">Använd priset i min kostnadsplan</button></form>'
             + where_hint +
-            '<p class="muted">Det väljer bara ett prisunderlag. Det hyr, startar eller överför inget.</p>'
+            '<p class="muted">Det sparar pris, GPU och serverns land i din kostnadsplan nedan (vid hyrning provas den maskinen '
+            'och det landet först). Det hyr, startar eller överför inget.</p>'
         )
     else:
         catalog_html = ('<p class="muted">Inga lediga en-GPU-erbjudanden med pris hittades just nu'
                         + (f' med minnesstorlek {chosen_text}. Prova en annan storlek eller ta bort filtret.</p>'
                            if vram_bands else '.</p>'))
-    refresh = (
-        f'<form action="/cloud-refresh" method="post"><input type="hidden" name="token" value="{escape(token, quote=True)}">'
-        f'<input type="hidden" name="provider" value="{provider}">'
-        f'<input type="hidden" name="gpu_query" value="{escape(gpu_query, quote=True)}">{vram_hidden}'
-        '<button class="small-button" type="submit">Hämta aktuella erbjudanden</button></form>'
-    )
     return (
         '<div class="card"><h2>Moln-GPU · aktuella erbjudanden</h2>' + links + notice_html
         +
@@ -242,7 +275,7 @@ def render_cloud_market(provider, connected, result, token, notice='', gpu_query
         'API-nyckel behövs inte för prislistan. En nyckel för framtida kontofunktioner '
         'sparas lokalt i /config och visas aldrig igen; använd minsta möjliga behörighet. '
         'Ingen instans hyrs eller startas från denna sida.</p>'
-        + search + refresh + catalog_html
+        + search + '<div id="cloud-results">' + catalog_html + '</div>'
         + '<details><summary>Koppla konto för framtida molnkörning (valfritt för priser)</summary>'
         + f'<p><a href="{key_url}" target="_blank" rel="noopener noreferrer">Skapa/hitta API-nyckel hos {label} ↗</a></p>'
         + f'<p>API-nyckel för {label}: <strong>{"Sparad, men inte verifierad för molnkörning" if connected else "Ingen sparad"}</strong></p>'

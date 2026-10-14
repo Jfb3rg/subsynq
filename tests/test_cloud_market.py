@@ -271,10 +271,11 @@ class VramFilterTests(unittest.TestCase):
         self.assertIn('name="vram"', page)
         self.assertNotIn('id="gpu-query"', page)
 
-    def test_the_choice_follows_the_refresh_and_use_price_forms(self):
+    def test_the_choice_follows_the_search_form_and_the_use_price_form(self):
         offers = [{'id': '1', 'gpu': 'RTX 4090', 'price': .4, 'detail': '24 GB VRAM', 'vram_mb': 24576}]
         page = self.render(bands=('24',), offers=offers)
-        self.assertEqual(page.count('<input type="hidden" name="vram" value="24">'), 2)
+        self.assertEqual(page.count('<input type="hidden" name="vram" value="24">'), 1, 'the use-price form')
+        self.assertEqual(page.count('name="vram" value="24" checked'), 1, 'the one search form')
         self.assertIn('Visar bara 24 GB (1 st)', page)
         self.assertEqual(self.render(offers=offers).count('type="hidden" name="vram"'), 0)
 
@@ -372,6 +373,82 @@ class RentalOrderTests(unittest.TestCase):
         offers = [self.offer('a', 9.0, 'europe'), {'id': 'b', 'region': 'europe'}]
         self.assertEqual(len(order_offers_for_rental(offers, None)), 2)
         self.assertEqual([item['id'] for item in order_offers_for_rental(offers, 1.0)], ['b'])
+
+    def test_the_chosen_machine_then_country_come_before_region_and_price(self):
+        offers = [{'id': 'no', 'price': .25, 'region': 'europe', 'country': 'NO', 'machine_id': 11},
+                  {'id': 'se-dear', 'price': .35, 'region': 'europe', 'country': 'SE', 'machine_id': 22},
+                  {'id': 'se', 'price': .30, 'region': 'europe', 'country': 'SE', 'machine_id': 23},
+                  {'id': 'us', 'price': .10, 'region': 'north-america', 'country': 'US', 'machine_id': 44}]
+        ids = lambda *args: [item['id'] for item in order_offers_for_rental(offers, 1.0, *args)]
+        self.assertEqual(ids(), ['no', 'se', 'se-dear', 'us'])
+        self.assertEqual(ids('SE'), ['se', 'se-dear', 'no', 'us'])
+        self.assertEqual(ids('SE', 22), ['se-dear', 'se', 'no', 'us'])
+        self.assertEqual(ids('JP', 99), ['no', 'se', 'se-dear', 'us'], 'a place with nothing falls back to the nearest region')
+        self.assertEqual([item['id'] for item in order_offers_for_rental(offers, .28, 'SE')], ['no', 'us'],
+                         'the price limit still removes the Swedish offers')
+
+    def test_a_missing_machine_number_never_matches(self):
+        offers = [{'id': 'a', 'price': .5, 'region': 'europe'}, {'id': 'b', 'price': .4, 'region': 'europe'}]
+        self.assertEqual([item['id'] for item in order_offers_for_rental(offers, 1.0, '', None)], ['b', 'a'])
+
+    def test_vast_offers_carry_their_machine_number(self):
+        offers = normalize_vast({'offers': [
+            {'id': 1, 'gpu_name': 'RTX 3090', 'dph_total': .3, 'machine_id': 777, 'geolocation': 'Sweden, SE'},
+            {'id': 2, 'gpu_name': 'RTX 3090', 'dph_total': .4, 'machine_id': 'x', 'geolocation': 'Sweden, SE'},
+            {'id': 3, 'gpu_name': 'RTX 3090', 'dph_total': .5, 'machine_id': True},
+            {'id': 4, 'gpu_name': 'RTX 3090', 'dph_total': .6}]})
+        self.assertEqual({item['id']: item['machine_id'] for item in offers}, {'1': 777, '2': None, '3': None, '4': None})
+
+
+class OneSearchFormTests(unittest.TestCase):
+    """One form, one button; ticking a size is handled by the page script, not by a form submit."""
+
+    def page(self, provider='vast', bands=()):
+        offer = {'id': '1', 'gpu': 'RTX 3090', 'price': .3, 'detail': '24 GB VRAM', 'vram_mb': 24576,
+                 'location': 'Sweden, SE', 'country': 'SE', 'region': 'europe'}
+        return render_cloud_market(provider, False, {'offers': [offer], 'fetched_at': 'now', 'error': None},
+                                   'token', '', 'RTX 3090' if provider == 'vast' else '', bands)
+
+    def test_there_is_one_search_form_and_one_search_button(self):
+        page = self.page()
+        self.assertEqual(page.count('class="vram-filter"'), 1)
+        self.assertIn('<form action="/cloud-refresh" method="post" class="vram-filter" id="cloud-search">', page)
+        self.assertEqual(page.count('Sök och uppdatera'), 1)
+        for gone in ('Hämta aktuella erbjudanden', 'Sök GPU', 'action="/settings/cloud"'):
+            self.assertNotIn(gone, page)
+        self.assertEqual(page.count('action="/cloud-refresh"'), 1)
+
+    def test_the_form_carries_everything_the_refresh_needs(self):
+        page = self.page(bands=('24',))
+        form = page[page.index('id="cloud-search"'):page.index('</form>', page.index('id="cloud-search"'))]
+        self.assertIn('name="token" value="token"', form)
+        self.assertIn('name="provider" value="vast"', form)
+        self.assertIn('name="gpu_query" value="RTX 3090"', form)
+        self.assertIn('name="vram" value="24" checked', form)
+
+    def test_a_size_box_does_not_submit_the_form_itself(self):
+        self.assertNotIn('this.form.submit', self.page())
+        self.assertNotIn('onchange', self.page())
+
+    def test_the_list_sits_in_its_own_container_the_script_can_swap(self):
+        page = self.page()
+        self.assertIn('<div id="cloud-results">', page)
+        self.assertLess(page.index('id="cloud-search"'), page.index('id="cloud-results"'))
+        self.assertLess(page.index('id="cloud-results"'), page.index('id="live-offer"'))
+
+    def test_runpod_has_the_same_single_form_without_a_name_field(self):
+        page = self.page('runpod')
+        self.assertIn('Uppdatera listan', page)
+        search = page[page.index('id="cloud-search"'):page.index('</form>', page.index('id="cloud-search"'))]
+        self.assertNotIn('name="gpu_query"', search)
+        self.assertEqual(page.count('class="vram-filter"'), 1)
+
+    def test_the_page_script_swaps_only_the_list_and_keeps_the_scroll(self):
+        shell = (Path(__file__).resolve().parents[1] / 'app' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('#cloud-search input[name="vram"]', shell)
+        self.assertIn("getElementById('cloud-results')", shell)
+        self.assertIn('history.replaceState', shell)
+        self.assertIn('window.location.href=address', shell, 'falls back to an ordinary page load')
 
 
 if __name__ == "__main__":

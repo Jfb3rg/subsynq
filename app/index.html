@@ -177,6 +177,7 @@ td, th { padding: 10px 0; border-bottom: 1px solid var(--bd); }
 .vram-filter fieldset { border: 1px solid var(--bd); border-radius: 8px; margin: 10px 0; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .vram-filter legend { font-weight: 600; padding: 0 6px; }
 .vram-choice { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+#cloud-results[aria-busy="true"] { opacity: .55; transition: opacity .15s; }
 .vram-choice input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--ac); cursor: pointer; }
 .cloud-cost-form input, .cloud-cost-form select { width: 100%; min-width: 0; padding: 10px; border-radius: 8px; border: 1px solid var(--bd); color: var(--tx); background: var(--hi); font: inherit; }
 .cloud-cost-form button { align-self: flex-start; margin-top: 10px; }
@@ -297,6 +298,39 @@ if(sessionStorage.getItem(autoRefreshKey)==='1'){
 document.addEventListener('submit',event=>{
   if(event.target.matches&&event.target.matches('form.preserve-seasons'))rememberOpenSeasons();
 },true);
+// Moln-GPU: ticking a memory size swaps only the offer list (no reload, no jump to the top of the page).
+// The server renders the whole page for the same address; just #cloud-results is taken from it. If anything
+// goes wrong the page is simply loaded the ordinary way.
+let cloudListRequest=0,cloudListAbort=null;
+document.addEventListener('change',event=>{
+  const box=event.target;
+  if(!box.matches||!box.matches('#cloud-search input[name="vram"]'))return;
+  const form=box.form,params=new URLSearchParams();
+  params.set('provider',form.elements.provider.value);
+  const query=form.elements.gpu_query;
+  if(query&&query.value.trim())params.set('gpu',query.value.trim());
+  form.querySelectorAll('input[name="vram"]:checked').forEach(item=>params.append('vram',item.value));
+  const address='/settings/cloud?'+params.toString(),holder=document.getElementById('cloud-results');
+  if(!holder||!window.fetch||!window.DOMParser){window.location.href=address;return}
+  const ticket=++cloudListRequest;
+  if(cloudListAbort)cloudListAbort.abort();
+  cloudListAbort=window.AbortController?new AbortController():null;
+  holder.setAttribute('aria-busy','true');
+  fetch(address,{credentials:'same-origin',signal:cloudListAbort?cloudListAbort.signal:undefined})
+    .then(response=>{if(!response.ok)throw new Error('http '+response.status);return response.text()})
+    .then(html=>{
+      if(ticket!==cloudListRequest)return;
+      const fresh=new DOMParser().parseFromString(html,'text/html').getElementById('cloud-results');
+      if(!fresh)throw new Error('no list');
+      holder.innerHTML=fresh.innerHTML;
+      holder.removeAttribute('aria-busy');
+      history.replaceState(null,'',address);
+    })
+    .catch(error=>{
+      if(error&&error.name==='AbortError')return;
+      if(ticket===cloudListRequest)window.location.href=address;
+    });
+});
 // In a big library a series loads its seasons from the server when it is opened.
 document.querySelectorAll('details.series-group[data-lazy]').forEach(group=>{
   group.addEventListener('toggle',async()=>{

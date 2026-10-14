@@ -417,5 +417,45 @@ class RentalChoiceTests(KeepServerBase):
         self.assertEqual([offer for _, offer in self.created], [204, 203])
 
 
+class PreferredPlaceTests(KeepServerBase):
+    """The machine and country picked in the list come first, but only within the price limit."""
+    run_rent = SlowHostTests.run_rent
+
+    def offers(self):
+        def make(offer_id, price, country, region, machine):
+            return {'id': offer_id, 'gpu': 'RTX 3090', 'price': price, 'detail': 'x', 'vram_gb': 24.0,
+                    'country': country, 'region': region, 'machine_id': machine}
+        return [make('301', .25, 'NO', 'europe', 11), make('302', .35, 'SE', 'europe', 22),
+                make('303', .30, 'SE', 'europe', 23), make('304', .20, 'US', 'north-america', 44)]
+
+    def rent(self, **plan):
+        return self.run_rent(self.offers(), slow=(), profile={'gpu': 'RTX 3090', 'max_hourly': 1.0, **plan})
+
+    def test_without_a_preference_the_cheapest_in_europe_wins(self):
+        self.rent()
+        self.assertEqual([offer for _, offer in self.created], [301])
+
+    def test_the_chosen_country_comes_before_a_cheaper_neighbour(self):
+        result, error = self.rent(country='SE')
+        self.assertIsNone(error)
+        self.assertEqual([offer for _, offer in self.created], [303], 'Sweden at 0.30, not Norway at 0.25')
+
+    def test_the_chosen_machine_comes_before_a_cheaper_one_in_the_same_country(self):
+        self.rent(country='SE', machine_id=22)
+        self.assertEqual([offer for _, offer in self.created], [302])
+
+    def test_a_country_that_has_nothing_falls_back_to_the_nearest_region(self):
+        self.rent(country='JP', machine_id=99)
+        self.assertEqual([offer for _, offer in self.created], [301])
+
+    def test_the_price_limit_still_beats_the_preference(self):
+        self.rent(country='SE', max_hourly=.28)
+        self.assertEqual([offer for _, offer in self.created], [301], 'both Swedish offers are above 0.28')
+
+    def test_a_slow_preferred_host_is_replaced_by_the_next_choice_in_the_same_country(self):
+        self.run_rent(self.offers(), slow=('501',), profile={'gpu': 'RTX 3090', 'max_hourly': 1.0, 'country': 'SE'})
+        self.assertEqual([offer for _, offer in self.created], [303, 302])
+
+
 if __name__ == '__main__':
     unittest.main()

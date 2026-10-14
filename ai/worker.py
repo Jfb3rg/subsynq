@@ -1020,9 +1020,18 @@ def rent_cloud_chain(job, provider, mode):
         offers = fetch_vast_chain_gpu_offers(api_key, wanted)
     limit = cloud_price_limit()
     cheapest = min((offer['price'] for offer in offers if isinstance(offer.get('price'), (int, float))), default=None)
-    # Nearest region first (Europe, then the USA and Canada, then the rest), cheapest first within a region,
-    # and never above the user's price limit.
-    offers = order_offers_for_rental(offers, limit)
+    # The machine and the country the user picked in the list first (stored in the cost plan), then the nearest
+    # region (Europe, then the USA and Canada, then the rest), cheapest first within a group, and never above
+    # the user's price limit.
+    try:
+        plan = load_cloud_profile() or {}
+    except (sqlite3.Error, TypeError, ValueError):
+        plan = {}
+    prefer_country, prefer_machine = plan.get('country') or '', plan.get('machine_id')
+    offers = order_offers_for_rental(offers, limit, prefer_country, prefer_machine)
+    if prefer_country and offers and offers[0].get('country') != prefer_country:
+        print(f'Inga lediga servrar i {prefer_country} som klarar kraven och prisgränsen (jobb {job["id"]}); '
+              'tar närmaste plats.', flush=True)
     if not offers and cheapest is not None:
         raise RuntimeError(
             f'Alla lediga {wanted}-servrar hos {provider} kostar mer än din gräns på {limit:.2f} USD/tim '

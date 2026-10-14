@@ -150,14 +150,17 @@ def region_group(country):
     return 'world'
 
 
-def order_offers_for_rental(offers, max_hourly):
-    """Offers a rental may pick from: nothing above the user's price limit, nearest region first
-    (Europe, then the USA and Canada, then the rest), cheapest first within each region.
+def order_offers_for_rental(offers, max_hourly, prefer_country='', prefer_machine=None):
+    """Offers a rental may pick from: nothing above the user's price limit; the machine and then the
+    country the user picked in the list first (the plan remembers them), then nearest region first
+    (Europe, then the USA and Canada, then the rest), cheapest first within each group.
     Offers without a region (Runpod, CPU) keep their price order. Never reorders beyond the limit."""
     allowed = [offer for offer in offers
                if max_hourly is None or offer.get('price') is None or offer['price'] <= max_hourly]
     unknown = len(REGION_GROUPS)
     return sorted(allowed, key=lambda offer: (
+        0 if prefer_machine is not None and offer.get('machine_id') == prefer_machine else 1,
+        0 if prefer_country and offer.get('country') == prefer_country else 1,
         REGION_GROUP_RANK.get(offer.get('region'), unknown),
         offer['price'] if isinstance(offer.get('price'), (int, float)) else float('inf')))
 
@@ -193,7 +196,9 @@ def normalize_vast(payload):
         location = offer.get('geolocation')
         location = location.strip()[:60] if isinstance(location, str) else ''
         country = country_from_geolocation(location)
+        machine = offer.get('machine_id')
         result.append({'id': str(offer_id), 'gpu': gpu, 'price': price,
+                       'machine_id': machine if isinstance(machine, int) and not isinstance(machine, bool) else None,
                        'vram_gb': round(vram / 1024, 1) if known else None,
                        'vram_mb': vram if known else None,
                        'location': location, 'country': country,

@@ -29,7 +29,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.244"
+VERSION = "0.8.245"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1439,9 +1439,13 @@ class Handler(BaseHTTPRequestHandler):
                     with sqlite3.connect(DATABASE) as db:
                         row = db.execute("SELECT value FROM metadata WHERE key='cloud_cost_profile'").fetchone()
                         profile = load_profile(row[0] if row else None)
+                        # The offer's own country and machine travel with the price: the rental tries that
+                        # machine and country first instead of whatever is cheapest in Europe.
+                        country = offer.get('country') or ''
                         profile.update(provider=provider, gpu=offer['gpu'],
                                        compute_hourly=offer['price'], storage_hourly=None,
-                                       transfer_per_gb=None, currency='USD')
+                                       transfer_per_gb=None, currency='USD', country=country,
+                                       machine_id=offer.get('machine_id') if country else None)
                         db.execute("INSERT OR REPLACE INTO metadata VALUES ('cloud_cost_profile', ?)",
                                    (json.dumps(profile, ensure_ascii=False),))
             except (ValueError, OSError, sqlite3.Error):
@@ -2250,7 +2254,7 @@ class Handler(BaseHTTPRequestHandler):
                 vram_bands = normalize_vram_bands(query.get('vram', []))
                 saved_event = query.get('saved', [''])[0]
                 notices = {'key': 'API-nyckeln sparades lokalt.', 'removed': 'API-nyckeln togs bort.',
-                           'refreshed': 'Listan har uppdaterats.', 'offer': 'Aktuellt pris kopierades till din kostnadsplan.'}
+                           'refreshed': 'Listan har uppdaterats.', 'offer': 'Aktuellt pris och serverns land kopierades till din kostnadsplan.'}
                 content = (render_cloud_market(provider, provider in load_keys(CONFIG),
                                                  catalog(CONFIG, provider, gpu_query=gpu_query,
                                                          vram_bands=vram_bands), SCAN_TOKEN,

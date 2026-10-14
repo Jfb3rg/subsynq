@@ -98,5 +98,62 @@ class MaxHourlyPriceTests(unittest.TestCase):
         self.assertIn('value=""', render_cloud_cost({**DEFAULT_PROFILE, 'max_hourly': None}, 'token'))
 
 
+class PreferredPlaceProfileTests(unittest.TestCase):
+    """The offer picked in the list leaves its country (and machine) in the plan."""
+
+    def form(self, **changes):
+        form = {key: [value if value is not None else ''] for key, value in DEFAULT_PROFILE.items()}
+        form.update({key: [value] for key, value in changes.items()})
+        return form
+
+    def test_a_plan_without_a_place_is_the_default(self):
+        self.assertEqual((DEFAULT_PROFILE['country'], DEFAULT_PROFILE['machine_id']), ('', None))
+        profile = parse_profile(self.form())
+        self.assertEqual((profile['country'], profile['machine_id']), ('', None))
+
+    def test_country_and_machine_are_saved_and_read_back(self):
+        profile = parse_profile(self.form(country='se', machine_id='12345'))
+        self.assertEqual((profile['country'], profile['machine_id']), ('SE', 12345))
+        again = load_profile(json.dumps(profile))
+        self.assertEqual((again['country'], again['machine_id']), ('SE', 12345))
+
+    def test_a_machine_is_never_kept_without_its_country(self):
+        profile = parse_profile(self.form(country='', machine_id='12345'))
+        self.assertEqual((profile['country'], profile['machine_id']), ('', None))
+
+    def test_an_older_plan_without_the_fields_still_loads(self):
+        older = {key: value for key, value in DEFAULT_PROFILE.items() if key not in ('country', 'machine_id')}
+        profile = load_profile(json.dumps({**older, 'gpu': 'RTX 3090'}))
+        self.assertEqual((profile['gpu'], profile['country'], profile['machine_id']), ('RTX 3090', '', None))
+
+    def test_nonsense_places_are_refused(self):
+        for bad in ('SWE', 'S', '1', '<b>', 'S E'):
+            with self.subTest(country=bad), self.assertRaises(ValueError):
+                parse_profile(self.form(country=bad))
+        for bad in ('abc', '-5', '0', '1e3', str(2 ** 60)):
+            with self.subTest(machine=bad), self.assertRaises(ValueError):
+                parse_profile(self.form(country='SE', machine_id=bad))
+
+    def test_the_plan_form_shows_the_chosen_country_as_a_box_that_can_be_cleared(self):
+        page = render_cloud_cost({**DEFAULT_PROFILE, 'country': 'SE', 'machine_id': 777}, 'token')
+        self.assertIn('<input type="checkbox" name="country" value="SE" checked>', page)
+        self.assertIn('\U0001F1F8\U0001F1EA SE', page)
+        self.assertIn('<input type="hidden" name="machine_id" value="777">', page)
+        self.assertIn('Avmarkera och spara', page)
+
+    def test_without_a_place_the_plan_form_says_so_and_has_no_box(self):
+        page = render_cloud_cost(DEFAULT_PROFILE, 'token')
+        self.assertNotIn('name="country"', page)
+        self.assertNotIn('name="machine_id"', page)
+        self.assertIn('Ingen plats vald', page)
+
+    def test_saving_the_form_with_the_box_cleared_forgets_the_place(self):
+        saved = parse_profile(self.form(country='SE', machine_id='777'))
+        form = {key: [value if value is not None else ''] for key, value in saved.items() if key not in ('country', 'machine_id')}
+        form['machine_id'] = ['777']        # the hidden field is still posted, the unchecked box is not
+        cleared = parse_profile(form)
+        self.assertEqual((cleared['country'], cleared['machine_id']), ('', None))
+
+
 if __name__ == '__main__':
     unittest.main()

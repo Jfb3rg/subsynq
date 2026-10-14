@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.245
+
+- **Moln-GPU: listan uppdateras utan att sidan blinkar eller hoppar upp.** När du kryssar i en minnesstorlek (t.ex. 24 GB) byts bara listan med erbjudanden; sidan laddas inte om och du stannar där du var.
+- **En enda sökknapp.** "Sök och uppdatera" ersätter de två knapparna (sök och hämta erbjudanden) och hämtar alltid färska priser.
+- **Servern hyrs där du valde den.** "Använd priset i min kostnadsplan" sparar nu även serverns land (och maskin). Vid körning provar SubSynq först den maskinen, sedan samma land, sedan närmaste region – aldrig över din prisgräns. Fanns det valda landet inte längre går jobbet vidare med närmaste plats. Under Egen kostnadsplan visas valet och kan avmarkeras.
+
 ## 0.8.244
 
 - **Tyska filmer och serier: tyska ord som "Messer", "Mord" och "Kollegen" hamnar inte längre oöversatta i den svenska texten.** På tyska skrivs alla substantiv med stor bokstav, och SubSynq tolkade dem som namn som skulle behållas oförändrade – de stora översättningsmodellerna följde det till punkt och pricka, och granskningen underkände sedan texten. Nu känns tysk text igen på sina vanligaste ord, och då räknas inga ord som namn bara för att de har stor bokstav. Engelska, svenska och andra texter behåller sina namn som förut.
