@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.241
+
+- **Koreanska (och andra språk med egen skrift): en bättre avläsning av de osäkra ställena (HOPE).** När skriften visar vilket språk som talas (Hangul = koreanska) körs de ordinarie avlyssningspassen i flerspråksläge med röstfilter, och det missar eller felhör tyst tal ("갑자기 기침이" där det sägs "기적이"). Nu läser SubSynq de ställen där passen är oense en gång till med språket låst och utan röstfilter, med tio sekunders sammanhang på varje sida (Whisper läser ett kort klipp mycket sämre än samma tal med sammanhang). Den avläsningen tar en rads text bara när den överlappar raden, liknar den, och är säkrare än raden; tiderna ändras aldrig. Dessutom jämförs bitar av andra pass som skurit talet annorlunda efter att de slagits ihop till en läsning per rad, och Whisper-utfyllnad som "한글자막 제공 …" ignoreras överallt.
+- Provat på HOPE (helkörning på dev): rad 3 blir "갑자기 기적이 들리는 거래." (förut "기침") och rad 5 "예비군이래 봤자 8명인데요?" (förut "승리를 받자…"). Rad 2 ("삐꾸라지 …") och talet efter 32 s kvarstår: Whisper läser dem olika vid varje körning.
+
 ## 0.8.240
 
 - **Fler ASR-pass får rösta om texten (HOPE).** I musiktunga trailers (HOPE) föll SRT-skapandet på att några rader var felhörda och att det mesta av talet efter 32 s inte alls kom med. Tre förbättringar som delar samma grund: de olika avlyssningspassen (långa läsningen, kortläsningen, no-VAD-räddningen, tysta-luckor-passet och Whisper large-v2) jämförs rad för rad.

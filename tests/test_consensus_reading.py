@@ -2,7 +2,8 @@ import sys
 import unittest
 
 sys.path.insert(0, '/app')
-from asr_windows import plan_consensus_windows, prefer_consensus_reading, restore_multi_pass_agreed_speech
+from asr_windows import (plan_consensus_windows, prefer_consensus_reading, restore_multi_pass_agreed_speech,
+                         prefer_forced_language_reading, span_readings)
 
 
 def cue(start, end, text, confidence=.5):
@@ -106,6 +107,102 @@ class PlanConsensusWindowsTests(unittest.TestCase):
         many = {name: [cue(index * 20, index * 20 + 2, f'line number {index}', .8) for index in range(12)]
                 for name in ('precision', 'rescue', 'v2')}
         self.assertEqual(len(plan_consensus_windows([], many, maximum_total=4)), 4)
+
+
+
+# Real HOPE readings (job 36) of rows 1 and 2: the final cues came from the multilingual pass; the passes cut the
+# same speech into pieces, and a forced-Korean reading without voice-activity filter read the right words.
+ROW_1 = cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55)
+ROW_2 = cue(13.1, 16.3, '갑자기 기증이.', .66)
+HOPE_PIECES = {
+    'precision': [cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55), cue(13.1, 16.3, '갑자기 기증이.', .66)],
+    'context': [cue(6.4, 7.9, '삐꾸라지 마냥.', .8), cue(8.6, 9.8, '삐꾸라지 마냥.', .66),
+                cue(11.5, 16.3, '20분쯤 걸었는데 갑자기 기증이.', .6)],
+    'rescue': [cue(6.5, 7.9, '삐꾸라지 마냥', .71), cue(8.5, 10.0, '미끄러운 거리', .71), cue(10.5, 13.2, '한 20분쯤 걸었는데', .61),
+               cue(14.3, 16.7, '갑자기 기적이 들리는 거야', .42)],
+    'v2': [cue(7.0, 7.9, '삐꾸라지마냥', .77), cue(7.9, 10.2, '미끄덩거려.', .78), cue(11.1, 13.4, '한 20분쯤 걸었는데', .85),
+           cue(13.9, 16.9, '갑자기 기적이 들린거야.', .49)],
+    'forced': [cue(7.0, 7.8, '미꾸라지 마냥', .6), cue(9.0, 10.0, '미끄러운 거래', .6), cue(11.0, 13.1, '한 20분쯤 걸었는데', .8),
+               cue(14.0, 16.8, '갑자기 기적이 들리는 거래', .6)],
+}
+
+
+class JoinedPiecesAndForcedReadingTests(unittest.TestCase):
+    def test_the_pieces_of_a_pass_inside_a_cue_are_joined_into_one_reading(self):
+        joined = span_readings([ROW_1], HOPE_PIECES)
+        self.assertEqual(joined['forced+'][0]['text'], '미꾸라지 마냥 미끄러운 거래 한 20분쯤 걸었는데')
+        self.assertEqual(joined['rescue+'][0]['text'], '삐꾸라지 마냥 미끄러운 거리 한 20분쯤 걸었는데')
+        self.assertNotIn('precision+', joined, 'one piece is not a join')
+
+    def test_pieces_belonging_to_other_cues_are_not_joined(self):
+        joined = span_readings([ROW_2], HOPE_PIECES)
+        self.assertNotIn('rescue+', joined)
+
+    def test_a_cue_the_forced_reading_and_other_models_contradict_is_corrected_even_at_a_higher_confidence(self):
+        result = prefer_consensus_reading([ROW_1, ROW_2], HOPE_PIECES, margin=.05)
+        self.assertIn('기적이', result[1]['text'])
+        self.assertNotIn('기증', result[1]['text'])
+        self.assertEqual((result[1]['start'], result[1]['end']), (13.1, 16.3), 'the timing is never changed')
+
+    def test_the_joined_pieces_decide_a_cue_the_passes_cut_differently(self):
+        # Rescue, v2 and the forced reading all cut the speech in pieces and all read "미꾸라지"; the cue says "삐꾸라지".
+        agreed = dict(HOPE_PIECES,
+                      rescue=[cue(6.5, 7.9, '미꾸라지 마냥', .71), cue(8.5, 10.0, '미끄러운 거리', .71),
+                              cue(10.5, 13.2, '한 20분쯤 걸었는데', .61)],
+                      v2=[cue(7.0, 7.9, '미꾸라지마냥', .77), cue(7.9, 10.2, '미끄덩거려.', .78),
+                          cue(11.1, 13.4, '한 20분쯤 걸었는데', .85)])
+        result = prefer_consensus_reading([ROW_1], agreed, margin=.05)
+        self.assertIn('미꾸라지', result[0]['text'])
+
+    def test_a_cue_all_passes_but_one_read_alike_keeps_its_wording(self):
+        # Only the forced reading says "미꾸라지": one voice against the other model families changes nothing.
+        result = prefer_consensus_reading([ROW_1], HOPE_PIECES, margin=.05)
+        self.assertEqual(result[0]['text'], ROW_1['text'])
+
+    def test_one_other_family_alone_does_not_override_a_cue_above_the_ordinary_ceiling(self):
+        only_v2 = {name: rows for name, rows in HOPE_PIECES.items() if name != 'forced'}
+        only_v2['rescue'] = [row for row in only_v2['rescue'] if not row['text'].startswith('갑자기')]
+        self.assertEqual(prefer_consensus_reading([ROW_2], only_v2, margin=.05)[0]['text'], ROW_2['text'])
+
+    def test_closing_credit_boilerplate_is_ignored_in_every_step(self):
+        boiler = {name: [cue(89.4, 112.7, '한글자막 제공 및 자막 제공 및 광고를 포함하고 있습니다.', .5)]
+                  for name in ('precision', 'rescue', 'forced')}
+        self.assertEqual(restore_multi_pass_agreed_speech([], boiler), [])
+        self.assertEqual(plan_consensus_windows([], boiler), [])
+
+
+
+FORCED = [cue(0.8, 5.5, '며칠 전에 친구들이랑 사냥을 해나갔었어.', .62), cue(6.2, 10.1, '삐꾸라지 마냥 삐끄러운 거래.', .53),
+          cue(10.6, 13.2, '한 20분쯤 걸었는데', .90), cue(14.3, 16.9, '갑자기 기적이 들리는 거래.', .63),
+          cue(29.2, 32.2, '예비군이래 봤자 8명인데요?', .48),
+          cue(89.4, 112.7, '한글자막 제공 및 자막 제공 및 광고를 포함하고 있습니다.', .5)]
+ORDINARY = [cue(0.8, 5.5, '며칠 전에 친구들이랑 사냥을 해나갔었어.', .62),
+            cue(6.7, 13.2, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .53), cue(14.2, 16.4, '갑자기 기침이...', .52),
+            cue(30.9, 32.1, '승리를 받자 8명인데요.', .43)]
+
+
+class ForcedLanguageReadingTests(unittest.TestCase):
+    def test_a_more_confident_forced_reading_of_the_same_speech_replaces_the_wording_only(self):
+        result = prefer_forced_language_reading(ORDINARY, FORCED)
+        self.assertEqual(texts(result), ['며칠 전에 친구들이랑 사냥을 해나갔었어.', '삐꾸라지 마냥 삐끄러운 거래. 한 20분쯤 걸었는데',
+                                         '갑자기 기적이 들리는 거래.', '예비군이래 봤자 8명인데요?'])
+        self.assertEqual([(row['start'], row['end']) for row in result], [(row['start'], row['end']) for row in ORDINARY])
+
+    def test_a_cue_that_is_at_least_as_confident_is_kept(self):
+        sure = [dict(row, confidence=.7) for row in ORDINARY]
+        self.assertEqual(texts(prefer_forced_language_reading(sure, FORCED)), texts(sure))
+
+    def test_a_different_sentence_at_the_same_time_is_never_used(self):
+        other = [cue(14.2, 16.4, '완전히 다른 문장입니다', .5)]
+        self.assertEqual(prefer_forced_language_reading(other, FORCED), other)
+
+    def test_boilerplate_in_the_forced_reading_is_never_used(self):
+        cue_in_credits = [cue(90.0, 100.0, '한글자막 제공 및 광고', .3)]
+        self.assertEqual(prefer_forced_language_reading(cue_in_credits, FORCED), cue_in_credits)
+
+    def test_without_a_forced_reading_nothing_changes(self):
+        self.assertEqual(prefer_forced_language_reading(ORDINARY, []), ORDINARY)
+        self.assertEqual(prefer_forced_language_reading(ORDINARY, None), ORDINARY)
 
 
 if __name__ == '__main__':

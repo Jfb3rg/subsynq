@@ -1187,6 +1187,15 @@ _STOCK_PHRASES = {
     'thank you', 'thanks', 'thank you very much', 'merci', 'merci beaucoup',
     'you', 'okay', 'ok', 'bye', 'goodbye', 'subscribe', 'we ll be right back',
 }
+# Whisper's closing-credit hallucinations in music and silence ("한글자막 제공 및 광고를 포함하고 있습니다").
+_BOILERPLATE = ('한글자막', '자막 제공', '시청해 주셔서', '시청해주셔서', '구독과 좋아요', 'thanks for watching',
+                'thank you for watching', 'subtitles by', 'subtitled by', 'amara org', 'sous titrage', 'sous titres',
+                'ご視聴', '字幕', 'undertexter från', 'untertitel')
+
+
+def _is_boilerplate(text):
+    lowered = ' '.join(str(text).lower().split())
+    return any(phrase in lowered or phrase in _normalized(lowered) for phrase in _BOILERPLATE)
 
 
 def _similarity(a, b):
@@ -1197,10 +1206,20 @@ def _overlap_seconds(a, b):
     return min(a['end'], b['end']) - max(a['start'], b['start'])
 
 
+def _base_name(name):
+    """A pass name without the "+" that marks its pieces joined into one reading."""
+    return name.rstrip('+')
+
+
 def _cluster_readings(readings):
     """Group the passes' cues into clusters of readings of the same speech (same time, similar text)."""
     items = [(name, row) for name, rows in readings.items() for row in (rows or ())
-             if _normalized(str(row.get('text', '')))]
+             if _normalized(str(row.get('text', ''))) and not _is_boilerplate(row.get('text', ''))]
+    return _cluster_readings_of(items)
+
+
+def _cluster_readings_of(items):
+    """Cluster (pass name, cue) pairs: same time and similar text with any member links a cue to a cluster."""
     clusters = []
     for name, row in sorted(items, key=lambda item: item[1]['start']):
         for cluster in clusters:
@@ -1213,10 +1232,52 @@ def _cluster_readings(readings):
     return clusters
 
 
-# The passes that run Whisper large-v3 share their mistakes, so they vote as ONE family; Whisper v2 and Qwen3-ASR are
-# other models and each vote as a family of their own.
+def _linked_readings(start, pool):
+    """Everything in `pool` linked to the cue `start` directly or through other readings (same time, similar text)."""
+    def linked(a, b):
+        return (_overlap_seconds(a, b) > .4 * min(a['end'] - a['start'], b['end'] - b['start'])
+                and _similarity(a['text'], b['text']) >= .5)
+    found, queue = [], [start]
+    remaining = list(pool)
+    while queue:
+        current = queue.pop()
+        for entry in [item for item in remaining if linked(current, item[1])]:
+            remaining.remove(entry)
+            found.append(entry)
+            queue.append(entry[1])
+    return found
+
+
+def span_readings(final, readings):
+    """Per final cue, each pass's pieces inside it joined into ONE reading (named "<pass>+").
+
+    The passes cut the same speech differently ("미꾸라지 마냥" / "미끄러운 거래" / "한 20분쯤 걸었는데" against one
+    cue), and pieces of different length never match the cue in a comparison; their joined text does.
+    """
+    joined = {}
+    for cue in final:
+        for name, rows in readings.items():
+            pieces = [row for row in (rows or ()) if _normalized(str(row.get('text', '')))
+                      and row['end'] > row['start']
+                      and _overlap_seconds(row, {'start': cue['start'] - .3, 'end': cue['end'] + .3})
+                      >= .6 * (row['end'] - row['start'])]
+            if len(pieces) >= 2:
+                pieces.sort(key=lambda row: row['start'])
+                joined.setdefault(name + '+', []).append({
+                    'start': pieces[0]['start'], 'end': max(row['end'] for row in pieces),
+                    'text': ' '.join(str(row['text']).strip() for row in pieces),
+                    'confidence': sum(float(row.get('confidence', 0)) for row in pieces) / len(pieces)})
+    return joined
+
+
+# The passes that run Whisper large-v3 in the ordinary way share their mistakes, so they vote as ONE family; the
+# forced-language reading without voice-activity filter, Whisper v2 and Qwen3-ASR each vote as a family of their own.
 _FAMILIES = {'context': 'whisper-v3', 'precision': 'whisper-v3', 'rescue': 'whisper-v3',
-             'whispered_gap': 'whisper-v3', 'v2': 'whisper-v2', 'qwen': 'qwen'}
+             'whispered_gap': 'whisper-v3', 'v2': 'whisper-v2', 'qwen': 'qwen', 'forced': 'whisper-v3-forced'}
+
+
+def _family(name):
+    return _FAMILIES.get(_base_name(name), _base_name(name))
 
 
 def _mean_agreement(text, cluster, skip=None):
@@ -1225,7 +1286,7 @@ def _mean_agreement(text, cluster, skip=None):
     families = {}
     for name, other in cluster:
         if other is not skip:
-            families.setdefault(_FAMILIES.get(name, name), []).append(_similarity(text, other['text']))
+            families.setdefault(_family(name), []).append(_similarity(text, other['text']))
     return sum(sum(values) / len(values) for values in families.values()) / len(families) if families else 0.0
 
 
@@ -1238,7 +1299,7 @@ def _medoid(cluster):
 
 
 def _eligible_cluster(cluster, minimum_passes, vad_passes):
-    names = {name for name, _ in cluster}
+    names = {_base_name(name) for name, _ in cluster}
     return len(names) >= minimum_passes and bool(names.intersection(vad_passes))
 
 
@@ -1283,35 +1344,95 @@ def restore_multi_pass_agreed_speech(merged, readings, *, minimum_passes=3, vad_
     return sorted(rows + additions, key=lambda item: (item['start'], item['end']))
 
 
+def _span_overlap_ratio(a, b):
+    """Overlap divided by the union of the two time spans."""
+    union = max(a['end'], b['end']) - min(a['start'], b['start'])
+    return max(0.0, _overlap_seconds(a, b)) / union if union > 0 else 0.0
+
+
+def _supporting_families(text, members, own_family):
+    """Model families other than `own_family` whose readings are close to `text` (similarity ≥ 0.7)."""
+    by_family = {}
+    for name, other in members:
+        family = _family(name)
+        if family != own_family:
+            by_family.setdefault(family, []).append(_similarity(text, other['text']))
+    return [family for family, values in by_family.items() if sum(values) / len(values) >= .7]
+
+
 def prefer_consensus_reading(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),
-                             maximum_confidence=.6, margin=.15):
+                             maximum_confidence=.6, contradicted_confidence=.8, margin=.15):
     """Replace the wording of a doubtful cue when the passes clearly read something else.
 
     A cue's text can come from a single pass that heard it differently from all the others (HOPE: "승리를 받자
-    8명인데요" from the forced re-read, while four passes read "대비…"). Only cues below `maximum_confidence`
-    change, only their text (never the timing), only to the reading closest to all passes when that reading
-    agrees with the passes clearly better (`margin`) than the cue's own text does, and only when the two are
-    recognizably the same utterance.
+    8명인데요" from the forced re-read, "갑자기 기침이" where the others read "기적이"). The readings of every pass
+    that cover the same time as the cue (joined pieces too) and are linked to its wording vote, one vote per model
+    family. Only the text changes, never the timing, and only to a reading that covers the same time span as the cue,
+    is recognizably the same utterance, and agrees with the passes clearly better (`margin`) than the cue's own
+    text. A cue qualifies when its confidence is below `maximum_confidence`, or below `contradicted_confidence`
+    when at least two other model families read the replacement alike.
     """
-    clusters = [cluster for cluster in _cluster_readings(readings)
-                if _eligible_cluster(cluster, minimum_passes, vad_passes)]
-    result = []
-    for row in (dict(item) for item in sorted(merged, key=lambda item: item['start'])):
-        if float(row.get('confidence', 0)) < maximum_confidence:
-            near = [cluster for cluster in clusters if any(
-                _overlap_seconds(row, other) > .5 * min(row['end'] - row['start'], other['end'] - other['start'])
-                for _, other in cluster)]
-            if len(near) == 1:
-                cluster = near[0]
-                name, best = _medoid(cluster)
-                text = str(best['text']).strip()
-                if (text and text != str(row['text']).strip() and _similarity(row['text'], text) >= .5
-                        and _normalized(text) not in _STOCK_PHRASES
-                        and _mean_agreement(text, cluster, skip=best)
-                        >= _mean_agreement(row['text'], cluster) + margin):
-                    row['text'] = text
-        result.append(row)
-    return result
+    final = [dict(item) for item in sorted(merged, key=lambda item: item['start'])]
+    everything = dict(readings)
+    everything.update(span_readings(final, readings))
+    for row in final:
+        confidence = float(row.get('confidence', 0))
+        if confidence >= contradicted_confidence:
+            continue
+        # The cue's own wording joins the readings that cover its time; what links to it (directly or through
+        # another reading) is what the passes heard at this place.
+        pool = [(name, other) for name, rows in everything.items() for other in (rows or ())
+                if _normalized(str(other.get('text', ''))) and not _is_boilerplate(other.get('text', ''))
+                and _span_overlap_ratio(row, other) >= .5]
+        members = _linked_readings(row, pool)
+        names = {_base_name(name) for name, _ in members}
+        if len(names) < minimum_passes or not names.intersection(vad_passes):
+            continue
+        name, best = _medoid(members)
+        text = str(best['text']).strip()
+        if (not text or text == str(row['text']).strip() or _similarity(row['text'], text) < .4
+                or _normalized(text) in _STOCK_PHRASES
+                or _mean_agreement(text, members, skip=best) < _mean_agreement(row['text'], members) + margin):
+            continue
+        if confidence >= maximum_confidence and (
+                len(_supporting_families(text, members, _family(name))) < 2
+                or _similarity(row['text'], text) > .75):
+            continue
+        row['text'] = text
+    return final
+
+
+def prefer_forced_language_reading(merged, forced, *, maximum_confidence=.8, minimum_gain=.04):
+    """Take the wording of a more confident forced-language reading of the same speech.
+
+    For a script that identifies the language (Hangul = Korean) the ordinary passes run in multilingual mode with
+    voice-activity filtering, which misreads quiet speech ("갑자기 기침이" where the speaker says "기적이"). Whisper
+    with the language fixed and no filter, given ten seconds of context, reads the same place better, and its own
+    confidence says so. A cue takes the forced reading (or the joined pieces of it) when that reading belongs to the
+    cue (it overlaps no other cue more and covers most of it), is recognizably the same utterance (similarity >= 0.3), and is more
+    confident than the cue by `minimum_gain`. Only the text changes, never the timing, and boilerplate is never used.
+    """
+    final = [dict(item) for item in sorted(merged, key=lambda item: item['start'])]
+    usable = [row for row in (forced or ()) if _normalized(str(row.get('text', ''))) and not _is_boilerplate(row['text'])]
+    candidates = usable + span_readings(final, {'forced': usable}).get('forced+', [])
+    wanted = {}
+    for other in candidates:
+        overlaps = [(_overlap_seconds(row, other), index) for index, row in enumerate(final)]
+        seconds, index = max(overlaps, default=(0.0, None))
+        row = final[index] if index is not None else None
+        if (row is None or seconds < .6 * (row['end'] - row['start'])
+                or float(row.get('confidence', 0)) >= maximum_confidence
+                or _similarity(row['text'], other['text']) < .3
+                or float(other.get('confidence', 0)) < float(row.get('confidence', 0)) + minimum_gain):
+            continue
+        wanted.setdefault(index, []).append(other)
+    for index, options in wanted.items():
+        best = max(options, key=lambda other: (float(other.get('confidence', 0)),
+                                               _similarity(final[index]['text'], other['text'])))
+        text = str(best['text']).strip()
+        if text and _normalized(text) not in _STOCK_PHRASES:
+            final[index]['text'] = text
+    return final
 
 
 def plan_consensus_windows(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),

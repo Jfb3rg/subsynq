@@ -45,6 +45,7 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
                          plan_v2_timing_windows, plan_v2_word_check_windows, plan_windows,
                          prefer_fuller_reading, prefer_fuller_window_readings,
                          drop_misplaced_duplicate_cues, plan_consensus_windows, prefer_consensus_reading,
+                         prefer_forced_language_reading,
                          prefer_precision_for_unpunctuated_runs, restore_multi_pass_agreed_speech,
                          prefer_precision_pauses, prefer_precision_sentence_boundaries,
                          reconcile_corroborated_rephrasings,
@@ -1518,6 +1519,28 @@ def transcribe(job, media, model, device='cpu', *, focus_intervals=None):
         ASR_JOB.pending = None
 
 
+def wide_windows(windows, total, *, padding=12.0, maximum_seconds=60.0):
+    """Context windows around short places of interest. Whisper reads a short clip far worse than the same speech
+    with ten seconds of context on each side (the forced-Korean reading of HOPE: "예비 군인을 봤자" from a 12 s
+    clip, "대비군이라고 봤자" from 20 s), so the places are widened, overlapping ones are merged, and no window is
+    longer than `maximum_seconds`."""
+    merged = []
+    for window in sorted(windows, key=lambda item: item['start']):
+        start, end = max(0.0, window['start'] - padding), min(total, window['end'] + padding)
+        if merged and start <= merged[-1]['end'] + 1.0:
+            merged[-1]['end'] = max(merged[-1]['end'], end)
+        else:
+            merged.append({'start': start, 'end': end})
+    result = []
+    for window in merged:
+        start = window['start']
+        while window['end'] - start > maximum_seconds:
+            result.append({'start': round(start, 3), 'end': round(start + maximum_seconds, 3)})
+            start += maximum_seconds - 4.0
+        result.append({'start': round(start, 3), 'end': round(window['end'], 3)})
+    return result
+
+
 def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models):
     total = duration(media)
     original_filename_hint = filename_language_hint(media.name)
@@ -2226,9 +2249,23 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     consensus_readings = {'context': context_profile, 'precision': precision_profile, 'rescue': rescue_profile,
                           'whispered_gap': whispered_gap_profile, 'v2': v2_profile}
     consensus_windows = (plan_consensus_windows(merged, consensus_readings, maximum_total=6)
-                         if QWEN_ASR_ENABLED and focus_intervals is None else [])
+                         if (QWEN_ASR_ENABLED or language_code) and focus_intervals is None else [])
+    # The script says what language is spoken (Hangul = Korean): read the doubtful places once more with that
+    # language forced and no voice-activity filter, which is how a fixed language reads quiet speech best. It is
+    # one more voter (never a source of new cues by itself) and boilerplate such as closing credits is ignored.
+    if consensus_windows and language_code:
+        try:
+            with tempfile.TemporaryDirectory() as forced_folder:
+                consensus_readings['forced'] = run_profile(
+                    forced_folder, 12, 0, 59, 60, f'Tvingad {script}-avläsning utan röstfilter',
+                    vad_filter=False, minimum_probability=.35, collect_words=True, language_code=language_code,
+                    windows_override=wide_windows(consensus_windows, total))
+        except JobCancelled:
+            raise
+        except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+            print(f'VARNING: den tvingade avläsningen utan röstfilter misslyckades: {error!r}', flush=True)
     qwen_reading = []
-    if consensus_windows:
+    if consensus_windows and QWEN_ASR_ENABLED:
         try:
             with tempfile.TemporaryDirectory() as clip_folder:
                 for index, window in enumerate(consensus_windows):
@@ -2256,8 +2293,10 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged = drop_misplaced_duplicate_cues(merged, precision_profile, strict_speech)
     merged = restore_multi_pass_agreed_speech(merged, consensus_readings)
     merged = prefer_consensus_reading(merged, consensus_readings, margin=.05)
+    merged = prefer_forced_language_reading(merged, consensus_readings.get("forced", []))
     trace_payload.update(profile_evidence=profile_evidence, consensus_windows=consensus_windows,
                          consensus_qwen=consensus_readings.get("qwen", []),
+                         consensus_forced=consensus_readings.get("forced", []),
                          intervening_windows=intervening_windows, intervening_languages=intervening_languages,
                          intervening_first=intervening_first, intervening_second=intervening_second,
                          intervening_v2=intervening_v2,
