@@ -791,6 +791,22 @@ def reconcile_qwen_segments(primary, qwen_windows, speech_intervals,
     return [row for row in rows if row['end'] > row['start']]
 
 
+def trim_small_overlaps(segments, *, tolerance=.25):
+    """Let a row that runs a few hundredths of a second into the next one end where the next begins.
+
+    Real job 42 (dev 0.8.246, Tamil): the passes agreed on `...விட்ட` (ends 28.42) and `என்ன?` (starts 28.40), and the
+    whole job failed for 20 ms of overlap. A pass that swaps in a reading takes its own timing, so rows can overlap
+    by a hair. Only the earlier row's end moves (the next row's start is anchored by its own words) and only up to
+    `tolerance` seconds; anything larger, or a trim that would leave the earlier row empty, is left for the
+    validator to refuse."""
+    rows = [dict(segment) for segment in segments]
+    for previous, current in zip(rows, rows[1:]):
+        overlap = float(previous['end']) - float(current['start'])
+        if 0 < overlap <= tolerance and float(current['start']) > float(previous['start']):
+            previous['end'] = current['start']
+    return rows
+
+
 def validate_episode_segments(segments, *, maximum_duration=12):
     """Fail closed when ASR produced impossible or bridge-like subtitle timing."""
     if not segments:

@@ -30,7 +30,7 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
                          reattach_dangling_leads,
                          reconcile_qwen_segments, split_qwen_alignment,
                          split_word_cues, trim_duplicated_cue_boundary,
-                         validate_episode_segments)
+                         trim_small_overlaps, validate_episode_segments)
 
 
 class AsrWindowTests(unittest.TestCase):
@@ -1504,3 +1504,52 @@ class AsrWindowTests(unittest.TestCase):
         candidates = [{'start': 5.96, 'end': 10.76, 'text': 'Harry, be safe, be strong.'}]
         speech = [{'start': 20.0, 'end': 21.0}]
         self.assertEqual(snap_whispered_onset_to_strict_speech(candidates, speech), candidates)
+
+
+class TrimSmallOverlapsTests(unittest.TestCase):
+    """Real job 42 (dev 0.8.246): rows ending 28.42 and starting 28.40 failed the whole job."""
+
+    def rows(self, *spans):
+        return [{'start': start, 'end': end, 'text': f'rad {index}'} for index, (start, end) in enumerate(spans)]
+
+    def test_the_real_job_42_pair_no_longer_fails_validation(self):
+        rows = self.rows((24.56, 28.42), (28.4, 28.76), (29.0, 30.0))
+        with self.assertRaisesRegex(ValueError, 'överlappande tidsrader'):
+            validate_episode_segments(rows)
+        trimmed = trim_small_overlaps(rows)
+        self.assertEqual([(row['start'], row['end']) for row in trimmed],
+                         [(24.56, 28.4), (28.4, 28.76), (29.0, 30.0)])
+        self.assertTrue(validate_episode_segments(trimmed))
+
+    def test_only_the_earlier_rows_end_moves_and_the_input_is_left_alone(self):
+        rows = self.rows((1.0, 3.2), (3.0, 4.0))
+        trimmed = trim_small_overlaps(rows)
+        self.assertEqual(rows[0]['end'], 3.2)
+        self.assertEqual((trimmed[0]['end'], trimmed[1]['start']), (3.0, 3.0))
+
+    def test_a_real_overlap_is_left_for_the_validator(self):
+        rows = self.rows((1.0, 5.0), (3.0, 6.0))
+        self.assertEqual(trim_small_overlaps(rows), rows)
+        with self.assertRaises(ValueError):
+            validate_episode_segments(trim_small_overlaps(rows))
+
+    def test_the_tolerance_is_a_quarter_second_and_inclusive(self):
+        self.assertEqual(trim_small_overlaps(self.rows((1.0, 3.25), (3.0, 4.0)))[0]['end'], 3.0)
+        self.assertEqual(trim_small_overlaps(self.rows((1.0, 3.26), (3.0, 4.0)))[0]['end'], 3.26)
+
+    def test_a_trim_that_would_empty_the_earlier_row_is_not_made(self):
+        rows = self.rows((3.0, 3.1), (3.0, 4.0))
+        self.assertEqual(trim_small_overlaps(rows), rows)
+
+    def test_rows_that_touch_or_do_not_overlap_are_unchanged(self):
+        rows = self.rows((1.0, 2.0), (2.0, 3.0), (3.5, 4.0))
+        self.assertEqual(trim_small_overlaps(rows), rows)
+
+    def test_a_chain_of_hairline_overlaps_is_trimmed_row_by_row(self):
+        rows = self.rows((1.0, 2.05), (2.0, 3.05), (3.0, 4.0))
+        trimmed = trim_small_overlaps(rows)
+        self.assertEqual([(row['start'], row['end']) for row in trimmed], [(1.0, 2.0), (2.0, 3.0), (3.0, 4.0)])
+        self.assertTrue(validate_episode_segments(trimmed))
+
+    def test_an_empty_list_stays_empty(self):
+        self.assertEqual(trim_small_overlaps([]), [])

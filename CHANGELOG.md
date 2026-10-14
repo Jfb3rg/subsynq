@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.249
+
+- **Ett jobb stoppas inte längre av ett hårfint tidsöverlapp.** Två textrader som överlappade med några hundradelar (en rad slutade 0,02 s efter att nästa började) fick hela körningen att avbrytas. Nu justeras den tidigare radens slut till nästa rads början när överlappet är högst en kvarts sekund; större överlapp stoppar som förut.
+
 ## 0.8.248
 
 - **Tyska (och andra språkmärkta) filer underkänns inte längre av ett felaktigt språkpåstående.** Källgranskaren kunde säga att språket inte stämde med filnamnet fast texten var rätt språk och taligenkänningen hörde samma språk (filen stoppades då utan SRT). Nu räknas påståendet bara när det finns belägg för det, till exempel text i en helt annan skrift än språket har.

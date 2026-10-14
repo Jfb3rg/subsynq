@@ -63,7 +63,7 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
                          reattach_dangling_leads,
                          reconcile_qwen_segments, split_qwen_alignment,
                          split_word_cues, trim_duplicated_cue_boundary,
-                         validate_episode_segments)
+                         trim_small_overlaps, validate_episode_segments)
 from asr_consensus import normalized
 from language_gaps import (corroborated_gap_cues, gap_candidates,
                            select_weak_speech_gaps, whisper_language)
@@ -2308,6 +2308,8 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     # What the merge left at a very low confidence (garbled text, mixed scripts) is replaced by the most confident
     # reading of the same place.
     merged = prefer_confident_reading(merged, consensus_readings)
+    # A pass that swapped in a reading brings its own timing: a hair of overlap must not fail a whole job (real job 42).
+    merged = trim_small_overlaps(merged)
     trace_payload.update(profile_evidence=profile_evidence, consensus_windows=consensus_windows,
                          consensus_qwen=consensus_readings.get("qwen", []),
                          consensus_forced=consensus_readings.get("forced", []),
