@@ -1095,8 +1095,9 @@ def _match_precision_run(block, shorter, v2):
             stops = sum(_ends_sentence(item) for item in collected)
             first_words = _normalized(str(collected[0]['text'])).split()
             last_words = _normalized(str(collected[-1]['text'])).split()
-            if (stops <= block_stops or len(first_words) <= lead or len(last_words) <= trail
-                    or (len(collected) <= len(block) and not lead and not trail)
+            if (not (stops > block_stops or len(collected) < len(block))
+                    or len(first_words) <= lead or len(last_words) <= trail
+                    or (len(collected) == len(block) and not lead and not trail)
                     or not _corroborates_extras(collected[0], first_words[:lead], v2)
                     or not _corroborates_extras(collected[-1], last_words[len(last_words) - trail:] if trail else [], v2)):
                 continue
@@ -1155,6 +1156,30 @@ def prefer_precision_for_unpunctuated_runs(merged, precision, v2=()):
             result.append(rows[index])
             index += 1
     return result
+
+
+def drop_misplaced_duplicate_cues(merged, precision, strict_speech, *, minimum_shift=5.0):
+    """Remove a cue whose words were heard properly elsewhere and that sits where nothing is spoken.
+
+    The no-VAD pass that listens in quiet stretches sometimes time-stamps a line far from where it is spoken
+    ("Record everything." at 77.7 s, spoken at 91 s). Such a cue is dropped only when the short pass holds the very
+    same words at least `minimum_shift` seconds away AND voice activity confirms speech there but none at the
+    cue itself, so a line that is really repeated (speech at both times) is never touched.
+    """
+    def has_speech(start, end):
+        return any(item['end'] > start - .3 and item['start'] < end + .3 for item in strict_speech)
+
+    references = [(_normalized(str(row['text'])), row) for row in precision
+                  if len(_normalized(str(row['text'])).split()) >= 2]
+    kept = []
+    for row in merged:
+        words = _normalized(str(row['text']))
+        misplaced = (len(words.split()) >= 2 and not has_speech(row['start'], row['end'])
+                     and any(text == words and abs(other['start'] - row['start']) >= minimum_shift
+                             and has_speech(other['start'], other['end']) for text, other in references))
+        if not misplaced:
+            kept.append(row)
+    return kept
 
 
 def plan_v2_fragment_windows(context, precision, duration, *, maximum_total=8):

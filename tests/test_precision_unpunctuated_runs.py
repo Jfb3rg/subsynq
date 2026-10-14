@@ -2,7 +2,7 @@ import sys
 import unittest
 
 sys.path.insert(0, '/app')
-from asr_windows import prefer_precision_for_unpunctuated_runs
+from asr_windows import drop_misplaced_duplicate_cues, prefer_precision_for_unpunctuated_runs
 
 
 def cue(start, end, text, confidence=1.0):
@@ -134,6 +134,41 @@ class UnpunctuatedRunTests(unittest.TestCase):
     def test_nothing_to_compare_with_changes_nothing(self):
         self.assertEqual(texts(prefer_precision_for_unpunctuated_runs(LONG_FIRST, [], [])), texts(LONG_FIRST))
         self.assertEqual(prefer_precision_for_unpunctuated_runs([], SHORT_FIRST, SECOND_OPINION), [])
+
+
+    def test_a_sentence_split_over_two_cues_is_joined_when_the_short_pass_heard_it_as_one(self):
+        long = [cue(129.4, 130.0, 'What are'), cue(130.0, 130.5, 'they showing?')]
+        short = [cue(129.4, 130.5, 'What are they showing?')]
+        self.assertEqual(texts(prefer_precision_for_unpunctuated_runs(long, short)), ['What are they showing?'])
+
+
+class MisplacedDuplicateTests(unittest.TestCase):
+    GHOST = cue(77.7, 78.5, 'Record everything.', .76)
+    REAL = cue(91.2, 92.3, 'Record everything.', .89)
+    SPEECH = [{'start': 69.0, 'end': 70.2}, {'start': 91.8, 'end': 93.4}]
+
+    def test_a_cue_stamped_where_nothing_is_spoken_is_dropped_when_the_same_words_are_heard_elsewhere(self):
+        result = drop_misplaced_duplicate_cues([self.GHOST, self.REAL], [self.REAL], self.SPEECH)
+        self.assertEqual(result, [self.REAL])
+
+    def test_a_line_that_is_really_repeated_is_kept(self):
+        speech = self.SPEECH + [{'start': 77.5, 'end': 78.7}]
+        self.assertEqual(drop_misplaced_duplicate_cues([self.GHOST, self.REAL], [self.REAL], speech),
+                         [self.GHOST, self.REAL])
+
+    def test_without_voice_activity_data_nothing_is_dropped(self):
+        self.assertEqual(drop_misplaced_duplicate_cues([self.GHOST, self.REAL], [self.REAL], []),
+                         [self.GHOST, self.REAL])
+
+    def test_different_words_single_words_and_small_shifts_are_kept(self):
+        other = cue(77.7, 78.5, 'Record the transmission.')
+        self.assertEqual(drop_misplaced_duplicate_cues([other, self.REAL], [self.REAL], self.SPEECH), [other, self.REAL])
+        single = cue(77.7, 78.5, 'Ray!')
+        reference = cue(91.2, 92.3, 'Ray!')
+        self.assertEqual(drop_misplaced_duplicate_cues([single, reference], [reference], self.SPEECH),
+                         [single, reference])
+        near = cue(88.0, 89.0, 'Record everything.')
+        self.assertEqual(drop_misplaced_duplicate_cues([near, self.REAL], [self.REAL], self.SPEECH), [near, self.REAL])
 
 
 if __name__ == '__main__':

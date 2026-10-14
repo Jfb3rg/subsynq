@@ -44,7 +44,7 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
                          plan_v2_fragment_windows, plan_v2_second_opinion_windows,
                          plan_v2_timing_windows, plan_v2_word_check_windows, plan_windows,
                          prefer_fuller_reading, prefer_fuller_window_readings,
-                         prefer_precision_for_unpunctuated_runs,
+                         drop_misplaced_duplicate_cues, prefer_precision_for_unpunctuated_runs,
                          prefer_precision_pauses, prefer_precision_sentence_boundaries,
                          reconcile_corroborated_rephrasings,
                          reconcile_code_switch_readings,
@@ -2222,6 +2222,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     # Runs the long pass wrote without a single sentence end are replaced by the short passes' sentences when
     # those hold exactly the same words (PLANET 9: "...from the planet" + "ahead how old is it").
     merged = prefer_precision_for_unpunctuated_runs(merged, precision_profile, v2_profile)
+    merged = drop_misplaced_duplicate_cues(merged, precision_profile, strict_speech)
     trace_payload.update(profile_evidence=profile_evidence,
                          intervening_windows=intervening_windows, intervening_languages=intervening_languages,
                          intervening_first=intervening_first, intervening_second=intervening_second,
