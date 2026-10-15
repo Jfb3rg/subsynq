@@ -4,8 +4,8 @@ import math
 import re
 from html import escape
 
-from cloud_market import (REGION_GROUP_RANK, REGION_GROUPS, VRAM_BAND_LABELS, VRAM_BANDS, flag_emoji,
-                          normalize_vram_bands)
+from cloud_market import (REGION_GROUP_RANK, REGION_GROUPS, VRAM_BAND_LABELS, VRAM_BANDS, cloud_auto_models,
+                          flag_emoji, normalize_vram_bands, review_model_label)
 
 
 DEFAULT_PROFILE = {
@@ -15,6 +15,8 @@ DEFAULT_PROFILE = {
     # Where the offer picked in the list stands (two-letter country, Vast's machine number): the rental
     # tries that machine and then that country first. Empty = nearest region first.
     'country': '', 'machine_id': None,
+    # The memory of the card picked in the list (GB): decides which Gemma models "auto" rents with it.
+    'vram_gb': None,
 }
 
 
@@ -61,13 +63,22 @@ def parse_profile(form, *, allow_legacy_currency=False):
                 raise ValueError('Ogiltigt maskinnummer.') from error
             if not 0 < machine_id < 2 ** 53:
                 raise ValueError('Ogiltigt maskinnummer.')
+    raw_vram = str(field('vram_gb') or '').strip()
+    vram_gb = None
+    if raw_vram:
+        try:
+            vram_gb = round(float(raw_vram), 1)
+        except ValueError as error:
+            raise ValueError('Ogiltigt minne.') from error
+        if not math.isfinite(vram_gb) or not 0 < vram_gb <= 2000:
+            raise ValueError('Ogiltigt minne.')
     return {
         'provider': provider, 'gpu': gpu, 'mode': mode,
         'compute_hourly': _price(field('compute_hourly')),
         'storage_hourly': _price(field('storage_hourly')),
         'transfer_per_gb': _price(field('transfer_per_gb')),
         'max_minutes': minutes, 'currency': currency, 'max_hourly': max_hourly,
-        'country': country, 'machine_id': machine_id,
+        'country': country, 'machine_id': machine_id, 'vram_gb': vram_gb,
     }
 
 
@@ -109,6 +120,22 @@ def render_cloud_cost(profile, token, saved=False):
                     (' inklusive angiven lagring.' if storage is not None else
                      ' plus lagring och eventuell dataöverföring.'))
     saved_notice = '<p class="success" role="status">✓ Kostnadsantaganden sparade.</p>' if saved else ''
+    vram = profile['vram_gb']
+    models = cloud_auto_models(vram)
+    if not vram:
+        models_note = ''
+    elif models and models[1] == 'gemma4:31b':
+        models_note = (f'<p class="muted">Med inställningen auto (Moln: större modeller) får kortet ({vram:g} GB) granskaren '
+                       'gemma4:31b. I mätprovet 2026-10-15 klarade den slutgranskningen av både Ein Talent fürs Morden och '
+                       'Man of War.</p>')
+    elif models:
+        models_note = (f'<p class="muted">Med auto får kortet ({vram:g} GB) granskaren {escape(models[1])}. I mätprovet '
+                       '2026-10-15 klarade den inte slutgranskningen av någon av de två tyska filmerna (den hittade på fel '
+                       'som raderna inte har). Ett kort med minst 32 GB (t.ex. A100 40 GB, RTX 6000 Ada eller RTX 5090) '
+                       'får granskaren gemma4:31b, som klarade båda, och kostar ofta bara något mer.</p>')
+    else:
+        models_note = (f'<p class="muted">Kortet ({vram:g} GB) har för lite minne för de stora modellerna; med auto används '
+                       'de vanliga 12B-modellerna.</p>')
     country = profile['country']
     if country:
         machine = profile['machine_id']
@@ -131,10 +158,11 @@ def render_cloud_cost(profile, token, saved=False):
         f'<input type="hidden" name="token" value="{escape(token, quote=True)}">'
         f'<input type="hidden" name="provider" value="{value("provider")}">'
         f'<input type="hidden" name="gpu" value="{value("gpu")}">'
+        + (f'<input type="hidden" name="vram_gb" value="{vram:g}">' if vram else '') +
         f'<p>Planens modell: <strong>{escape(profile["provider"].title())} · {escape(profile["gpu"])}</strong>. '
         'Välj ny GPU i listan ovan utan konto. Det här är ett kostnadsantagande, '
         'inte en garanterat tillgänglig GPU.</p>'
-        + place +
+        + place + models_note +
         '<label for="cloud-mode">Användning</label>'
         f'<select id="cloud-mode" name="mode"><option value="test"{selected("mode", "test")}>Test</option>'
         f'<option value="permanent"{selected("mode", "permanent")}>Längre användning</option></select>'
@@ -167,7 +195,8 @@ def _offer_option(item):
     where = ' '.join(part for part in (flag, place) if part)
     return (f'<option value="{escape(item["id"], quote=True)}">'
             f'{(where + " · ") if where else ""}{escape(item["gpu"])} · {item["price"]:.4f} USD/tim'
-            f'{(" · " + escape(item["detail"])) if item.get("detail") else ""}</option>')
+            f'{(" · " + escape(item["detail"])) if item.get("detail") else ""}'
+            f'{(" · " + review_model_label(item.get("vram_gb"))) if review_model_label(item.get("vram_gb")) else ""}</option>')
 
 
 def _offer_options(offers):

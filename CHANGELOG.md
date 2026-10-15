@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.252
+
+- **Moln-GPU: listan visar vilken granskningsmodell varje kort får, och planen förklarar valet.** Ett mätprov på riktiga tyska filmtrailers (Ein Talent fürs Morden och Man of War, två översättningsförsök och rättning som i en vanlig körning) visade att kortets storlek avgör: med ett 24 GB-kort får du granskaren gemma4:26b, som hittade på fel och fällde båda filerna; med ett kort på 32 GB eller mer (till exempel A100 40 GB, RTX 6000 Ada eller RTX 5090) får du gemma4:31b, och båda filerna klarade granskningen. Det större kortet kostar ofta bara något mer. Ingen annan provad modell (Qwen3, Qwen3.5, Mistral Small, TranslateGemma) var bättre än den som används i dag. Gäller när inställningarna för större molnmodeller står på auto.
+
 ## 0.8.251
 
 - **Granskningen fäller inte längre en undertext på ett påstående som raden själv motsäger.** Granskaren kunde skriva att en översättning "säger" ett ord som inte finns i raden (t.ex. `byggnaden` fast raden säger `varelsen`), eller klaga på att tyskans `Sie` blev `ni`, `Er` eller `du`. Sådana fynd läggs nu åt sidan, med skäl i kvalitetsrapporten, i stället för att starta en omskrivning och stoppa filen. Fynd som en rad faktiskt bär ut (tillagda eller ändrade ord, saknat tilltal) räknas som förut.

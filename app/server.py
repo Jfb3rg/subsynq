@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.251"
+VERSION = "0.8.252"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1506,7 +1506,8 @@ class Handler(BaseHTTPRequestHandler):
                         profile.update(provider=provider, gpu=offer['gpu'],
                                        compute_hourly=offer['price'], storage_hourly=None,
                                        transfer_per_gb=None, currency='USD', country=country,
-                                       machine_id=offer.get('machine_id') if country else None)
+                                       machine_id=offer.get('machine_id') if country else None,
+                                       vram_gb=offer.get('vram_gb'))
                         db.execute("INSERT OR REPLACE INTO metadata VALUES ('cloud_cost_profile', ?)",
                                    (json.dumps(profile, ensure_ascii=False),))
             except (ValueError, OSError, sqlite3.Error):

@@ -115,6 +115,25 @@ class CloudPlaceRouteTests(unittest.TestCase):
         self.assertEqual((self.profile()['country'], self.profile()['machine_id']), ('', None))
         self.assertEqual(self.post('/cloud-cost', **fields, country='SWE')[0], 400)
 
+    def test_choosing_an_offer_stores_the_memory_of_its_card(self):
+        self.post('/cloud-offer', provider='vast', offer_id='901')
+        self.assertEqual(self.profile()['vram_gb'], 24.0)
+        self.offers = [RUNPOD]
+        self.post('/cloud-offer', provider='runpod', offer_id='RTX 3090')
+        self.assertIsNone(self.profile()['vram_gb'], 'an offer that does not know its memory clears the old figure')
+
+    def test_saving_the_plan_keeps_the_memory_through_its_hidden_field(self):
+        self.post('/cloud-offer', provider='vast', offer_id='901')
+        plan = self.profile()
+        fields = {key: ('' if value is None else value) for key, value in plan.items()
+                  if key not in ('country', 'machine_id')}
+        self.assertEqual(self.post('/cloud-cost', **fields, country='SE', machine_id='4242')[0], 303)
+        self.assertEqual(self.profile()['vram_gb'], 24.0)
+        with urllib.request.urlopen(self.url('/settings/cloud?provider=vast'), timeout=10) as reply:
+            page = reply.read().decode()
+        self.assertIn('name="vram_gb" value="24"', page)
+        self.assertIn('granskaren gemma4:26b', page)
+
     def test_the_single_search_button_refreshes_with_the_typed_search_and_sizes(self):
         status, location = self.post('/cloud-refresh', provider='vast', gpu_query='RTX 3090', vram=['24', '32'])
         self.assertEqual(status, 303)

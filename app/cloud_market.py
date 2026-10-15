@@ -84,6 +84,32 @@ def normalize_gpu_query(value):
     return name
 
 
+# "auto" in the cloud-model settings picks the models from the rented card's VRAM. Only combinations that have run on
+# real hardware are listed: (lowest VRAM in GiB, translation model, review model), largest first. The worker rents by
+# these and the pages show them, so they live here.
+# Measured 2026-10-15 on real German film trailers (see STATUS): with the 26B reviewer of the 24 GB class both films
+# failed the final review; with the 31B reviewer (32 GB and up) both passed.
+CLOUD_AUTO_MODEL_TIERS = (
+    (31.0, 'gemma3:27b', 'gemma4:31b'),    # 32 GB card: ran on an RTX 5090, VRAM peak 29.8 of 31.8 GiB
+    (23.0, 'gemma3:27b', 'gemma4:26b'),    # 24 GB card: ran on an RTX 4090, VRAM peak 23.2 of 24.0 GiB
+)
+
+
+def cloud_auto_models(vram_gb):
+    """(translation, review) for a card with this much VRAM, or None when it only fits the usual models."""
+    if isinstance(vram_gb, (int, float)) and not isinstance(vram_gb, bool):
+        for lowest, translation, review in CLOUD_AUTO_MODEL_TIERS:
+            if vram_gb >= lowest:
+                return translation, review
+    return None
+
+
+def review_model_label(vram_gb):
+    """Short text for the offer list: which reviewer the card gets under "auto"."""
+    models = cloud_auto_models(vram_gb)
+    return f'granskare {models[1].split(":")[1].upper()}' if models else ''
+
+
 # Memory classes the market page can filter on, in MiB (what both providers
 # report): a "16 GB" card is 16 or 20 GB, "24 GB" is 24 GB (a 23 GB card is
 # near enough for the large Gemma models, see CLOUD_AUTO_MODEL_TIERS), "32 GB"

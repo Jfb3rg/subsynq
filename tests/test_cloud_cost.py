@@ -155,5 +155,45 @@ class PreferredPlaceProfileTests(unittest.TestCase):
         self.assertEqual((cleared['country'], cleared['machine_id']), ('', None))
 
 
+class CardMemoryProfileTests(unittest.TestCase):
+    def form(self, **changes):
+        form = {key: [value if value is not None else ''] for key, value in DEFAULT_PROFILE.items()}
+        form.update({key: [value] for key, value in changes.items()})
+        return form
+
+    def test_the_default_plan_has_no_memory_and_an_older_plan_still_loads(self):
+        self.assertIsNone(DEFAULT_PROFILE['vram_gb'])
+        older = {key: value for key, value in DEFAULT_PROFILE.items() if key != 'vram_gb'}
+        self.assertIsNone(load_profile(json.dumps(older))['vram_gb'])
+
+    def test_the_memory_is_saved_rounded_and_read_back(self):
+        profile = parse_profile(self.form(vram_gb='39.99'))
+        self.assertEqual(profile['vram_gb'], 40.0)
+        self.assertEqual(load_profile(json.dumps(profile))['vram_gb'], 40.0)
+
+    def test_nonsense_memory_is_refused(self):
+        for bad in ('abc', '0', '-4', 'nan', 'inf', '99999'):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                parse_profile(self.form(vram_gb=bad))
+
+    def test_the_plan_names_the_reviewer_the_card_gets_and_what_the_measurement_showed(self):
+        big = render_cloud_cost({**DEFAULT_PROFILE, 'vram_gb': 40.0}, 'token')
+        self.assertIn('granskaren gemma4:31b', big)
+        self.assertIn('klarade den slutgranskningen av både Ein Talent', big)
+        self.assertIn('<input type="hidden" name="vram_gb" value="40">', big)
+        medium = render_cloud_cost({**DEFAULT_PROFILE, 'vram_gb': 24.0}, 'token')
+        self.assertIn('granskaren gemma4:26b', medium)
+        self.assertIn('klarade den inte slutgranskningen', medium)
+        self.assertIn('minst 32 GB', medium)
+        small = render_cloud_cost({**DEFAULT_PROFILE, 'vram_gb': 16.0}, 'token')
+        self.assertIn('12B-modellerna', small)
+        self.assertNotIn('mätprovet', small)
+
+    def test_a_plan_without_a_known_memory_says_nothing_about_models(self):
+        page = render_cloud_cost(DEFAULT_PROFILE, 'token')
+        self.assertNotIn('granskaren', page)
+        self.assertNotIn('name="vram_gb"', page)
+
+
 if __name__ == '__main__':
     unittest.main()

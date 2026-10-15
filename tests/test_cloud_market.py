@@ -451,5 +451,42 @@ class OneSearchFormTests(unittest.TestCase):
         self.assertIn('window.location.href=address', shell, 'falls back to an ordinary page load')
 
 
+class ReviewerTierTests(unittest.TestCase):
+    """2026-10-15, real German trailers on a rented A100: the 26B reviewer of the 24 GB class failed both films
+    (it invented faults); the 31B reviewer of the 32 GB class passed both. The pages say so."""
+
+    def test_the_card_memory_decides_the_models(self):
+        from cloud_market import cloud_auto_models, review_model_label
+        self.assertEqual(cloud_auto_models(40.0), ('gemma3:27b', 'gemma4:31b'))
+        self.assertEqual(cloud_auto_models(31.8), ('gemma3:27b', 'gemma4:31b'))
+        self.assertEqual(cloud_auto_models(24.0), ('gemma3:27b', 'gemma4:26b'))
+        self.assertEqual(cloud_auto_models(23.0), ('gemma3:27b', 'gemma4:26b'))
+        for small in (16.0, 22.9, 0, None, '24', True):
+            self.assertIsNone(cloud_auto_models(small), small)
+        self.assertEqual(review_model_label(40.0), 'granskare 31B')
+        self.assertEqual(review_model_label(24.0), 'granskare 26B')
+        self.assertEqual(review_model_label(16.0), '')
+
+    def test_the_worker_uses_the_same_table_as_the_pages(self):
+        import sys
+        sys.path.insert(0, '/ai')
+        import worker
+        self.assertIs(worker.CLOUD_AUTO_MODEL_TIERS, cloud_market.CLOUD_AUTO_MODEL_TIERS)
+        with patch.object(worker, 'CLOUD_TRANSLATION_MODEL', 'auto'), patch.object(worker, 'CLOUD_REVIEW_MODEL', 'auto'):
+            self.assertEqual(worker.cloud_model_plan('cuda', 40.0)[0], ['gemma3:27b', 'gemma4:31b'])
+
+    def test_the_offer_list_names_the_reviewer_of_each_card(self):
+        offers = [{'id': '1', 'gpu': 'A100 PCIE', 'price': .57, 'detail': '40 GB VRAM', 'vram_gb': 40.0,
+                   'location': 'Estonia, EE', 'country': 'EE', 'region': 'europe'},
+                  {'id': '2', 'gpu': 'RTX 4090', 'price': .45, 'detail': '24 GB VRAM', 'vram_gb': 24.0,
+                   'location': 'Sweden, SE', 'country': 'SE', 'region': 'europe'},
+                  {'id': '3', 'gpu': 'RTX 5060 Ti', 'price': .2, 'detail': '16 GB VRAM', 'vram_gb': 16.0,
+                   'location': 'Norway, NO', 'country': 'NO', 'region': 'europe'}]
+        page = render_cloud_market('vast', False, {'offers': offers, 'fetched_at': 'now', 'error': None}, 'token')
+        self.assertIn('40 GB VRAM · granskare 31B</option>', page)
+        self.assertIn('24 GB VRAM · granskare 26B</option>', page)
+        self.assertIn('16 GB VRAM</option>', page)
+
+
 if __name__ == "__main__":
     unittest.main()

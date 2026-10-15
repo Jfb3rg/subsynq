@@ -72,7 +72,7 @@ import cloud_gpu
 import cloud_cost
 import model_manager
 from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, CHAIN_GPU_MIN_DISK_GB, CHAIN_GPU_MIN_RELIABILITY,
-                          order_offers_for_rental,
+                          CLOUD_AUTO_MODEL_TIERS, cloud_auto_models, order_offers_for_rental,
                           fetch_cpu_offers, fetch_runpod_chain_offers, fetch_vast_chain_gpu_offers,
                           load_keys as load_cloud_keys)
 from qwen_quality import alignment_quality, reliable_alignment_islands
@@ -99,23 +99,6 @@ CLOUD_TRANSLATION_MODEL = os.environ.get('SUBSYNQ_CLOUD_TRANSLATION_MODEL', '').
 CLOUD_REVIEW_MODEL = os.environ.get('SUBSYNQ_CLOUD_REVIEW_MODEL', '').strip()
 CLOUD_LARGE_MODEL_MIN_VRAM_GIB = 22      # a 24 GB card; the rented server refuses to start on less
 CLOUD_HUGE_MODEL_MIN_VRAM_GIB = 30       # a 32 GB card, for models of 30B and up
-
-
-# "auto" in the two settings above picks the models from the rented card's VRAM. Only combinations that have run
-# on real hardware are listed: (lowest VRAM in GiB, translation model, review model), largest first.
-CLOUD_AUTO_MODEL_TIERS = (
-    (31.0, 'gemma3:27b', 'gemma4:31b'),    # 32 GB card: ran on an RTX 5090, VRAM peak 29.8 of 31.8 GiB
-    (23.0, 'gemma3:27b', 'gemma4:26b'),    # 24 GB card: ran on an RTX 4090, VRAM peak 23.2 of 24.0 GiB
-)
-
-
-def cloud_auto_models(vram_gb):
-    """(translation, review) for a card with this much VRAM, or None when it only fits the usual models."""
-    if isinstance(vram_gb, (int, float)) and not isinstance(vram_gb, bool):
-        for lowest, translation, review in CLOUD_AUTO_MODEL_TIERS:
-            if vram_gb >= lowest:
-                return translation, review
-    return None
 
 
 def cloud_model_plan(mode, vram_gb=None):
