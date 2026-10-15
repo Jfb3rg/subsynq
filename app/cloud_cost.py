@@ -126,13 +126,13 @@ def render_cloud_cost(profile, token, saved=False):
         models_note = ''
     elif models and models[1] == 'gemma4:31b':
         models_note = (f'<p class="muted">Med inställningen auto (Moln: större modeller) får kortet ({vram:g} GB) granskaren '
-                       'gemma4:31b. I mätprovet 2026-10-15 klarade den slutgranskningen av både Ein Talent fürs Morden och '
-                       'Man of War.</p>')
+                       'gemma4:31b. I mätprovet 2026-10-15 hittade den färre påhittade fel än gemma4:26b (24 GB-kort), men '
+                       'ingen granskare är felfri: en rad med otydligt tal kan fortfarande stoppa en fil.</p>')
     elif models:
         models_note = (f'<p class="muted">Med auto får kortet ({vram:g} GB) granskaren {escape(models[1])}. I mätprovet '
-                       '2026-10-15 klarade den inte slutgranskningen av någon av de två tyska filmerna (den hittade på fel '
-                       'som raderna inte har). Ett kort med minst 32 GB (t.ex. A100 40 GB, RTX 6000 Ada eller RTX 5090) '
-                       'får granskaren gemma4:31b, som klarade båda, och kostar ofta bara något mer.</p>')
+                       '2026-10-15 hittade den fler påhittade fel än gemma4:31b (som kort med minst 32 GB får). 24 GB-kort '
+                       'ska fungera: fynd som raden själv motsäger sätts åt sidan, men en enstaka falsk flagga kan '
+                       'fortfarande stoppa en fil.</p>')
     else:
         models_note = (f'<p class="muted">Kortet ({vram:g} GB) har för lite minne för de stora modellerna; med auto används '
                        'de vanliga 12B-modellerna.</p>')

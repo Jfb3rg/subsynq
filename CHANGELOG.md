@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.253
+
+- **Rättelse av 0.8.252: moln-GPU ska fungera på 24 GB-kort, och texten som rekommenderade 32 GB-kort är borttagen.** Mätprovet visade att granskaren gemma4:31b hittar färre påhittade fel än gemma4:26b, men inte att en fil alltid klarar granskningen: en Man of War-körning på ett 32 GB-kort stoppades ändå. Planen beskriver nu bara vad som mättes.
+- **Rättningen kastar inte längre bort sin egen ändring.** När granskaren hittat ett fel föreslår rättningen en ändring (till exempel "Inte jag." → "Inte min."), men ett andra steg skrev om raden och kunde svara med exakt samma text, så ingenting ändrades och filen stoppades. Om det andra steget bara upprepar den felaktiga raden behålls nu rättningens eget förslag.
+
 ## 0.8.252
 
 - **Moln-GPU: listan visar vilken granskningsmodell varje kort får, och planen förklarar valet.** Ett mätprov på riktiga tyska filmtrailers (Ein Talent fürs Morden och Man of War, två översättningsförsök och rättning som i en vanlig körning) visade att kortets storlek avgör: med ett 24 GB-kort får du granskaren gemma4:26b, som hittade på fel och fällde båda filerna; med ett kort på 32 GB eller mer (till exempel A100 40 GB, RTX 6000 Ada eller RTX 5090) får du gemma4:31b, och båda filerna klarade granskningen. Det större kortet kostar ofta bara något mer. Ingen annan provad modell (Qwen3, Qwen3.5, Mistral Small, TranslateGemma) var bättre än den som används i dag. Gäller när inställningarna för större molnmodeller står på auto.

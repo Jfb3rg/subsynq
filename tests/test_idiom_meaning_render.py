@@ -56,3 +56,49 @@ class MeaningRenderTests(unittest.TestCase):
             self.assertEqual(worker.render_whole_cue_meanings({'id': -1}, self.rows, flags,
                              self.answer, 'sv', 'Swedish'), self.answer)
         model.assert_not_called()
+
+    def test_a_render_that_only_repeats_the_flagged_line_keeps_the_repairs_own_edit(self):
+        """Real job 48 (dev, RTX 5090): "Meine nicht." -> the repair proposed "Inte min." but the renderer answered
+        "Inte jag." again, so nothing changed and the same finding stopped the file twice."""
+        rows = [{'id': 10, 'source': 'Meine nicht.', 'sv': 'Inte jag.'}]
+        flags = [{'id': 10, 'category': 'meaning', 'source_quote': 'Meine nicht.', 'target_quote': 'Inte jag.'}]
+        answer = [{'id': 10, 'intended_meaning': 'The speaker says theirs is not the one mentioned.',
+                   'edits': [{'before': 'Inte jag.', 'after': 'Inte min.'}]}]
+        repeated = {'response': json.dumps({'rows': [{'id': 10, 'after': 'Inte jag.'}]})}
+        with patch.object(worker, 'call_ollama', return_value=repeated):
+            result = worker.render_whole_cue_meanings({'id': -1}, rows, flags, answer, 'sv', 'Swedish')
+        self.assertEqual(result[0]['edits'], [{'before': 'Inte jag.', 'after': 'Inte min.'}])
+
+    def test_the_real_job_48_repair_now_changes_the_line(self):
+        """The phase and render answers are the ones stored in dev job 48's quality report."""
+        rows = [{'id': 9, 'source': 'Ich brauche jetzt einen Weg, ihn zu verteidigen.', 'sv': 'Jag behöver nu ett sätt att försvara honom.'},
+                {'id': 10, 'source': 'Meine nicht.', 'sv': 'Inte jag.'},
+                {'id': 11, 'source': 'Ich und ihr Vater, äh, wir sind seit Wartes zusammen in den Teams.',
+                 'sv': 'Jag och hennes far, eh, vi har varit i team tillsammans sedan Wartes.'}]
+        flags = [{'id': 10, 'category': 'meaning', 'source_quote': 'Meine nicht.', 'target_quote': 'Inte jag.',
+                  'reason': "Källtexten 'Meine nicht' syftar på ägande (mina inte), medan måltexten 'Inte jag' syftar på personen själv."}]
+        phase = {'response': json.dumps({'rows': [{'id': 10, 'intended_meaning': (
+            'The speaker is referring to their own opinion or perspective, stating that theirs is not the same as the '
+            'previously mentioned one (likely referring to the need for a way to defend someone).'),
+            'edits': [{'before': 'Inte jag.', 'after': 'Inte min.'}]}]})}
+        render = {'response': json.dumps({'rows': [{'id': 10, 'after': 'Inte jag.'}]})}
+        with patch.object(worker, 'check_cancelled'), patch.object(worker, 'call_ollama', side_effect=[phase, render]):
+            result = worker.repair_translation_spans({'id': -1}, rows, flags)
+        self.assertEqual([row['sv'] for row in result if row['id'] == 10], ['Inte min.'])
+        self.assertEqual([row['sv'] for row in result if row['id'] != 10], [rows[0]['sv'], rows[2]['sv']])
+
+    def test_a_render_that_changes_the_line_still_wins_over_the_proposal(self):
+        rows = [{'id': 10, 'source': 'Meine nicht.', 'sv': 'Inte jag.'}]
+        flags = [{'id': 10, 'category': 'meaning', 'source_quote': 'Meine nicht.', 'target_quote': 'Inte jag.'}]
+        answer = [{'id': 10, 'intended_meaning': 'Not mine.', 'edits': [{'before': 'Inte jag.', 'after': 'Inte min.'}]}]
+        changed = {'response': json.dumps({'rows': [{'id': 10, 'after': 'Inte mitt.'}]})}
+        with patch.object(worker, 'call_ollama', return_value=changed):
+            result = worker.render_whole_cue_meanings({'id': -1}, rows, flags, answer, 'sv', 'Swedish')
+        self.assertEqual(result[0]['edits'], [{'before': 'Inte jag.', 'after': 'Inte mitt.'}])
+
+    def test_a_placeholder_edit_that_changes_nothing_does_not_replace_an_unchanged_render(self):
+        """The idiom path proposes edits whose after equals before on purpose (the renderer writes the line)."""
+        repeated = {'response': json.dumps({'rows': [{'id': 7, 'after': 'Stanna kvar.'}]})}
+        with patch.object(worker, 'call_ollama', return_value=repeated):
+            result = worker.render_whole_cue_meanings({'id': -1}, self.rows, self.flags, self.answer, 'sv', 'Swedish')
+        self.assertEqual(result[0]['edits'], [{'before': 'Stanna kvar.', 'after': 'Stanna kvar.'}])

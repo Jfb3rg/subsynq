@@ -3301,9 +3301,20 @@ def render_whole_cue_meanings(job, rows, flags, answer, target_key, target_langu
             or any(not isinstance(row.get('after'), str) or not row['after'].strip() for row in rendered)):
         raise ValueError('Betydelsens målformulering ändrar rad-ID eller saknar giltig text.')
     replacements = {row['id']: row['after'] for row in rendered}
-    return [{**item, 'edits': [{'before': original[item['id']][target_key],
-                              'after': replacements[item['id']]}]}
-            if item['id'] in ids else item for item in answer]
+
+    def edits_for(item):
+        current = original[item['id']][target_key]
+        rendered_text = replacements[item['id']]
+        # Real job 48 (dev, RTX 5090): the repair proposed "Inte jag." -> "Inte min." but the renderer, shown only the
+        # vague English meaning, handed back "Inte jag." and the repair changed nothing, so the same finding stopped the
+        # file twice. A render that merely repeats the flagged line keeps the repair's own concrete edit.
+        proposed = [edit for edit in item['edits']
+                    if str(edit.get('after', '')).strip() and ' '.join(str(edit['after']).split()) != ' '.join(str(edit.get('before', '')).split())]
+        if ' '.join(rendered_text.split()) == ' '.join(current.split()) and proposed:
+            return item['edits']
+        return [{'before': current, 'after': rendered_text}]
+
+    return [{**item, 'edits': edits_for(item)} if item['id'] in ids else item for item in answer]
 
 
 def repair_translation_spans(job, rows, flags, *, target_key='sv', target_language='Swedish', record=None):
