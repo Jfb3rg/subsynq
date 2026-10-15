@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.251
+
+- **Granskningen fäller inte längre en undertext på ett påstående som raden själv motsäger.** Granskaren kunde skriva att en översättning "säger" ett ord som inte finns i raden (t.ex. `byggnaden` fast raden säger `varelsen`), eller klaga på att tyskans `Sie` blev `ni`, `Er` eller `du`. Sådana fynd läggs nu åt sidan, med skäl i kvalitetsrapporten, i stället för att starta en omskrivning och stoppa filen. Fynd som en rad faktiskt bär ut (tillagda eller ändrade ord, saknat tilltal) räknas som förut.
+
 ## 0.8.250
 
 - **Sidans laddningstid mäts i webbläsaren och skrivs i loggen.** Efter att en sida öppnats skickar webbläsaren sina egna tider (anslutning, svar, nedladdning, uppritning) till servern, som skriver en rad som `Klienttid /queue (navigate, http/1.0, nät 4g): total 6120 ms, connect 3003 ms, …`. Det gör det möjligt att se om en sida känns seg på grund av nätet eller telefonen när servern själv svarar på millisekunder. Inget annat än dessa siffror skickas, och med lösenord krävs inloggning.

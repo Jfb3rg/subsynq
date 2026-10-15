@@ -80,7 +80,7 @@ from probe import probe_media
 from translation_qa import (dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
                             looks_untranslated, name_key, proper_name_forms,
-                            quote_is_only_names, restore_id_order,
+                            quote_is_only_names, restore_id_order, unfounded_flags,
                             swedish_rows_to_keep, whisper_language_label)
 from verified_source import apply_verified_source_edits
 
@@ -3001,6 +3001,9 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
             names_kept = [flag for flag in flags if flag['category'] == 'untranslated'
                           and quote_is_only_names(flag['source_quote'], name_forms)]
             flags = [flag for flag in flags if flag not in names_kept]
+            # A finding the line itself refutes (it quotes words the translation does not contain) or that only
+            # quarrels with the choice between du and ni for Sie is set aside, openly.
+            flags, set_aside = unfounded_flags(flags, sample, target_key=target_key)
             bad_ids = sorted({flag['id'] for flag in flags})
             # Keep each flagged id paired with its OWN reason (not just two
             # separately-derived lists) so a saved quality report can be
@@ -3025,6 +3028,7 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
                                    for form in name_forms[name_key(word)]}),
                                'note': 'namn; stavningen kan inte avgöras av ljudet'}
                               for flag in names_kept]} if names_kept else {}),
+                          **({'set_aside_flags': set_aside} if set_aside else {}),
                           **({'comparisons': verdict['comparisons']} if FOCUSED_REVIEW else {}),
                           'reasons': [{'id': row_id, 'reason': text} for row_id, text in per_id_reason.items()],
                           'reason': reason})

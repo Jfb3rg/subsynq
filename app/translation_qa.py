@@ -233,3 +233,88 @@ def swedish_rows_to_keep(batch, languages):
         if language == 'sv' and words and not FOREIGN_VETO_MARKERS.intersection(words):
             kept.add(row['id'])
     return kept
+
+
+# --- Review findings the text itself refutes --------------------------------------------------------------------------
+# Real jobs 43 and 44 (dev 2026-10-15, gemma4:26b reviewing): one such finding fails a whole job (it starts a repair that
+# can make a good line worse, and any finding left after the repair stops the subtitle).
+
+_TARGET_SUBJECT = r'(?:översättningen|måltexten|målspråket|målraden|målet)'
+_TARGET_QUOTE_CLAIM = re.compile(
+    rf"\b{_TARGET_SUBJECT}\s+(?:\w+\s+)?(?:säger|står|lyder|innehåller|skriver|använder)\s+(?:bara\s+|också\s+)?"
+    r"['\"‘“’]([^'\"‘“’”]{2,80})['\"’”]", re.IGNORECASE)
+
+
+def _words_in_order(text, quote):
+    """The words of `quote` appear in `text` side by side and in order; a word of four letters or more also matches
+    its inflected form ("moster" in "mostern")."""
+    needle = re.findall(r'[^\W_]+', str(quote).casefold())
+    haystack = re.findall(r'[^\W_]+', str(text).casefold())
+
+    def same(left, right):
+        return left == right or (min(len(left), len(right)) >= 4 and (left.startswith(right) or right.startswith(left)))
+
+    return bool(needle) and any(all(same(word, haystack[start + offset]) for offset, word in enumerate(needle))
+                                for start in range(len(haystack) - len(needle) + 1))
+
+
+def refuted_target_claim(flag, target):
+    """The quoted wording a finding says the TRANSLATION contains, when the translation does not contain it.
+
+    "men översättningen säger 'byggnaden'" about "De stormade ut ur varelsen." and "måltexten säger 'jag fixar det'"
+    about "Okej, jag målar." are the reviewer's slip, not a defect. Only claims about what the target row literally
+    says are checked (säger, står, lyder, innehåller, skriver, använder); what the SOURCE "says" is a gloss in the
+    reviewer's own words (a Korean or Tamil row never says anything in Swedish) and a "betyder" is a gloss too.
+    Alternatives ('a/b') count as found when any of them is."""
+    for quote in _TARGET_QUOTE_CLAIM.findall(str(flag.get('reason', ''))):
+        alternatives = [part.strip() for part in re.split(r'\s*/\s*', quote) if part.strip()]
+        if alternatives and not any(_words_in_order(target, part) for part in alternatives):
+            return quote
+    return None
+
+
+_ADDRESS_WORDS = re.compile(
+    r"\b(?:formell\w*|informell\w*|artig\w*|höflig\w*|formal\w*|informal\w*|polite\w*|tilltal\w*|du|dig|ni|plural\w*|"
+    r"singular\w*)\b", re.IGNORECASE)
+# A reason that adds a second problem ("samt ett grammatikfel i ...") is not only about address.
+_ALSO_WORDS = re.compile(r"\b(?:samt|dessutom|även|också|förutom|utöver|grammatikfel)\b", re.IGNORECASE)
+_FORMAL_YOU_SOURCE = re.compile(r"\b(?:Sie|Ihnen|Ihr|Ihre|Ihrer|Ihren|Ihrem|Ihres)\b")
+_SECOND_PERSON_TARGET = {'du', 'dig', 'dej', 'din', 'ditt', 'dina', 'ni', 'er', 'ert', 'era', 'eder'}
+
+
+def is_address_choice(flag, source, target):
+    """A finding that only quarrels with HOW the translation addresses someone ("Sie" -> du/dig or ni/Er).
+
+    German Sie/Ihnen has no fixed Swedish counterpart; du and ni are both used, and whether a capital Sie is one
+    person or several cannot be proved from the line. The same reviewer flagged "Jag vet vem ni är." for being
+    informal and "Jag kan hjälpa Er." for becoming "dig". When the source has a capitalised formal-you word, the
+    reason is about address and the translation does address someone, the finding cannot be established and is
+    removed (a translation that leaves the addressee out stays flagged)."""
+    reason = str(flag.get('reason', ''))
+    if (not _FORMAL_YOU_SOURCE.search(str(source)) or not _ADDRESS_WORDS.search(reason)
+            or _ALSO_WORDS.search(reason)):
+        return False
+    words = set(re.findall(r'[^\W_]+', str(target).casefold()))
+    return bool(words & _SECOND_PERSON_TARGET)
+
+
+def unfounded_flags(flags, sample, *, target_key='sv'):
+    """(kept, removed): the meaning and grammar findings that survive the two checks above. `removed` holds
+    {'id', 'category', 'why', 'reason'} so the quality report can show what was set aside and why."""
+    rows = {row['id']: row for row in sample}
+    kept, removed = [], []
+    for flag in flags:
+        row = rows.get(flag.get('id'))
+        why = None
+        if row is not None and flag.get('category') in ('meaning', 'grammar'):
+            claim = refuted_target_claim(flag, row.get(target_key, ''))
+            if claim:
+                why = f'översättningen innehåller inte "{claim}"'
+            elif is_address_choice(flag, row.get('source', ''), row.get(target_key, '')):
+                why = 'valet av tilltalsform (Sie → du/ni) kan inte avgöras ur raden'
+        if why:
+            removed.append({'id': flag['id'], 'category': flag.get('category'), 'why': why,
+                            'reason': flag.get('reason', '')})
+        else:
+            kept.append(flag)
+    return kept, removed
