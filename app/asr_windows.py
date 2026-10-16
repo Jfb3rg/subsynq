@@ -1,6 +1,7 @@
 """Plan and merge overlapping ASR windows without assuming one language."""
 from difflib import SequenceMatcher
 from types import SimpleNamespace
+import bisect
 import math
 import re
 import unicodedata
@@ -1264,6 +1265,22 @@ def _linked_readings(start, pool):
     return found
 
 
+def _time_index(rows):
+    """Rows sorted by start with their longest duration, for `_rows_near`."""
+    ordered = sorted((row for row in rows or () if 'start' in row and 'end' in row), key=lambda row: row['start'])
+    longest = max((row['end'] - row['start'] for row in ordered), default=0.0)
+    return ordered, [row['start'] for row in ordered], max(longest, 0.0)
+
+
+def _rows_near(index, start, end):
+    """The indexed rows that can touch the time span [start, end] (a superset: callers still test the overlap),
+    in the order of their start. A film has thousands of cues, so scanning every row for every cue is quadratic."""
+    ordered, starts, longest = index
+    low = bisect.bisect_left(starts, start - longest - 1e-6)
+    high = bisect.bisect_right(starts, end + 1e-6)
+    return ordered[low:high]
+
+
 def span_readings(final, readings):
     """Per final cue, each pass's pieces inside it joined into ONE reading (named "<pass>+").
 
@@ -1271,12 +1288,13 @@ def span_readings(final, readings):
     cue), and pieces of different length never match the cue in a comparison; their joined text does.
     """
     joined = {}
+    indexed = {name: _time_index(rows) for name, rows in readings.items()}
     for cue in final:
-        for name, rows in readings.items():
-            pieces = [row for row in (rows or ()) if _normalized(str(row.get('text', '')))
-                      and row['end'] > row['start']
-                      and _overlap_seconds(row, {'start': cue['start'] - .3, 'end': cue['end'] + .3})
-                      >= .6 * (row['end'] - row['start'])]
+        window = {'start': cue['start'] - .3, 'end': cue['end'] + .3}
+        for name, index in indexed.items():
+            pieces = [row for row in _rows_near(index, window['start'], window['end'])
+                      if row['end'] > row['start'] and _normalized(str(row.get('text', '')))
+                      and _overlap_seconds(row, window) >= .6 * (row['end'] - row['start'])]
             if len(pieces) >= 2:
                 pieces.sort(key=lambda row: row['start'])
                 joined.setdefault(name + '+', []).append({
@@ -1504,9 +1522,14 @@ def prefer_confident_reading(merged, readings, *, maximum_confidence=.4, minimum
 
 
 def plan_consensus_windows(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),
-                           maximum_total=8, maximum_confidence=.6):
+                           maximum_total=8, maximum_confidence=.6, maximum_doubtful=6):
     """Short time windows where a further independent reading (Qwen3-ASR) can settle the matter: speech the passes
-    agree on that no final cue covers, and doubtful final cues the passes read differently."""
+    agree on that no final cue covers, and doubtful final cues the passes read differently.
+
+    A doubtful cue that fewer than `minimum_passes` passes covered was never eligible above (Man of War, dev job 49:
+    confidence 0.22 and 0.35 with only the short pass and Whisper v2 covering them, so Qwen never listened to the two
+    least certain lines of the film). Every cue left at a recorded confidence below `maximum_confidence` that no
+    planned window covers therefore gets a window of its own, the least certain first, at most `maximum_doubtful`."""
     final = sorted(merged, key=lambda item: item['start'])
     planned = []
     for cluster in _cluster_readings(readings):
@@ -1527,7 +1550,70 @@ def plan_consensus_windows(merged, readings, *, minimum_passes=3, vad_passes=('p
             priority, confidence = 1, float(row.get('confidence', 0))
         planned.append((priority, confidence, {'start': round(max(0.0, start - .3), 3), 'end': round(end + .3, 3)}))
     planned.sort(key=lambda item: (item[0], item[1], item[2]['start']))
-    return [window for _, _, window in planned[:maximum_total]]
+    windows = [window for _, _, window in planned[:maximum_total]]
+    doubtful = []
+    for row in final:
+        confidence = float(row.get('confidence', 0))
+        if not 0 < confidence < maximum_confidence:    # 0 means "not recorded", never "bad"
+            continue
+        window = {'start': round(max(0.0, row['start'] - .3), 3), 'end': round(max(row['end'] + .3, row['start'] + 1.2), 3)}
+        if window['end'] - window['start'] > 12 or not _normalized(str(row.get('text', ''))):
+            continue
+        if any(_overlap_seconds(row, other) >= .6 * (row['end'] - row['start']) for other in windows):
+            continue
+        doubtful.append((confidence, window))
+    doubtful.sort(key=lambda item: (item[0], item[1]['start']))
+    return windows + [window for _, window in doubtful[:maximum_doubtful]]
+
+
+def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agreement=.85, maximum_candidates=5,
+                         agreement=.8):
+    """Per doubtful final cue, the other wordings the passes heard of the same time, for a judge to choose between.
+
+    A cue is doubtful when its recorded confidence is below `maximum_confidence` (0 means "not recorded") or when the
+    readings of the same time do not agree with its wording (mean agreement below `minimum_agreement`). The
+    candidates are the distinct wordings of the passes (joined pieces too) that cover most of the cue and are
+    recognizably the same utterance, minus boilerplate. `support` is how many model families read something close
+    (similarity of at least `agreement`) to the candidate, `current_support` the same for the cue's own wording, so a
+    judge's choice can be held to what the audio passes themselves say. The best supported candidate comes first.
+    Returns {index in `final`: [{'text', 'support', 'current_support'}, ...]}; only cues with at least one other
+    wording appear. Nothing here changes a cue: the timing is never touched and its own wording stays the default."""
+    everything = dict(readings)
+    everything.update(span_readings(final, readings))
+    indexed = {name: _time_index(rows) for name, rows in everything.items()}
+    result = {}
+    for index, row in enumerate(final):
+        text = str(row.get('text', '')).strip()
+        if not _normalized(text):
+            continue
+        pool = [(name, other) for name, found in indexed.items() for other in _rows_near(found, row['start'], row['end'])
+                if _span_overlap_ratio(row, other) >= .5 and _normalized(str(other.get('text', '')))
+                and not _is_boilerplate(other.get('text', ''))]
+        members = _linked_readings(row, pool)
+        if not members:
+            continue
+        confidence = float(row.get('confidence', 0))
+        if not (0 < confidence < maximum_confidence or _mean_agreement(text, members) < minimum_agreement):
+            continue
+
+        def support_of(wording):
+            return len({_family(name) for name, other in members
+                        if _similarity(wording, other['text']) >= agreement})
+
+        current_support = support_of(text) or 1       # the cue's own pass, whose reading it is
+        distinct = {}
+        for _, other in members:
+            wording = str(other['text']).strip()
+            key = _normalized(wording)
+            if key and key != _normalized(text) and key not in _STOCK_PHRASES and key not in distinct:
+                distinct[key] = {'text': wording, 'support': support_of(wording),
+                                 'current_support': current_support,
+                                 'confidence': float(other.get('confidence', 0))}
+        ranked = sorted(distinct.values(), key=lambda entry: (-entry['support'], -entry['confidence']))
+        if ranked:
+            result[index] = [{key: entry[key] for key in ('text', 'support', 'current_support')}
+                             for entry in ranked[:maximum_candidates]]
+    return result
 
 
 def plan_v2_fragment_windows(context, precision, duration, *, maximum_total=8):

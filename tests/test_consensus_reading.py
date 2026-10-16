@@ -94,10 +94,13 @@ class PreferConsensusReadingTests(unittest.TestCase):
 class PlanConsensusWindowsTests(unittest.TestCase):
     def test_speech_nobody_wrote_down_and_doubtful_cues_get_a_window_the_first_ones_first(self):
         windows = plan_consensus_windows(FINAL, HOPE)
-        self.assertEqual(len(windows), 3)
+        self.assertEqual(len(windows), 4)
         self.assertTrue(all(window['end'] - window['start'] <= 12.6 for window in windows))
         self.assertGreater(windows[0]['start'], 55, 'uncovered speech is asked about before a doubtful cue')
         self.assertTrue(any(29 < window['start'] < 31 for window in windows), 'the doubtful cue at 30.9 s')
+        # A doubtful cue (confidence .32) that no cluster of three passes covered still gets its own window, last
+        # (Man of War, dev job 49: the two least certain lines were never given to Qwen3-ASR).
+        self.assertTrue(24 < windows[-1]['start'] < 25 and windows[-1]['end'] > 25.2, windows)
 
     def test_a_confident_cue_that_the_passes_agree_with_needs_no_window(self):
         agreed = {name: [cue(5, 6, 'Hello there', .9)] for name in ('precision', 'rescue', 'v2')}

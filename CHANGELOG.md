@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.258
+
+- **Osäkra repliker får fler chanser att bli rätt.** Varje replik som Whisper är osäker på (säkerhet under 0,6) får nu en egen kontroll av Qwen3-ASR, även när bara två avlyssningar täckte den. Tidigare fick de allra osäkraste raderna (säkerhet 0,22 och 0,35 i Man of War) ingen kontroll alls.
+- **En språkmodell väljer mellan det som faktiskt hördes.** När Whisper, Whisper v2 och Qwen läst en osäker replik olika väljer språkmodellen den mest rimliga av dem, i stället för att en röstningsregel avgör. Den skriver aldrig egen text och får inte tappa ord, ta över grannradens ord, välja en stamning eller en ordalydelse bara en motor hört. I prov på sparade körningar (engelska, tyska, tamil) rättades bland annat "throw you out window" till "throw you out the window", "Was gibt's man?" till "Was gibt's, Mann?" och en trasig rad i Man of War; de dåliga byten som kom upp avvisades. Det är mätt mot sparade avlyssningar med den lilla lokala modellen, inte i en hel körning på moln-GPU.
+- **Snabbare på långa filmer.** En del av jämförelsen mellan avlyssningarna var kvadratisk i antalet repliker och är nu indexerad efter tid, med exakt samma resultat.
+
 ## 0.8.257
 
 - **Webhooks köar inget jobb när automatisk jobbstart är av.** Tidigare kunde Radarr, Sonarr, Jellyfin och Emby starta ett undertextjobb (och därmed en hyrd moln-GPU) när en fil importerades, även om **Starta undertextjobb automatiskt** var avstängt. Nu köar webhookarna bara ett jobb när den inställningen är på; annars svarar de "hoppade över" och inget händer. Texterna under Inställningar säger detsamma.
