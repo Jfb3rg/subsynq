@@ -84,6 +84,7 @@ from translation_qa import (dominant_non_latin_script, filename_language_hint,
                             looks_untranslated, name_key, proper_name_forms,
                             quote_is_only_names, restore_id_order, unfounded_flags,
                             swedish_rows_to_keep, whisper_language_label)
+from forced_reading import needs_second_reading, prefer_second_reading, reading_summary
 from source_judge import EngineUnavailable, choose_readings
 from verified_source import apply_verified_source_edits
 
@@ -2068,6 +2069,37 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                 folder, 30, 0, 59, 60, f'Tvingad {script}-avläsning',
                 minimum_probability=.25, language_code=language_code)
             job['forced_source_language'] = script
+            # This reading BECOMES the transcript, and Whisper large-v3 reads some languages worse than large-v2
+            # (Tamil: Latin and Greek scraps among the letters, benchmark 2026-10-16). When the reading looks
+            # unreliable, large-v2 reads the same speech with the same language fixed and replaces it only if it
+            # is clearly better (forced_reading). Not run for a diagnostic job.
+            if focus_intervals is None and needs_second_reading(forced_language_profile):
+                update_job(job['id'], 'transcribing', 59,
+                           f'Whisper v3:s {script}-läsning ser osäker ut; läser även med large-v2')
+                second_profile = []
+                try:
+                    second_model = models.create_whisper('large-v2', device='cpu', compute_type='int8',
+                                                         cpu_threads=6, download_root='/models', local_files_only=True)
+                    try:
+                        second_profile = run_profile(
+                            folder, 30, 0, 59, 60, f'Tvingad {script}-avläsning med Whisper v2',
+                            minimum_probability=.25, language_code=language_code, reading_model=second_model)
+                    finally:
+                        models.release_whisper()
+                        del second_model
+                        gc.collect()
+                except JobCancelled:
+                    raise
+                except Exception as error:             # optional extra: never fail the job for it
+                    print(f'VARNING: läsningen med Whisper v2 misslyckades: {error!r}', flush=True)
+                chose_second = prefer_second_reading(forced_language_profile, second_profile)
+                job['forced_reading_choice'] = {
+                    'language': language_code, 'large-v3': reading_summary(forced_language_profile),
+                    'large-v2': reading_summary(second_profile), 'chosen': 'large-v2' if chose_second else 'large-v3'}
+                print(f'Tvingad {script}-avläsning: {job["forced_reading_choice"]}', flush=True)
+                if chose_second:
+                    forced_language_profile = second_profile
+                    job['forced_source_model'] = 'Whisper large-v2'
         # VAD may miss the last short reply before a long music/title outro.
         # Probe only its bounded edge and require a separate ASR family's text.
         from asr_windows import (plan_tail_confirmation, restore_confirmed_tail,
@@ -2200,6 +2232,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             'used_windows': used_windows,
             'language_policy': job.get('language_policy'),
             'audio_track': job.get('audio_choice'),
+            'forced_reading_choice': job.get('forced_reading_choice'),
             'tail_probes': tail_probes,
             'prefix_probes': prefix_probes,
             'title_windows': title_windows, 'title_rescue': title_rescue,
@@ -2474,6 +2507,7 @@ def save_source_transcript(job, media, rows, hardware, model, *, raw=False, sour
         'source_choices': source_choices or [],
         'language_policy': job.get('language_policy'),
         'audio_track': job.get('audio_choice'),
+        'forced_reading_choice': job.get('forced_reading_choice'),
         'tail_confirmation': job.get('tail_confirmation'),
         'fallback_reason': job.get('fallback_reason'),
         'rows': [{'id': row['id'], 'start': row['start'], 'end': row['end'],
@@ -4404,7 +4438,8 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
     if choice and (len(choice['considered']) > 1 or choice['method'] == 'manual'):
         asr_name += f' · {audio_track_label(choice)}'
     if job.get('forced_source_language'):
-        asr_name += f" + tvingad {job['forced_source_language']}-slutavläsning"
+        asr_name += (f" + tvingad {job['forced_source_language']}-slutavläsning"
+                     + (f" ({job['forced_source_model']})" if job.get('forced_source_model') else ''))
     elif job.get('language_policy', {}).get('filename_hint'):
         asr_name += ' + automatisk språkavläsning (filnamnsspråket ej bekräftat)'
     update_job(job['id'], 'transcribing', 59,

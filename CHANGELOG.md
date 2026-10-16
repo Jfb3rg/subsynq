@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.261
+
+- **Reservläsning för språk med eget alfabet.** När skriften avslöjar språket (till exempel tamil eller koreanska) läser SubSynq om talet med det språket fixerat. Ser den läsningen opålitlig ut, med mycket text i fel alfabet eller låg säkerhet, läser Whisper large-v2 samma tal och används bara om den är tydligt bättre. Annars ändras ingenting och ingen extra tid går åt. Särskilda finjusterade tamil- och koreanamodeller prövades men var sämre, så de används inte.
+
 ## 0.8.260
 
 - **Ett kort med fel drivrutin byts automatiskt.** Tidigare kunde ett jobb stoppas när den hyrda servern hade en trasig GPU-drivrutin ("CUDA … unsupported display driver"), trots att nästa server hade fungerat. Nu förstörs servern, maskinen hoppas över och nästa erbjudande hyrs, högst två gånger per jobb; därefter stoppar jobbet med den riktiga orsaken. Fel som varje server av samma kort delar (för lite grafikminne, trasiga modellfiler) stoppar som förut.
