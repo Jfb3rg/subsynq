@@ -605,7 +605,8 @@ class RemoteCpuWhisperTests(unittest.TestCase):
 class RentCloudCpuTests(unittest.TestCase):
     runpod_cost = 0.16
 
-    def run_rent(self, health, *, offers=None, keys=None, mode='cpu', provider='vast', create_effect=None):
+    def run_rent(self, health, *, offers=None, keys=None, mode='cpu', provider='vast', create_effect=None,
+                 job=None, profile=None):
         with tempfile.TemporaryDirectory() as directory:
             database = make_database(directory, [(1, '/tv/a.mkv', 'a.mkv', 'transcribing', None)])
             replies = iter(health)
@@ -639,7 +640,8 @@ class RentCloudCpuTests(unittest.TestCase):
                     patch.object(worker, 'update_job', side_effect=spy), \
                     patch.object(worker, 'fetch_cpu_offers', return_value=offers), \
                     patch.object(worker, 'fetch_vast_chain_gpu_offers', return_value=offers) as gpu_offers, \
-                    patch.object(worker, 'load_cloud_profile', return_value={'gpu': 'RTX 5060 Ti'}), \
+                    patch.object(worker, 'load_cloud_profile',
+                                 return_value=profile if profile is not None else {'gpu': 'RTX 5060 Ti'}), \
                     patch.object(worker.cloud_gpu, 'create_instance',
                                  **({'side_effect': create_effect} if create_effect
                                     else {'return_value': 555})) as create, \
@@ -649,7 +651,7 @@ class RentCloudCpuTests(unittest.TestCase):
                     patch.object(worker.time, 'sleep'), \
                     patch.object(worker.urllib.request, 'urlopen', side_effect=urlopen):
                 try:
-                    result = worker.rent_cloud_chain({'id': 1}, provider, mode)
+                    result = worker.rent_cloud_chain(job if job is not None else {'id': 1}, provider, mode)
                     error = None
                 except Exception as exc:
                     result, error = None, exc

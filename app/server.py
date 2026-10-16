@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.258"
+VERSION = "0.8.259"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -864,8 +864,11 @@ def pipeline_steps(lang="sv"):
 STEP_ENGINE_ICONS = {"transcribing": ("whisper", "qwen"), "translating": ("gemma",)}
 
 
-def render_pipeline_steps(status, lang="sv"):
-    """Render the real pipeline stages from the job's own status, not a guess."""
+def render_pipeline_steps(status, lang="sv", model=None):
+    """Render the real pipeline stages from the job's own status, not a guess. The step that is running shows the
+    model text the worker recorded for it (`model`: e.g. "Översättning med gemma3:27b"); the other steps say what
+    they do without naming a model, because which Gemma runs depends on the card (a rented 24 GB card runs the
+    27B, not the 12B the page used to claim for the whole job)."""
     steps = pipeline_steps(lang)
     order = [key for key, _label, _desc in steps]
     if status not in order:
@@ -877,6 +880,7 @@ def render_pipeline_steps(status, lang="sv"):
             state, dot, step_status = "done", "✓", t("step_done", lang)
         elif index == current_index:
             state, dot, step_status = "active", "●", t("step_active", lang)
+            desc = (str(model).strip() or desc) if model else desc
         else:
             state, dot, step_status = "waiting", str(index + 1), t("step_waiting", lang)
         rows.append(
@@ -898,7 +902,7 @@ def render_overview_job_card(jobs, library_by_path, lang="sv"):
     name = library_by_path.get(active["media_path"], {}).get("name", active.get("media_name", ""))
     status_label = queue_status_label(active["status"], lang)
     progress = int(active.get("progress") or 0)
-    steps_html = render_pipeline_steps(active["status"], lang)
+    steps_html = render_pipeline_steps(active["status"], lang, active.get("model"))
     steps_block = (
         f"<div style='display:flex;flex-direction:column;gap:10px;margin-top:14px;'>{steps_html}</div>"
         if steps_html else ""
@@ -980,7 +984,7 @@ def render_queue_job_row(job, library_by_path, token, *, cancellable, lang="sv")
         progress = int(job.get("progress") or 0)
         progress_html = (f"<div class='progress-track' style='margin-top:6px;'>"
                          f"<div class='progress-fill' style='width:{progress}%;'></div></div>")
-        steps_html = render_pipeline_steps(status)
+        steps_html = render_pipeline_steps(status, lang, job.get("model"))
         if steps_html:
             progress_html += (f"<div style='display:flex;flex-direction:column;gap:8px;margin-top:10px;'>"
                               f"{steps_html}</div>")

@@ -1074,6 +1074,13 @@ def rent_cloud_chain(job, provider, mode):
                     provider, api_key, offer, onstart, device=mode)
                 MODEL_JOB.cloud_models = tuple(cloud_models)     # what really runs there (shown on the job)
                 chosen = offer
+                # Where the server really is, kept with the job: a country picked in the plan is a preference, and
+                # a job that landed elsewhere must say so (Sweden was asked for, Bulgaria was rented, dev job 50).
+                job['cloud_offer'] = {'gpu': offer.get('gpu'), 'location': offer.get('location'),
+                                      'country': offer.get('country'), 'price': price,
+                                      'machine_id': offer.get('machine_id'),
+                                      'preferred_country': prefer_country or None,
+                                      'preferred_machine': prefer_machine}
                 break
             except RuntimeError as error:
                 refusals.append(f'{offer.get("gpu") or offer.get("id")}: {str(error)[:160]}')
@@ -4326,6 +4333,19 @@ def asr_model_description(device, asr_label='Whisper large-v3'):
     return name
 
 
+def cloud_hardware_label(device, job):
+    """`Moln-GPU (vast · RTX 3090 · Bulgaria, BG)`: provider, card and place of the rented server, and a note when the
+    country the plan asked for had no free server that met the requirements."""
+    provider = device[len('cloud-'):]
+    offer = job.get('cloud_offer')
+    if not offer:
+        return f'Moln-GPU ({provider})'
+    parts = [provider, offer.get('gpu'), offer.get('location')]
+    if offer.get('preferred_country') and offer.get('country') != offer['preferred_country']:
+        parts.append(f"inga lediga servrar i {offer['preferred_country']}, närmaste plats valdes")
+    return f"Moln-GPU ({' · '.join(str(part) for part in parts if part)})"
+
+
 def work(job, model, device, health, *, asr_label='Whisper large-v3'):
     media = safe_media(job['media_path'])
     candidates = (media.with_suffix('.ai.sv.srt'), media.with_suffix('.sv.ai.srt'))
@@ -4339,7 +4359,7 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
     elif is_cloud_cpu(device):
         hardware_name = f'Moln-CPU ({device[len("cloud-cpu-"):]})'
     elif device.startswith('cloud-'):
-        hardware_name = f'Moln-GPU ({device[6:]})'
+        hardware_name = cloud_hardware_label(device, job)
     else:
         hardware_name = f'{local_cpu_name()} (CPU)'
     asr_name = asr_model_description(device, asr_label)

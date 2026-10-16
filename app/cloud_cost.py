@@ -146,6 +146,8 @@ def render_cloud_cost(profile, token, saved=False):
             + (f'<input type="hidden" name="machine_id" value="{machine}">' if machine else '')
             + '</p><p class="muted">Landet kommer från erbjudandet du valde i listan ovan. Vid hyrning provas först samma '
             'maskin (om den är ledig), sedan servrar i samma land, sedan närmaste region – aldrig över prisgränsen. '
+            'Erbjudandena växlar hela tiden: är maskinen och landet fullt när jobbet startar hyrs närmaste region i '
+            'stället, och jobbet visar då var servern hamnade. '
             'Avmarkera och spara för att gå tillbaka till "Europa först".</p>')
     else:
         place = ('<p class="muted">Ingen plats vald: servern väljs efter läge (Europa först). Välj ett erbjudande i listan '

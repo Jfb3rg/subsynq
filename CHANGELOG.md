@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.259
+
+- **Jobbet visar var den hyrda servern hamnade.** Under Moln-GPU väljer du ett erbjudande och landet sparas som önskat land, men erbjudandena hos leverantören växlar hela tiden. När det önskade landet inte har någon ledig server som klarar kraven (snabbt nät, tillförlitlig, tillräcklig disk) hyrs närmaste region i stället. Det hände utan att något sa det. Nu står kort, plats och land i jobbets hårdvarurad, och en anteckning när det önskade landet saknade lediga servrar, till exempel "Moln-GPU (vast · RTX 3090 · Bulgaria, BG · inga lediga servrar i SE, närmaste plats valdes)". Texten under kostnadsplanen förklarar samma sak.
+- **Pågående jobb visar rätt modell.** Steglistan påstod "Gemma 3 12B" för översättningen även när ett hyrt kort körde den större modellen. Steget som körs visar nu den modell jobbet verkligen använder, och steglistan i kön följer sidans språk.
+
 ## 0.8.258
 
 - **Osäkra repliker får fler chanser att bli rätt.** Varje replik som Whisper är osäker på (säkerhet under 0,6) får nu en egen kontroll av Qwen3-ASR, även när bara två avlyssningar täckte den. Tidigare fick de allra osäkraste raderna (säkerhet 0,22 och 0,35 i Man of War) ingen kontroll alls.

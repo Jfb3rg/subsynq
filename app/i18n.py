@@ -158,7 +158,7 @@ STRINGS = {
     "pipeline_transcribing_desc": {"sv": "Whisper + Qwen3-ASR läser av ljudet",
                                    "en": "Whisper + Qwen3-ASR reads the audio"},
     "pipeline_translating": {"sv": "Översätter till svenska", "en": "Translating to Swedish"},
-    "pipeline_translating_desc": {"sv": "Gemma 3 12B", "en": "Gemma 3 12B"},
+    "pipeline_translating_desc": {"sv": "Gemma-modellen översätter raderna", "en": "The Gemma model translates the lines"},
     "pipeline_verifying": {"sv": "Kvalitetskontrollerar", "en": "Checking quality"},
     "pipeline_verifying_desc": {"sv": "Slutlig kontroll av den svenska texten",
                                 "en": "Final check of the Swedish text"},
