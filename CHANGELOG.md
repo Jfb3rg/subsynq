@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.255
+
+- **Mobilen: filnamnen bryts inte längre efter två bokstäver, och knapparna tar inte hela raden.** I biblioteket (filmer, serier, extra), i kön och under Städa undertexter fick statuskolumnen och knapparna all plats, så filnamnet pressades ihop till en smal strimma. På telefon får nu namnet hela raden, och status och knappar ligger under. Tabeller som är för breda (modeller, täckning) rullar i sidled i sitt kort i stället för att göra hela sidan bredare. Rullgardiner är lika breda som sitt kort, knappar är lättare att trycka på, filtret under Städa undertexter har en kontroll per rad och sidhuvudet tar mindre plats. På dator ser allt ut som förut.
+
 ## 0.8.254
 
 - **Filer med flera ljudspår: engelska väljs automatiskt, och du kan välja spår själv.** Tidigare lyssnade AI:n alltid på det första ljudspåret. En film med en dubbning först och originalet efter (som Man of War-trailern, med tysk dubbning som spår 0) fick därför undertexter av dubbningens felhörda ord och stoppades av kvalitetskontrollen. Nu hoppas kommentar- och syntolkningsspår över, ett spår som är märkt som engelskt kontrolleras mot ljudet, spår utan språkmärkning avlyssnas, och finns inget engelskt spår används filens standardspår (annars det första). Filer med bara ett ljudspår påverkas inte och avlyssnas inte extra.

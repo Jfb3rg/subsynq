@@ -239,6 +239,49 @@ details.row-more[open] > summary::after { content: " ▴"; }
 .badge { color: var(--ok); background: var(--okb); border: 1px solid var(--ok); border-radius: 30px; padding: 6px 16px; white-space: nowrap; }
 @media (max-width: 900px) { .app { flex-direction: column; } .sidebar { width: 100%; flex: none; position: static; height: auto; flex-direction: row; flex-wrap: wrap; } .nav { flex-direction: row; flex-wrap: wrap; } .content { padding: 18px 14px; } }
 @media (max-width: 650px) { .subtitle-status { white-space: normal; } .season-group summary small { display: block; margin-left: 24px; } }
+/* Phone layout. A table's name column used to be squeezed to two letters per line by the state column and its
+   buttons (overflow-wrap:anywhere lets the column shrink to nothing), and a wide table pushed the page sideways. */
+@media (max-width: 700px) {
+  .content { padding: 14px 12px 50px; }
+  section, .card { padding: 14px 14px; }
+  h1 { font-size: 22px; }
+  /* Wide tables scroll sideways inside their card instead of widening the whole page. */
+  .content table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .content th, .content td { padding-right: 12px; }
+  /* Lists of files: the name keeps the whole line; the state and the buttons wrap beneath it. */
+  .content table.stack { overflow-x: visible; }
+  table.stack thead, table.stack tbody { display: block; }
+  table.stack.files thead { display: none; }
+  table.stack tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 10px 0; border-bottom: 1px solid var(--bd); }
+  table.stack td, table.stack th { display: block; border: 0; padding: 0; width: auto; }
+  table.stack td.filename { flex: 1 1 100%; padding-right: 0; }
+  table.stack td.filename + td { flex: 1 1 100%; }
+  table.stack td.grow { flex: 1 1 calc(100% - 40px); min-width: 0; }
+  .season-group table { width: auto; margin: 0 12px 10px; }
+  /* The job list: title on its own line, state and buttons below it. */
+  .queue-row .title { flex: 1 1 calc(100% - 40px); min-width: 0; }
+  /* Controls: comfortable to tap, never wider than the screen, a drop-down as wide as its card. */
+  button, .small-button { min-height: 42px; }
+  .small-link { padding: 6px 0; }
+  .season-group .track-details summary { background: none; padding: 4px 0; font-weight: 400; }
+  select { min-width: 0; width: 100%; }
+  input[type="text"], input[type="search"], input[type="number"], input[type="password"] { max-width: 100%; box-sizing: border-box; }
+  .audio-pick { display: block; margin: 0 0 8px; }
+  .hardware-form > * { max-width: 100%; }
+  /* The top bar takes less of the screen. */
+  .sidebar { padding: 10px 10px 6px; gap: 6px; }
+  .engine-note { display: none; }
+  .engine-card { width: 100%; box-sizing: border-box; }
+  /* Small number tables (coverage): tighter cells so every column fits without sideways scrolling. */
+  .content table:not(.stack) th, .content table:not(.stack) td { padding-right: 8px; font-size: 13px; }
+  .content table:not(.stack) th { font-size: 12px; }
+  /* The cleanup filters: one control per line instead of a run of mixed labels. */
+  .cleanup-filters { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+  .cleanup-filters label { display: flex; align-items: flex-start; gap: 8px; }
+  .cleanup-filters input[type="checkbox"] { flex: none; margin-top: 5px; }
+  .cleanup-filters input[type="text"], .cleanup-filters input[type="number"] { flex: none; }
+  .cleanup-filters button { align-self: flex-start; }
+}
 </style>
 {{accent_css}}
 <div class="app">

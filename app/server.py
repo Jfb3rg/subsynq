@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.254"
+VERSION = "0.8.255"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -595,7 +595,7 @@ def render_seasons(group_name, seasons, token, jobs, ignore_existing, lang):
             f"<details class='season-group' data-season='{season_key}'><summary>"
             f"<span class='folder-icon' aria-hidden='true'></span> "
             f"{escape(season)} <small>{len(episodes)} {escape(t('episodes_count', lang))}{missing_text}</small></summary>"
-            f"<table><thead><tr><th>{escape(t('table_header_episode', lang))}</th>"
+            f"<table class='stack files'><thead><tr><th>{escape(t('table_header_episode', lang))}</th>"
             f"<th>{escape(t('table_header_subtitle', lang))}</th></tr></thead>"
             f"<tbody>{rows}</tbody></table></details>")
     return "".join(output)
@@ -615,7 +615,7 @@ def render_library(items, selected, token="", jobs=None, ignore_existing=False, 
     if selected != "episode":
         rows = "".join(render_media_row(item, token=token, job=jobs.get(item['path']),
                                          ignore_existing=ignore_existing, lang=lang) for item in items)
-        return (f"<table><thead><tr><th>{escape(t('table_header_file', lang))}</th>"
+        return (f"<table class='stack files'><thead><tr><th>{escape(t('table_header_file', lang))}</th>"
                 f"<th>{escape(t('table_header_subtitle', lang))}</th></tr></thead>"
                 f"<tbody>{rows}</tbody></table>") if rows else f"<p>{escape(t('no_video_files', lang))}</p>"
     grouped = group_series(items, lang)

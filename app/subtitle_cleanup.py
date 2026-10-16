@@ -483,14 +483,14 @@ def render_cleanup_content(scan, filters, trash_batches, token, notice="", page=
             "<tr>"
             f"<td><input type='checkbox' name='path' value='{escape(item['path'], quote=True)}' "
             f"aria-label='{escape(T('cleanup_select_aria', name=item['name']), quote=True)}'></td>"
-            f"<td><code>{escape(item['rel'])}</code><br>{badges}</td>"
+            f"<td class='grow'><code>{escape(item['rel'])}</code><br>{badges}</td>"
             f"<td>{escape(item['lang'] or '–')}</td>"
             f"<td>{escape(format_size(item['size']))}</td>"
             f"<td>{escape(T('cleanup_age_days', n=age_days))}</td>"
             f"<td><a href='{escape(view, quote=True)}' target='_blank' rel='noopener'>"
             f"{escape(T('cleanup_view'))}</a></td></tr>")
     table = (
-        f"<table><thead><tr><th><input type='checkbox' aria-label='{escape(T('cleanup_select_all_aria'), quote=True)}' "
+        f"<table class='stack'><thead><tr><th><input type='checkbox' aria-label='{escape(T('cleanup_select_all_aria'), quote=True)}' "
         "onclick=\"document.querySelectorAll('.cleanup-list input[name=path]').forEach(c=>c.checked=this.checked)\">"
         f"</th><th>{escape(T('cleanup_col_file'))}</th><th>{escape(T('cleanup_col_lang'))}</th>"
         f"<th>{escape(T('cleanup_col_size'))}</th><th>{escape(T('cleanup_col_changed'))}</th><th></th></tr></thead>"
