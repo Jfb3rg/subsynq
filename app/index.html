@@ -106,6 +106,7 @@ small { color: var(--sec); }
 .nav a:hover { background: var(--hi); }
 .nav a.active { background: var(--acb); color: var(--ac); }
 .nav .count { margin-left: auto; color: var(--mut); font-weight: 600; font-size: 12px; }
+.nav-library { display: contents; }
 .nav-heading { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--mut); font-weight: 800; padding: 12px 10px 2px; }
 .nav-group { border: none; margin: 0; }
 .nav-group summary { cursor: pointer; list-style: none; font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--mut); font-weight: 800; padding: 12px 10px 2px; display: flex; align-items: center; gap: 5px; }
@@ -238,6 +239,14 @@ details.row-more[open] > summary::after { content: " ▴"; }
 .checkbox-row span { font-size: 14px; color: var(--tx); }
 .badge { color: var(--ok); background: var(--okb); border: 1px solid var(--ok); border-radius: 30px; padding: 6px 16px; white-space: nowrap; }
 @media (max-width: 900px) { .app { flex-direction: column; } .sidebar { width: 100%; flex: none; position: static; height: auto; flex-direction: row; flex-wrap: wrap; } .nav { flex-direction: row; flex-wrap: wrap; } .content { padding: 18px 14px; } }
+/* Phone/tablet top bar: the library links stay on one line with their heading and the settings list always has its
+   own row, so opening it can no longer push Serier/Extra down (at about 430 px it used to share their row). */
+@media (max-width: 900px) {
+  .nav { align-items: center; }
+  .nav-library { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; gap: 2px; }
+  .nav-spacer { display: none; }
+  .nav-group { flex: 1 1 100%; }
+}
 @media (max-width: 650px) { .subtitle-status { white-space: normal; } .season-group summary small { display: block; margin-left: 24px; } }
 /* Phone layout. A table's name column used to be squeezed to two letters per line by the state column and its
    buttons (overflow-wrap:anywhere lets the column shrink to nothing), and a wide table pushed the page sideways. */

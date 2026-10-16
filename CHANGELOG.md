@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.256
+
+- **Ljudspår: svenska först, sedan engelska.** Har en film ett svenskt ljudspår väljs det (det behöver ingen översättning), annars det engelska, annars filens standardspår. Spår utan språkmärkning avlyssnas, så ett svenskt eller engelskt spår hittas även när filen saknar märkning, och en märkning som inte stämmer med ljudet litas inte på. Finns flera spår på samma språk hoppas kommentar- och syntolkningsspår över, och bland resten väljs filens standardspår, sedan det med flest kanaler (huvudmixen före en omärkt stereokommentar). Du kan fortfarande välja spår själv i rutan **Ljudspår**.
+- **Mobilen: menyn flyttar inte längre Serier och Extra när du öppnar Inställningar.** Inställningslistan har nu en egen rad, så Filmer, Serier och Extra ligger kvar på sin plats. På dator ser menyn ut som förut.
+
 ## 0.8.255
 
 - **Mobilen: filnamnen bryts inte längre efter två bokstäver, och knapparna tar inte hela raden.** I biblioteket (filmer, serier, extra), i kön och under Städa undertexter fick statuskolumnen och knapparna all plats, så filnamnet pressades ihop till en smal strimma. På telefon får nu namnet hela raden, och status och knappar ligger under. Tabeller som är för breda (modeller, täckning) rullar i sidled i sitt kort i stället för att göra hela sidan bredare. Rullgardiner är lika breda som sitt kort, knappar är lättare att trycka på, filtret under Städa undertexter har en kontroll per rad och sidhuvudet tar mindre plats. På dator ser allt ut som förut.

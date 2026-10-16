@@ -46,6 +46,19 @@ class PhoneLayoutTests(unittest.TestCase):
         self.assertIn('.content table { display: block; max-width: 100%; overflow-x: auto;', css)
         self.assertIn('select { min-width: 0; width: 100%; }', css)
 
+    def test_the_settings_list_has_its_own_row_so_opening_it_cannot_move_the_library_links(self):
+        html = server.render_sidebar('overview', 0, {'available': [], 'active': None}, 'sv')
+        library = html[html.index("<div class='nav-library'>"):html.index("<details class='nav-group'")]
+        for link in ('/library?kind=movie', '/library?kind=episode', '/library?kind=media'):
+            self.assertIn(link, library)
+        self.assertIn("class='nav-heading'", library)
+        self.assertNotIn('nav-group', library)
+        tablet = INDEX[INDEX.index('@media (max-width: 900px) {\n  .nav { align-items: center; }'):]
+        tablet = tablet[:tablet.index('\n}\n')]
+        self.assertIn('.nav-group { flex: 1 1 100%; }', tablet)
+        self.assertIn('.nav-library { display: flex; flex: 1 1 100%;', tablet)
+        self.assertIn('.nav-library { display: contents; }', INDEX.replace(tablet, ''), 'desktop keeps one column')
+
     def test_the_phone_rules_do_not_leak_to_desktop(self):
         outside = INDEX.replace(phone_css(), '')
         self.assertNotIn('table.stack', outside)

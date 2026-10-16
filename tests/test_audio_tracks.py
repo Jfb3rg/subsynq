@@ -131,5 +131,61 @@ class ChooseTrackTests(unittest.TestCase):
         self.assertEqual((choice['index'], choice['method']), (0, 'first'))
 
 
+class PreferenceOrderTests(unittest.TestCase):
+    """Swedish first (no translation needed), then English; several tracks of one language are ranked."""
+
+    def test_a_swedish_track_beats_an_english_one(self):
+        tracks = [track(0, 'eng'), track(1, 'swe')]
+        choice = choose_audio_track(tracks, listener({0: 'en', 1: 'sv'}))
+        self.assertEqual((choice['index'], choice['method'], choice['language']), (1, 'tag', 'sv'))
+
+    def test_an_untagged_track_heard_as_swedish_beats_a_verified_english_tag(self):
+        tracks = [track(0, 'eng'), track(1), track(2, 'ger')]
+        calls = []
+        choice = choose_audio_track(tracks, listener({0: 'en', 1: 'sv'}, calls))
+        self.assertEqual((choice['index'], choice['method'], choice['language']), (1, 'audio', 'sv'))
+        self.assertNotIn(2, calls, 'a German tag is not listened to')
+
+    def test_a_swedish_tag_the_audio_contradicts_is_not_trusted(self):
+        tracks = [track(0, 'swe'), track(1, 'eng')]
+        choice = choose_audio_track(tracks, listener({0: 'en', 1: 'en'}))
+        self.assertEqual((choice['index'], choice['language']), (1, 'en'))
+
+    def test_a_silent_swedish_tag_does_not_beat_audible_english(self):
+        tracks = [track(0, 'swe'), track(1, 'eng')]
+        choice = choose_audio_track(tracks, listener({1: 'en'}))
+        self.assertEqual((choice['index'], choice['method']), (1, 'tag'))
+        self.assertEqual(choose_audio_track(tracks, listener({}))['index'], 0, 'with nothing audible the tags decide')
+
+    def test_swedish_and_english_commentary_tracks_are_never_chosen(self):
+        tracks = [track(0, 'swe', 'Kommentar'), track(1, 'eng', 'Commentary'), track(2, 'ger'), track(3, 'eng')]
+        choice = choose_audio_track(tracks, listener({3: 'en'}))
+        self.assertEqual((choice['index'], choice['language']), (3, 'en'))
+
+    def test_a_regular_and_a_commentary_english_track_picks_the_regular_one(self):
+        tracks = [track(0, 'eng', "Director's Commentary"), track(1, 'eng', 'English 5.1', channels=6)]
+        self.assertEqual(choose_audio_track(tracks, listener({1: 'en'}))['index'], 1)
+
+    def test_an_unmarked_stereo_commentary_loses_to_the_surround_mix(self):
+        tracks = [track(0, 'eng', channels=2), track(1, 'eng', channels=6)]
+        self.assertEqual(choose_audio_track(tracks, listener({0: 'en', 1: 'en'}))['index'], 1)
+
+    def test_equal_english_tracks_keep_the_first_and_the_default_flag_beats_channels(self):
+        tracks = [track(0, 'eng'), track(1, 'eng')]
+        self.assertEqual(choose_audio_track(tracks, listener({0: 'en', 1: 'en'}))['index'], 0)
+        tracks = [track(0, 'eng', channels=6), track(1, 'eng', channels=2, default=True)]
+        self.assertEqual(choose_audio_track(tracks, listener({0: 'en', 1: 'en'}))['index'], 1)
+
+    def test_the_fallback_without_swedish_or_english_is_still_the_first_track_not_the_widest(self):
+        tracks = [track(0, 'ger', channels=2), track(1, 'fre', channels=6)]
+        choice = choose_audio_track(tracks, listener({}))
+        self.assertEqual((choice['index'], choice['method']), (0, 'first'))
+
+    def test_the_real_stuart_fails_to_save_the_universe_tracks_pick_english_over_default_french(self):
+        tracks = [track(1, 'fre', 'French', default=True), track(2, 'eng', 'English (US)')]
+        choice = choose_audio_track(tracks, listener({1: 'fr', 2: 'en'}))
+        self.assertEqual((choice['index'], choice['method']), (2, 'tag'))
+
+
 if __name__ == '__main__':
     unittest.main()

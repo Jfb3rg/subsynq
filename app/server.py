@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.255"
+VERSION = "0.8.256"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -743,9 +743,11 @@ def render_sidebar(active, active_jobs, hardware, lang="sv", auth_enabled=False)
         + nav_link("/", t("nav_overview", lang), "overview")
         + nav_link("/queue", t("nav_queue", lang), "queue", active_jobs)
         + nav_link("/cleanup", t("nav_cleanup", lang), "cleanup")
+        + "<div class='nav-library'>"
         + f"<div class='nav-heading'>{escape(t('nav_library_heading', lang))}</div>"
         + bibliotek_links
-        + "<div style='height:8px;'></div>"
+        + "</div>"
+        + "<div class='nav-spacer' style='height:8px;'></div>"
         + f"<details class='nav-group'{' open' if str(active).startswith('settings') else ''}>"
         + f"<summary>{escape(t('nav_settings_heading', lang))}</summary>"
         + nav_link("/settings", t("nav_settings_general", lang), "settings:general")

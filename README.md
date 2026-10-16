@@ -79,10 +79,12 @@ inställningarna. Befintliga SubSynq-undertexter skrivs inte över automatiskt;
 borttagning via gränssnittet kräver bekräftelse.
 
 Har filen flera ljudspår (till exempel en dubbning först och originalet efter)
-lyssnar SubSynq på det engelska när det går: kommentar- och syntolkningsspår
-hoppas över, en språkmärkning kontrolleras mot ljudet och spår utan märkning
-avlyssnas. Finns inget engelskt spår används filens standardspår. Bredvid
-**Skapa svensk AI-undertext** finns då rutan **Ljudspår** där du kan välja ett
+väljer SubSynq själv: ett svenskt spår först (det behöver ingen översättning),
+annars ett engelskt. Kommentar- och syntolkningsspår hoppas över, en
+språkmärkning kontrolleras mot ljudet och spår utan märkning avlyssnas. Finns
+flera spår på samma språk väljs filens standardspår, sedan det med flest kanaler.
+Finns varken svenska eller engelska används filens standardspår. Bredvid
+**Skapa svensk AI-undertext** finns rutan **Ljudspår** där du kan välja ett
 spår själv; det valet används alltid, även vid omförsök och omkörning.
 
 ## Modeller och körsätt

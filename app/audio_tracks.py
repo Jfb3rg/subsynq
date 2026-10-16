@@ -2,12 +2,13 @@
 
 A film often carries several audio tracks (original, dubs, commentary). The pipeline used to read the first
 one blindly: the Man of War trailer has a German dub as track 0 and the English original as track 1, and the
-dub's misheard words ("Meine nicht" for "Meine Nichte") failed the run. English is preferred automatically;
-the language tag is only a hint and is checked against the audio, and an explicit choice always wins.
+dub's misheard words ("Meine nicht" for "Meine Nichte") failed the run. Swedish is preferred (it needs no
+translation), then English; the language tag is only a hint and is checked against the audio, and an explicit
+choice always wins.
 """
 from collections import Counter
 
-PREFERRED_LANGUAGE = 'en'
+PREFERRED_LANGUAGES = ('sv', 'en')    # Swedish needs no translation; otherwise the English original
 
 # ISO 639-2/B and /T language tags (and plain two-letter codes) to the two-letter codes Whisper reports.
 TAG_CODES = {
@@ -68,14 +69,20 @@ def _result(track, method, heard, considered, *, stale_manual=False):
                            for item in considered]}
 
 
-def choose_audio_track(tracks, read_language, *, manual=None, preferred=PREFERRED_LANGUAGE,
+def choose_audio_track(tracks, read_language, *, manual=None, preferred=PREFERRED_LANGUAGES,
                        maximum_untagged_readings=6):
     """Pick the track to transcribe. `read_language(track)` listens to a track and returns its language code
     (or None); it is called only when a file has several dialogue candidates, and never for a manual choice.
 
-    method: 'manual' (user's choice), 'only' (one dialogue track), 'tag' (tagged English, not contradicted by
-    the audio), 'audio' (untagged track heard to be English), 'default' / 'first' (no English: the file's
-    default track, else the first one, which is what the pipeline always did before)."""
+    The languages in `preferred` are tried in order (Swedish, then English). A track tagged with a preferred
+    language is checked against the audio, and tracks with no usable tag are listened to, so that a Swedish
+    track hiding behind `und` is found even when an English track is already known. Between several tracks of
+    the same language the file's default track wins, then the one with more channels (a main mix over an
+    unmarked stereo commentary), then the first.
+
+    method: 'manual' (user's choice), 'only' (one dialogue track), 'tag' (tagged with the language, not
+    contradicted by the audio), 'audio' (untagged track heard to be that language), 'default' / 'first' (no
+    preferred language: the file's default track, else the first one, which is what the pipeline always did)."""
     tracks = list(tracks)
     if not tracks:
         return None
@@ -89,28 +96,42 @@ def choose_audio_track(tracks, read_language, *, manual=None, preferred=PREFERRE
     candidates = usable_audio_tracks(tracks)
     if len(candidates) == 1:
         return _result(candidates[0], 'only', heard, candidates, stale_manual=stale_manual)
-    ordered = sorted(candidates, key=lambda track: (not track.get('default'), track['index']))
+    ordered = sorted(candidates, key=lambda track: (not track.get('default'), -(track.get('channels') or 0),
+                                                    track['index']))
 
     def listen(track):
         if track['index'] not in heard:
             heard[track['index']] = read_language(track)
         return heard[track['index']]
 
-    unverified = None
-    for track in ordered:
-        if tag_code(track.get('language')) != preferred:
-            continue
-        language = listen(track)
-        if language == preferred:
-            return _result(track, 'tag', heard, ordered, stale_manual=stale_manual)
-        if language is None and unverified is None:
-            unverified = track
-    untagged = [track for track in ordered if tag_code(track.get('language')) is None]
-    for track in untagged[:maximum_untagged_readings]:
-        if listen(track) == preferred:
-            return _result(track, 'audio', heard, ordered, stale_manual=stale_manual)
-    if unverified is not None:
-        return _result(unverified, 'tag', heard, ordered, stale_manual=stale_manual)
-    fallback = ordered[0]
+    confirmed = {}    # language -> first track the audio confirms (a matching tag, or an untagged track heard so)
+    tag_only = {}     # language -> first matching-tag track with no audible speech to check it against
+    for language in preferred:
+        for track in ordered:
+            if tag_code(track.get('language')) != language:
+                continue
+            spoken = listen(track)
+            if spoken == language:
+                confirmed.setdefault(language, (track, 'tag'))
+                break
+            if spoken is None:
+                tag_only.setdefault(language, track)
+        if preferred[0] in confirmed:
+            break
+    if preferred[0] not in confirmed:
+        for track in [item for item in ordered if tag_code(item.get('language')) is None][:maximum_untagged_readings]:
+            spoken = listen(track)
+            if spoken in preferred and spoken not in confirmed:
+                confirmed[spoken] = (track, 'audio')
+                if spoken == preferred[0]:
+                    break
+    for language in preferred:
+        if language in confirmed:
+            track, method = confirmed[language]
+            return _result(track, method, heard, ordered, stale_manual=stale_manual)
+    for language in preferred:
+        if language in tag_only:
+            return _result(tag_only[language], 'tag', heard, ordered, stale_manual=stale_manual)
+    fallback = min(candidates, key=lambda track: (not track.get('default'), track['index']))
     return _result(fallback, 'default' if fallback.get('default') else 'first', heard, ordered,
                    stale_manual=stale_manual)

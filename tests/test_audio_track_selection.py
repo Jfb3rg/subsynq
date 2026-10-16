@@ -92,6 +92,13 @@ class SelectAudioTrackTests(unittest.TestCase):
         self.assertEqual(listened, [0, 1])
         self.assertIn('readings', job['audio_choice'])
 
+    def test_swedish_audio_is_chosen_over_english(self):
+        job = {'id': 7}
+        choice, listened = self.select([track(0, 'eng'), track(1, 'swe')], job, {0: 'en', 1: 'sv'})
+        self.assertEqual((choice['index'], choice['language'], choice['method']), (1, 'sv', 'tag'))
+        self.assertEqual(worker.audio_map(job), '0:1')
+
+
     def test_a_manual_choice_wins_without_listening(self):
         job = {'id': 48, 'audio_track': 0}
         choice, listened = self.select([track(0), track(1, 'eng')], job, {1: 'en'})
@@ -124,11 +131,14 @@ class AudioTrackLabelTests(unittest.TestCase):
         self.assertEqual(label, 'ljudspår 1 (engelska, hörs som engelska i ljudet)')
         label = worker.audio_track_label({'index': 0, 'language': 'de', 'method': 'first',
                                            'stale_manual': False, 'considered': []})
-        self.assertEqual(label, 'ljudspår 0 (tyska, ingen engelska hittades, första spåret)')
+        self.assertEqual(label, 'ljudspår 0 (tyska, varken svenska eller engelska hittades, första spåret)')
         label = worker.audio_track_label({'index': 2, 'language': None, 'method': 'manual',
                                            'stale_manual': True, 'considered': []})
         self.assertIn('det valda spåret finns inte längre', label)
         self.assertIn('ljudspår 2 (valt av dig)', label)
+        label = worker.audio_track_label({'index': 3, 'language': 'sv', 'method': 'tag',
+                                           'stale_manual': False, 'considered': []})
+        self.assertEqual(label, 'ljudspår 3 (svenska, märkt svenska)')
 
 
 if __name__ == '__main__':

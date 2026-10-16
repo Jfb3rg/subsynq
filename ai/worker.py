@@ -1501,7 +1501,7 @@ def read_track_language(job, media, model, total, folder, stream):
 def select_audio_track(job, media, model, total, folder):
     """Choose the audio track to transcribe and record it on the job as `audio_stream` / `audio_choice`.
 
-    English is preferred (the language tag is checked against the audio, and untagged tracks are listened to),
+    Swedish, then English, is preferred (the language tag is checked against the audio, and untagged tracks are listened to),
     commentary tracks are skipped, and a track the user picked (`job['audio_track']`) always wins. A file with
     a single dialogue track is never listened to. Without any usable probe the pipeline keeps reading the
     first track, as it always did."""
@@ -1528,11 +1528,12 @@ def select_audio_track(job, media, model, total, folder):
 
 def audio_track_label(choice):
     """Short Swedish note on which audio track was read and why, for the job's model line."""
-    language = whisper_language_label(choice['language']) if choice.get('language') else ''
+    language = ('svenska' if choice.get('language') == 'sv' else
+                whisper_language_label(choice['language'])) if choice.get('language') else ''
     reason = {
-        'manual': 'valt av dig', 'tag': 'märkt engelska', 'audio': 'hörs som engelska i ljudet',
-        'default': 'ingen engelska hittades, filens standardspår',
-        'first': 'ingen engelska hittades, första spåret',
+        'manual': 'valt av dig', 'tag': f'märkt {language}', 'audio': f'hörs som {language} i ljudet',
+        'default': 'varken svenska eller engelska hittades, filens standardspår',
+        'first': 'varken svenska eller engelska hittades, första spåret',
     }.get(choice['method'], '')
     stale = 'det valda spåret finns inte längre, automatiskt val · ' if choice.get('stale_manual') else ''
     details = ', '.join(part for part in (language, reason) if part) or 'okänt språk'
