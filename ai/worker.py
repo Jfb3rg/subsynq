@@ -45,7 +45,7 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
                          plan_v2_timing_windows, plan_v2_word_check_windows, plan_windows,
                          prefer_fuller_reading, prefer_fuller_window_readings,
                          drop_misplaced_duplicate_cues, plan_consensus_windows, prefer_consensus_reading,
-                         reading_alternatives,
+                         reading_alternatives, resegment_unpunctuated_runs,
                          prefer_confident_reading, prefer_forced_language_reading,
                          prefer_precision_for_unpunctuated_runs, restore_multi_pass_agreed_speech,
                          prefer_precision_pauses, prefer_precision_sentence_boundaries,
@@ -275,7 +275,8 @@ _KEPT_CLOUD = None
 
 
 class SlowCloudHost(RuntimeError):
-    """The rented host cannot finish installing in reasonable time; another host should be tried."""
+    """The rented host cannot finish installing in reasonable time, or is faulty (no working GPU driver); another host
+    should be tried."""
 
 
 class JobCancelled(RuntimeError):
@@ -937,6 +938,27 @@ def cloud_address_status(provider, instance):
             f'tjänsteport={"finns" if port else "saknas"}')
 
 
+# What a rented host's own fault looks like in its health reply (real case 2026-10-16: an RTX 4090 host answered
+# "CUDA failed with error system has unsupported display driver / cuda driver combination" and the job was lost,
+# although the next offer would have worked). Another host of the same card is worth a try for these; a model or
+# memory problem that every host of that card would share (VRAM too small, corrupt files) is not.
+CLOUD_HOST_FAULT_MARKERS = ('cuda failed', 'unsupported display driver', 'cuda driver', 'no cuda-capable',
+                            'cuda initialization', 'cudaerror', 'nvidia driver', 'libcuda', 'driver/library version',
+                            'failed to initialize nvml', 'cuda unknown error')
+
+
+def cloud_host_fault(health):
+    """True when the health reply says THIS host is broken: no GPU that answers, too little RAM, or a CUDA driver
+    error. Another offer is tried for those (see SlowCloudHost)."""
+    status = health.get('status')
+    if status in ('no_gpu', 'insufficient_memory'):
+        return True
+    if status == 'error':
+        text = str(health.get('error') or '').casefold()
+        return any(marker in text for marker in CLOUD_HOST_FAULT_MARKERS)
+    return False
+
+
 def cloud_health_failure(health, kind):
     """Technical-stop message for a server that can never become ready, or None."""
     status = health.get('status')
@@ -1153,7 +1175,11 @@ def rent_cloud_chain(job, provider, mode):
                         failure = cloud_health_failure(health, kind)
                         if failure:
                             why = fetch_cloud_logs(base_url) if health.get('status') == 'bootstrap_failed' else None
-                            raise RuntimeError(failure + (f' Serverns logg: {why}' if why else ''))
+                            problem = failure + (f' Serverns logg: {why}' if why else '')
+                            if cloud_host_fault(health) and can_retry_elsewhere():
+                                # Not a technical stop: the next host is tried, so the note must not say "stopp".
+                                raise SlowCloudHost(failure.split(' Tekniskt stopp')[0].rstrip('. ') + '.')
+                            raise RuntimeError(problem)
                         update_job(job['id'], 'transcribing', 1,
                                    f'{kind} ({provider}) · {cloud_health_message(health)}')
                     elif not answered and time.monotonic() > reply_deadline:
@@ -2381,6 +2407,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     # Runs the long pass wrote without a single sentence end are replaced by the short passes' sentences when
     # those hold exactly the same words (PLANET 9: "...from the planet" + "ahead how old is it").
     merged = prefer_precision_for_unpunctuated_runs(merged, precision_profile, v2_profile, corroboration=qwen_reading)
+    # The same runs when the short pass hears a word more or less than the long pass (Man of War: "Fastest", "in"):
+    # its sentence boundaries and punctuation, the long pass's words.
+    merged = resegment_unpunctuated_runs(merged, precision_profile, v2_profile, corroboration=qwen_reading)
     merged = drop_misplaced_duplicate_cues(merged, precision_profile, strict_speech)
     merged = restore_multi_pass_agreed_speech(merged, consensus_readings)
     merged = prefer_consensus_reading(merged, consensus_readings, margin=.05)

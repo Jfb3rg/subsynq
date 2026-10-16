@@ -1176,6 +1176,144 @@ def prefer_precision_for_unpunctuated_runs(merged, precision, v2=(), corroborati
     return result
 
 
+def _word_key(token):
+    return _normalized(token).replace(' ', '')
+
+
+def _resegment_block(block, shorter, v2):
+    """The short pass's sentences with the long pass's own words, for a block of cues that has no sentence end.
+
+    `prefer_precision_for_unpunctuated_runs` needs the short pass to hold EXACTLY the block's words. Real case (Man of
+    War, dev job 49): the long pass wrote "way between two points is a straight line let's go russia overnight" /
+    "launched its long" / "anticipated attack on ukraine he's about to jam the door mike i'm in" / "trouble we need your
+    help" (cut in the middle of the sentence, lower case, no full stop) while the short pass heard six proper sentences,
+    one word more ("Fastest") and one less ("in") than the long pass, so the exact match never applied. Here the words are
+    aligned instead: the short pass decides WHERE the cues begin and end and how they are punctuated, the long pass keeps
+    its own wording wherever the two differ (the short pass's different or extra words inside a sentence are never
+    taken), and an extra word at the very edge is taken only when it is confident or heard by a second reading.
+    Returns the new cues, or None when the readings do not match well enough."""
+    block_tokens = [token for row in block for token in str(row['text']).split()]
+    block_keys = [_word_key(token) for token in block_tokens]
+    if len(block_keys) < 4 or not all(block_keys):
+        return None
+    start, end = block[0]['start'], block[-1]['end']
+    pool = [row for row in shorter if row['end'] > start - 2.0 and row['start'] < end + 1.2]
+    block_stops = sum(_ends_sentence(row) for row in block)
+    for first in range(len(pool)):
+        if not start - 1.6 <= pool[first]['start'] <= start + .8:
+            continue
+        collected = []
+        for row in pool[first:]:
+            collected.append(row)
+            if len(collected) > len(block_tokens) or not end - .8 <= collected[-1]['end'] <= end + 1.2:
+                continue
+            if (not all(_ends_sentence(item) for item in collected[:-1])
+                    or any(a['end'] > b['start'] + .001 for a, b in zip(collected, collected[1:]))
+                    or sum(_ends_sentence(item) for item in collected) <= block_stops
+                    or len(collected) < len(block)):           # only ever cuts a run into MORE sentences
+                continue
+            tokens = [(token, cue) for cue, item in enumerate(collected) for token in str(item['text']).split()]
+            keys = [_word_key(token) for token, _ in tokens]
+            if not all(keys):
+                continue
+            matcher = SequenceMatcher(None, block_keys, keys, autojunk=False)
+            operations = matcher.get_opcodes()
+            operations = [('equal', a1, a2, b1, b2) if tag == 'replace' and ''.join(block_keys[a1:a2]) == ''.join(keys[b1:b2])
+                          else (tag, a1, a2, b1, b2) for tag, a1, a2, b1, b2 in operations]    # long-anticipated
+            changed = sum(max(a2 - a1, b2 - b1) for tag, a1, a2, b1, b2 in operations if tag != 'equal')
+            if (matcher.ratio() < .85 or changed > max(2, round(.12 * len(block_keys)))
+                    or operations[0][0] in ('delete', 'replace') or operations[-1][0] in ('delete', 'replace')):
+                continue
+            built = _assemble_resegmented(block_tokens, tokens, collected, operations, v2)
+            if built:
+                return built
+    return None
+
+
+def _assemble_resegmented(block_tokens, tokens, collected, operations, v2):
+    """Cues made of the long pass's words laid out on the short pass's sentence boundaries (see _resegment_block)."""
+    texts = [[] for _ in collected]
+    for tag, a1, a2, b1, b2 in operations:
+        if tag == 'equal':
+            for offset in range(b2 - b1):
+                token, cue = tokens[b1 + offset]
+                texts[cue].append(token)                      # the short pass's own spelling and punctuation
+        elif tag == 'insert':                                 # words only the short pass heard
+            edge_lead, edge_trail = b1 == 0, b2 == len(tokens)
+            if not (edge_lead or edge_trail) or b2 - b1 > 2:
+                continue
+            cue = tokens[b1][1]
+            extras = [_word_key(token) for token, _ in tokens[b1:b2]]
+            if not _corroborates_extras(collected[cue], extras, v2):
+                continue
+            texts[cue].extend(token for token, _ in tokens[b1:b2])
+        else:                                                 # delete / replace: the long pass's words stay
+            if tag == 'replace':
+                cue = tokens[b1][1]
+                if tokens[b2 - 1][1] != cue:                  # the differing words straddle a sentence boundary
+                    return None
+            else:
+                cue = tokens[b1 - 1][1] if b1 > 0 else tokens[0][1]
+            texts[cue].extend(block_tokens[a1:a2])
+    if any(not words for words in texts):
+        return None
+    built = []
+    for cue, (item, words) in enumerate(zip(collected, texts)):
+        words = list(words)
+        final_mark = str(item['text']).rstrip()[-1:]
+        if final_mark in '.?!' and not words[-1].rstrip().endswith(('.', '?', '!')):
+            words[-1] = words[-1].rstrip(',;:') + final_mark
+        if built and built[-1]['text'].rstrip().endswith(('.', '?', '!')) and words[0].islower():
+            words[0] = words[0][:1].upper() + words[0][1:]
+        row = dict(item)
+        row['text'] = ' '.join(words)
+        built.append(row)
+    return built
+
+
+def resegment_unpunctuated_runs(merged, precision, v2=(), corroboration=()):
+    """Where the long pass wrote cues with no sentence end that `prefer_precision_for_unpunctuated_runs` could not
+    replace, lay its words out on the short pass's sentence boundaries (see `_resegment_block`). Cues that already end a
+    sentence are never touched; neither is a run whose replacement would overlap, or repeat words of, a neighbour."""
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    shorter = [dict(row) for row in sorted(precision, key=lambda item: item['start'])]
+    others = [dict(row) for row in list(v2 or ()) + list(corroboration or ())]
+    result = []
+    index = 0
+    while index < len(rows):
+        if _ends_sentence(rows[index]):
+            result.append(rows[index])
+            index += 1
+            continue
+        limit = index
+        while (limit + 1 < len(rows) and not _ends_sentence(rows[limit])
+               and rows[limit + 1]['start'] - rows[limit]['end'] <= 3.0):
+            limit += 1
+        chosen = None
+        for last in range(limit, index - 1, -1):
+            built = _resegment_block(rows[index:last + 1], shorter, others)
+            if not built:
+                continue
+            before = _normalized(str(result[-1]['text'])).split() if result else []
+            after = _normalized(str(rows[last + 1]['text'])).split() if last + 1 < len(rows) else []
+            head = _normalized(str(built[0]['text'])).split()
+            tail = _normalized(str(built[-1]['text'])).split()
+            if ((before and head[:min(2, len(head))] == before[-min(2, len(before)):] and len(before) >= 2)
+                    or (after and tail[-min(2, len(tail)):] == after[:min(2, len(after))] and len(after) >= 2)
+                    or (result and built[0]['start'] < result[-1]['end'] - .05)
+                    or (last + 1 < len(rows) and built[-1]['end'] > rows[last + 1]['start'] + .05)):
+                continue
+            chosen = (last, built)
+            break
+        if chosen:
+            result.extend(chosen[1])
+            index = chosen[0] + 1
+        else:
+            result.append(rows[index])
+            index += 1
+    return result
+
+
 def drop_misplaced_duplicate_cues(merged, precision, strict_speech, *, minimum_shift=5.0):
     """Remove a cue whose words were heard properly elsewhere and that sits where nothing is spoken.
 

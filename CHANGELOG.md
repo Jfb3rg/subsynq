@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.260
+
+- **Ett kort med fel drivrutin byts automatiskt.** Tidigare kunde ett jobb stoppas när den hyrda servern hade en trasig GPU-drivrutin ("CUDA … unsupported display driver"), trots att nästa server hade fungerat. Nu förstörs servern, maskinen hoppas över och nästa erbjudande hyrs, högst två gånger per jobb; därefter stoppar jobbet med den riktiga orsaken. Fel som varje server av samma kort delar (för lite grafikminne, trasiga modellfiler) stoppar som förut.
+- **Meningar som delades mitt i rättas oftare.** Ibland skriver den långa avlyssningen meningar med gemener, utan punkt och avbrutna mitt i ("launched its long" / "anticipated attack …") medan den korta avlyssningen hör hela meningar. Förut krävdes exakt samma ord för att byta; nu används den korta avlyssningens meningsgränser och skiljetecken även när den hör ett ord mer eller mindre, och den långa avlyssningens ord behålls där de skiljer sig. Antalet repliker minskar aldrig, och rader som redan slutar på punkt rörs inte.
+
 ## 0.8.259
 
 - **Jobbet visar var den hyrda servern hamnade.** Under Moln-GPU väljer du ett erbjudande och landet sparas som önskat land, men erbjudandena hos leverantören växlar hela tiden. När det önskade landet inte har någon ledig server som klarar kraven (snabbt nät, tillförlitlig, tillräcklig disk) hyrs närmaste region i stället. Det hände utan att något sa det. Nu står kort, plats och land i jobbets hårdvarurad, och en anteckning när det önskade landet saknade lediga servrar, till exempel "Moln-GPU (vast · RTX 3090 · Bulgaria, BG · inga lediga servrar i SE, närmaste plats valdes)". Texten under kostnadsplanen förklarar samma sak.

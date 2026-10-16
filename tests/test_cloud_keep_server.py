@@ -280,7 +280,7 @@ class KeptServerSafetyTests(KeepServerBase):
 class SlowHostTests(KeepServerBase):
     """A host that cannot finish installing is replaced by the next one."""
 
-    def run_rent(self, offers, *, slow=('501',), profile=None):
+    def run_rent(self, offers, *, slow=('501',), profile=None, faulty=None):
         self.created = []
         self.destroyed = []
         counter = itertools.count(501)
@@ -303,6 +303,8 @@ class SlowHostTests(KeepServerBase):
                 return json.dumps(self.payload).encode()
 
         def urlopen(request, timeout=0):
+            if current['id'] in (faulty or {}):
+                return Reply(faulty[current['id']])
             return Reply({'status': 'loading', 'bootstrap_step': 'ollama: hämtar gemma4:26b'}
                          if current['id'] in slow else {'status': 'ready'})
 
@@ -352,6 +354,62 @@ class SlowHostTests(KeepServerBase):
         self.assertEqual(len(self.created), 3, 'the first host plus two replacements')
         self.assertEqual(sorted(self.destroyed), [501, 502, 503], 'every rented server is destroyed')
         self.assertEqual(self.statuses('SELECT cloud_instance_id FROM subtitle_jobs WHERE id=1'), [(None,)])
+
+    CUDA_FAULT = {'status': 'error', 'error': 'CUDA failed with error system has unsupported display driver / '
+                                              'cuda driver combination'}
+
+    def test_a_host_with_a_broken_cuda_driver_is_replaced_instead_of_failing_the_job(self):
+        # Real case 2026-10-16: an RTX 4090 host answered like this and the Unraid job was lost.
+        result, error = self.run_rent(self.offers('m1', 'm2'), slow=(), faulty={'501': self.CUDA_FAULT})
+        self.assertIsNone(error)
+        self.assertEqual(result[1], 502)
+        self.assertEqual(self.destroyed, [501])
+        self.assertEqual([offer for _, offer in self.created], [100, 101])
+
+    def test_the_faulty_hosts_other_offers_are_skipped_and_the_note_does_not_call_it_a_stop(self):
+        notes = []
+        real_update = worker.update_job
+        with patch.object(worker, 'update_job', side_effect=lambda *a, **k: notes.append(a[3] if len(a) > 3 else '')
+                          or real_update(*a, **k)):
+            result, error = self.run_rent(self.offers('m1', 'm1', 'm2'), slow=(), faulty={'501': self.CUDA_FAULT})
+        self.assertIsNone(error)
+        self.assertEqual([offer for _, offer in self.created], [100, 102])
+        retry = [note for note in notes if 'provar en annan värd' in str(note)]
+        self.assertTrue(retry and 'CUDA failed' in retry[0] and 'Tekniskt stopp' not in retry[0], retry)
+
+    def test_no_gpu_and_too_little_memory_are_host_faults_too(self):
+        for payload in ({'status': 'no_gpu'}, {'status': 'insufficient_memory', 'ram_bytes': 2 ** 30,
+                                               'min_ram_bytes': 8 * 2 ** 30}):
+            with self.subTest(payload=payload['status']):
+                result, error = self.run_rent(self.offers('m1', 'm2'), slow=(), faulty={'501': payload})
+                self.assertIsNone(error)
+                self.assertEqual(self.destroyed, [501])
+
+    def test_a_problem_every_host_of_the_card_would_share_still_stops_the_job(self):
+        for payload in ({'status': 'insufficient_vram', 'vram_bytes': 8 * 2 ** 30, 'min_vram_bytes': 22 * 2 ** 30},
+                        {'status': 'error', 'error': 'model file is corrupt'},
+                        {'status': 'bootstrap_failed', 'bootstrap_error': 'pip install'}):
+            with self.subTest(payload=payload['status']):
+                result, error = self.run_rent(self.offers('m1', 'm2'), slow=(), faulty={'501': payload})
+                self.assertIsInstance(error, RuntimeError)
+                self.assertEqual(len(self.created), 1, 'no second server is rented')
+                self.assertEqual(self.destroyed, [501])
+
+    def test_at_most_two_replacements_for_faulty_hosts_then_the_job_stops_with_the_real_reason(self):
+        faulty = {str(number): self.CUDA_FAULT for number in (501, 502, 503, 504)}
+        result, error = self.run_rent(self.offers('m1', 'm2', 'm3', 'm4', 'm5'), slow=(), faulty=faulty)
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn('CUDA failed', str(error))
+        self.assertEqual(len(self.created), 3)
+        self.assertEqual(sorted(self.destroyed), [501, 502, 503])
+
+    def test_host_fault_markers(self):
+        for text in ('CUDA failed with error unknown error', 'unsupported display driver', 'libcuda.so.1: cannot open',
+                     'NVIDIA driver on your system is too old', 'Driver/library version mismatch'):
+            self.assertTrue(worker.cloud_host_fault({'status': 'error', 'error': text}), text)
+        for text in ('CUDA out of memory', 'model file is corrupt', ''):
+            self.assertFalse(worker.cloud_host_fault({'status': 'error', 'error': text}), text)
+        self.assertFalse(worker.cloud_host_fault({'status': 'ready'}))
 
     def test_a_single_slow_host_with_no_alternative_waits_until_the_normal_limit(self):
         result, error = self.run_rent(self.offers('m1'))
