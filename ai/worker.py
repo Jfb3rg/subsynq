@@ -67,6 +67,7 @@ from asr_windows import (corroborate_rescue, correct_rescue_onset_drift,
 from asr_consensus import normalized
 from language_gaps import (corroborated_gap_cues, gap_candidates,
                            select_weak_speech_gaps, whisper_language)
+from audio_tracks import choose_audio_track, reading_language
 from language_policy import probe_windows, resolve_filename_language
 import cloud_gpu
 import cloud_cost
@@ -1454,6 +1455,90 @@ def asr_profiles(device):
     return ((90, 30), (30, 8))
 
 
+def audio_map(job):
+    """The ffmpeg `-map` for the audio track chosen for this job (the first track when none was chosen)."""
+    stream = job.get('audio_stream')
+    return f'0:{stream}' if stream is not None else '0:a:0'
+
+
+def read_track_language(job, media, model, total, folder, stream):
+    """Whisper's own language reading of up to three speech windows of one audio track.
+
+    Returns (language or None, readings). A track the file cannot decode reads as no language."""
+    clip = Path(folder) / 'track-probe.wav'
+    readings = []
+    for window in probe_windows(total):
+        check_cancelled(job['id'])
+        try:
+            subprocess.run([
+                'ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
+                '-t', str(window['end'] - window['start']), '-map', f'0:{stream}',
+                '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip),
+            ], capture_output=True, timeout=90, check=True)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            break
+        audio = decode_audio(str(clip), sampling_rate=16000)
+        spans = get_speech_timestamps(audio, VadOptions(
+            threshold=.25, min_speech_duration_ms=180, speech_pad_ms=0))
+        speech_seconds = sum(span['end'] - span['start'] for span in spans) / 16000
+        reading = {**window, 'speech_seconds': round(speech_seconds, 3)}
+        readings.append(reading)
+        if speech_seconds < .5:
+            continue
+        segments, info = model.transcribe(
+            str(clip), language=None, multilingual=True, vad_filter=True,
+            beam_size=1, condition_on_previous_text=False, word_timestamps=False)
+        reading.update(whisper_language=info.language,
+                       whisper_text=' '.join(s.text.strip() for s in segments))
+        check_cancelled(job['id'])
+        # Two windows that agree settle it; the third would only cost time.
+        if sum(1 for item in readings if item.get('whisper_language')) >= 2 \
+                and reading_language(readings):
+            break
+    return reading_language(readings), readings
+
+
+def select_audio_track(job, media, model, total, folder):
+    """Choose the audio track to transcribe and record it on the job as `audio_stream` / `audio_choice`.
+
+    English is preferred (the language tag is checked against the audio, and untagged tracks are listened to),
+    commentary tracks are skipped, and a track the user picked (`job['audio_track']`) always wins. A file with
+    a single dialogue track is never listened to. Without any usable probe the pipeline keeps reading the
+    first track, as it always did."""
+    if job.get('audio_choice'):
+        return job['audio_choice']
+    tracks = probe_media(media).get('audio', [])
+    if not tracks:
+        return None
+    track_readings = {}
+
+    def listen(track):
+        update_job(job['id'], 'transcribing', 2,
+                   f'Lyssnar på ljudspår {track["index"]} för att välja språk')
+        language, track_readings[track['index']] = read_track_language(
+            job, media, model, total, folder, track['index'])
+        return language
+
+    choice = choose_audio_track(tracks, listen, manual=job.get('audio_track'))
+    choice['readings'] = track_readings
+    job['audio_stream'] = choice['index']
+    job['audio_choice'] = choice
+    return choice
+
+
+def audio_track_label(choice):
+    """Short Swedish note on which audio track was read and why, for the job's model line."""
+    language = whisper_language_label(choice['language']) if choice.get('language') else ''
+    reason = {
+        'manual': 'valt av dig', 'tag': 'märkt engelska', 'audio': 'hörs som engelska i ljudet',
+        'default': 'ingen engelska hittades, filens standardspår',
+        'first': 'ingen engelska hittades, första spåret',
+    }.get(choice['method'], '')
+    stale = 'det valda spåret finns inte längre, automatiskt val · ' if choice.get('stale_manual') else ''
+    details = ', '.join(part for part in (language, reason) if part) or 'okänt språk'
+    return f"{stale}ljudspår {choice['index']} ({details})"
+
+
 def probe_filename_language(job, media, model, total, folder, *, models=None):
     """Validate an explicit filename hint before it can bias any main ASR pass."""
     hint = filename_language_hint(media.name)
@@ -1468,7 +1553,7 @@ def probe_filename_language(job, media, model, total, folder, *, models=None):
                        'Kontrollerar filnamnets språkmärkning mot ljudet')
             subprocess.run([
                 'ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
-                '-t', str(window['end'] - window['start']), '-map', '0:a:0',
+                '-t', str(window['end'] - window['start']), '-map', audio_map(job),
                 '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip),
             ], capture_output=True, timeout=90, check=True)
             audio = decode_audio(str(clip), sampling_rate=16000)
@@ -1567,7 +1652,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             check_cancelled(job['id'])
             subprocess.run([
                 'ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
-                '-t', str(window['end'] - window['start']), '-map', '0:a:0',
+                '-t', str(window['end'] - window['start']), '-map', audio_map(job),
                 '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip),
             ], capture_output=True, timeout=90, check=True)
             if collect_speech:
@@ -1636,6 +1721,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         return reattach_dangling_leads(combined)
 
     with tempfile.TemporaryDirectory(prefix='subsynq-asr-') as folder:
+        select_audio_track(job, media, model, total, folder)
         policy = probe_filename_language(job, media, model, total, folder, models=models)
         job['language_policy'] = policy
         filename_language = policy['effective_language']
@@ -1692,7 +1778,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             for window in whispered_gap_windows:
                 subprocess.run([
                     'ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
-                    '-t', str(window['end'] - window['start']), '-map', '0:a:0',
+                    '-t', str(window['end'] - window['start']), '-map', audio_map(job),
                     '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip),
                 ], capture_output=True, timeout=90, check=True)
                 audio = decode_audio(str(clip), sampling_rate=16000)
@@ -1725,7 +1811,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             used_windows['Qwen kontrollerar korta luckor'] = windows
             if windows or gap_rows:
                 tracks = probe_media(media).get('audio', [])
-                layout = str(tracks[0].get('channel_layout', '')) if tracks else ''
+                chosen = next((item for item in tracks if item['index'] == job.get('audio_stream')),
+                              tracks[0] if tracks else None)
+                layout = str(chosen.get('channel_layout', '')) if chosen else ''
                 center_channel = layout.startswith(('5.1', '7.1'))
                 audio_options = (['-af', 'pan=mono|c0=FC', '-ar', '16000']
                                  if center_channel else ['-ac', '1', '-ar', '16000'])
@@ -1735,7 +1823,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                         check_cancelled(job['id'])
                         subprocess.run([
                             'ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
-                            '-t', str(window['end'] - window['start']), '-map', '0:a:0',
+                            '-t', str(window['end'] - window['start']), '-map', audio_map(job),
                             *audio_options, '-c:a', 'pcm_s16le', '-y', str(clip),
                         ], capture_output=True, timeout=90, check=True)
                         reading = models.qwen(qwen_transcribe, clip, window.get('language_hint'))
@@ -1766,7 +1854,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                         subprocess.run([
                             'ffmpeg', '-v', 'error', '-ss', str(gap['gap_start']),
                             '-i', str(media), '-t', str(gap['gap_end'] - gap['gap_start']),
-                            '-map', '0:a:0', '-ac', '1', '-ar', '16000',
+                            '-map', audio_map(job), '-ac', '1', '-ar', '16000',
                             '-c:a', 'pcm_s16le', '-y', str(clip),
                         ], capture_output=True, timeout=90, check=True)
                         audio = decode_audio(str(clip), sampling_rate=16000)
@@ -1790,7 +1878,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                         end = min(probe['gap_end'], start + 12.0)
                         subprocess.run([
                             'ffmpeg', '-v', 'error', '-ss', str(start), '-i', str(media),
-                            '-t', str(end - start), '-map', '0:a:0', '-ac', '1',
+                            '-t', str(end - start), '-map', audio_map(job), '-ac', '1',
                             '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip),
                         ], capture_output=True, timeout=90, check=True)
                         reading = models.qwen(qwen_identify, clip)
@@ -1855,7 +1943,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                     check_cancelled(job['id'])
                     subprocess.run([
                         'ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
-                        '-t', str(window['end'] - window['start']), '-map', '0:a:0',
+                        '-t', str(window['end'] - window['start']), '-map', audio_map(job),
                         '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip),
                     ], capture_output=True, timeout=90, check=True)
                     reading = models.qwen(qwen_identify, clip)
@@ -1888,7 +1976,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                         subprocess.run([
                             'ffmpeg', '-v', 'error', '-ss', str(clip_start),
                             '-i', str(media), '-t', str(clip_end - clip_start),
-                            '-map', '0:a:0', '-ac', '1', '-ar', '16000',
+                            '-map', audio_map(job), '-ac', '1', '-ar', '16000',
                             '-c:a', 'pcm_s16le', '-y', str(clip),
                         ], capture_output=True, timeout=90, check=True)
                         segments, _ = gap_model.transcribe(
@@ -1958,7 +2046,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                 clip = Path(folder) / 'tail-confirm.wav'
                 subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']),
                     '-i', str(media), '-t', str(window['end'] - window['start']),
-                    '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
+                    '-map', audio_map(job), '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
                     '-y', str(clip)], capture_output=True, timeout=90, check=True)
                 audio = decode_audio(str(clip), sampling_rate=16000)
                 speech = [{'start': window['start'] + span['start'] / 16000,
@@ -2033,7 +2121,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                 clip = Path(folder) / 'cluster-language.wav'
                 subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']),
                     '-i', str(media), '-t', str(window['end'] - window['start']),
-                    '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-y', str(clip)],
+                    '-map', audio_map(job), '-ac', '1', '-ar', '16000', '-y', str(clip)],
                     capture_output=True, timeout=90, check=True)
                 reading = models.qwen(qwen_identify, clip)
                 cluster_languages.append({**window, **reading})
@@ -2075,6 +2163,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             'language_gap_readings': language_gap_readings,
             'used_windows': used_windows,
             'language_policy': job.get('language_policy'),
+            'audio_track': job.get('audio_choice'),
             'tail_probes': tail_probes,
             'prefix_probes': prefix_probes,
             'title_windows': title_windows, 'title_rescue': title_rescue,
@@ -2162,7 +2251,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                     clip = Path(folder) / 'intervening-language.wav'
                     subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']),
                         '-i', str(media), '-t', str(window['end'] - window['start']),
-                        '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-y', str(clip)],
+                        '-map', audio_map(job), '-ac', '1', '-ar', '16000', '-y', str(clip)],
                         capture_output=True, timeout=90, check=True)
                     reading = models.qwen(qwen_identify, clip)
                     intervening_languages.append({**window, **reading})
@@ -2207,7 +2296,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                     clip = Path(folder) / 'address-language.wav'
                     subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']),
                         '-i', str(media), '-t', str(window['end'] - window['start']),
-                        '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-y', str(clip)],
+                        '-map', audio_map(job), '-ac', '1', '-ar', '16000', '-y', str(clip)],
                         capture_output=True, timeout=90, check=True)
                     reading = models.qwen(qwen_identify, clip)
                     late_languages.append({**window, **reading})
@@ -2266,7 +2355,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                                f'Qwen3-ASR avgör oense stycken · {index + 1} av {len(consensus_windows)}')
                     clip = Path(clip_folder) / 'consensus.wav'
                     subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
-                                    '-t', str(window['end'] - window['start']), '-map', '0:a:0', '-ac', '1',
+                                    '-t', str(window['end'] - window['start']), '-map', audio_map(job), '-ac', '1',
                                     '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip)],
                                    capture_output=True, timeout=90, check=True)
                     text = models.qwen(qwen_identify, clip).get('text', '')
@@ -2340,6 +2429,7 @@ def save_source_transcript(job, media, rows, hardware, model, *, raw=False,
         'source_kind': 'raw_asr' if raw else 'translation_source',
         'verified_edits': verified_edits or [],
         'language_policy': job.get('language_policy'),
+        'audio_track': job.get('audio_choice'),
         'tail_confirmation': job.get('tail_confirmation'),
         'fallback_reason': job.get('fallback_reason'),
         'rows': [{'id': row['id'], 'start': row['start'], 'end': row['end'],
@@ -4218,6 +4308,9 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
                hardware=hardware_name, model=asr_name,
                media_size_bytes=media_stat.st_size, media_mtime_ns=media_stat.st_mtime_ns)
     raw_rows = transcribe_and_release(job, media, model, device)
+    choice = job.get('audio_choice')
+    if choice and (len(choice['considered']) > 1 or choice['method'] == 'manual'):
+        asr_name += f' · {audio_track_label(choice)}'
     if job.get('forced_source_language'):
         asr_name += f" + tvingad {job['forced_source_language']}-slutavläsning"
     elif job.get('language_policy', {}).get('filename_hint'):

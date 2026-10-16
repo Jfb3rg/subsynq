@@ -9,7 +9,7 @@ ENTRIES = (
     ":stream=index,codec_type,codec_name,profile,width,height,r_frame_rate,avg_frame_rate,"
     "bit_rate,pix_fmt,bits_per_raw_sample,color_transfer,channels,channel_layout"
     ":stream_tags=language,title,BPS"
-    ":stream_disposition=default,forced,hearing_impaired,attached_pic"
+    ":stream_disposition=default,forced,hearing_impaired,comment,visual_impaired,attached_pic"
     ":stream_side_data=side_data_type"
 )
 
@@ -94,6 +94,8 @@ def probe_media(path):
                 "channels": stream.get("channels"), "channel_layout": stream.get("channel_layout"),
                 "default": bool(flags.get("default")), "forced": bool(flags.get("forced")),
                 "hearing_impaired": bool(flags.get("hearing_impaired")),
+                "commentary": bool(flags.get("comment")),
+                "visual_impaired": bool(flags.get("visual_impaired")),
             })
         total_bit_rate = _number(data.get("format", {}).get("bit_rate"))
         return {"status": "ok", "duration_seconds": data.get("format", {}).get("duration"),

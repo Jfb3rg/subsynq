@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.parse import urlencode, urlsplit, parse_qs, quote
 from library import SEASON_FOLDER, VIDEO_EXTENSIONS, has_embedded_swedish_subtitle, scan_library, subtitle_coverage
 from probe import probe_media
-from presentation import format_file_size, render_tracks
+from presentation import LANGUAGES as TRACK_LANGUAGES, format_file_size, render_tracks
 from hardware import allowed_preferences, load_hardware, render_hardware
 from cloud_cost import load_profile, parse_profile, render_cloud_cost, render_cloud_market
 from cloud_market import (PROVIDERS, catalog, load_keys, save_key, remove_key, normalize_gpu_query,
@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.253"
+VERSION = "0.8.254"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -134,6 +134,43 @@ def runnable_library_item(library, media_path):
     return next((candidate for candidate in library.get("items", [])
                  if candidate.get("path") == media_path
                  and candidate.get("kind") in {"episode", "movie", "media"}), None)
+
+
+def requested_audio_track(value, item):
+    """The audio stream a user picked in the start form (None = automatic, English first). It must be a track
+    the library scan saw in this file, so a stale page can never name a stream that is not there."""
+    value = str(value or '').strip()
+    if not value:
+        return None
+    probe = item.get('probe') or {}
+    indexes = ({track.get('index') for track in probe.get('audio', [])}
+               if probe.get('status') == 'ok' else set())
+    try:
+        index = int(value)
+    except ValueError:
+        index = None
+    if index not in indexes:
+        raise ValueError('Det valda ljudspåret finns inte i filen. Skanna om biblioteket och försök igen.')
+    return index
+
+
+def render_audio_track_choice(item, lang="sv"):
+    """A drop-down in the start form for a file with several audio tracks: automatic or one named track."""
+    probe = item.get('probe') or {}
+    tracks = probe.get('audio', []) if probe.get('status') == 'ok' else []
+    if len(tracks) < 2:
+        return ''
+    options = [f"<option value=''>{escape(t('audio_track_auto', lang))}</option>"]
+    for track in tracks:
+        language = TRACK_LANGUAGES.get(str(track.get('language', 'und')).lower(), track.get('language', 'und'))
+        parts = [f"{t('audio_track_word', lang)} {track['index']}", language, str(track.get('codec', '')).upper()]
+        if track.get('channels'):
+            parts.append(f"{track['channels']} {t('audio_track_channels', lang)}")
+        if track.get('title'):
+            parts.append(track['title'])
+        options.append(f"<option value='{int(track['index'])}'>{escape(' · '.join(part for part in parts if part))}</option>")
+    return (f"<label class='audio-pick'>{escape(t('audio_track_label', lang))} "
+            f"<select name='audio_track'>{''.join(options)}</select></label> ")
 
 
 class BusyError(Exception):
@@ -435,6 +472,7 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
             "<form action='/jobs/start' method='post' class='start-job-form preserve-seasons'>"
             f"<input type='hidden' name='token' value='{escape(token)}'>"
             f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>"
+            f"{render_audio_track_choice(item, lang)}"
             f"<button type='submit' class='small-button'>{escape(t('action_create_subtitle', lang))}</button></form>"
         )
     kind_label_keys = {'episode': 'kind_label_episode', 'movie': 'kind_label_movie'}
@@ -908,7 +946,7 @@ def retry_failed_job(database, media_path, job_id, *, replace_existing=False):
         return enqueue_restart(database, item['path'], item['name'], item['ai_sv_path'])
     if item.get('embedded_sv_exists') and not (ignore and ignore[0] == '1'):
         raise ValueError('Filen har redan en inbäddad svensk undertext.')
-    return enqueue_job(database, item['path'], item['name'])
+    return enqueue_job(database, item['path'], item['name'], job.get('audio_track'))
 
 
 def render_queue_job_row(job, library_by_path, token, *, cancellable, lang="sv"):
@@ -1774,7 +1812,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Avsnittet har redan en svensk AI-undertext.')
                 if item.get('embedded_sv_exists') and not ignore_existing:
                     raise ValueError('Avsnittet har redan en inbäddad svensk undertext.')
-                enqueue_job(DATABASE, item['path'], item['name'])
+                enqueue_job(DATABASE, item['path'], item['name'],
+                            requested_audio_track(form.get('audio_track', [''])[0], item))
             except (ValueError, sqlite3.Error, OSError) as error:
                 self.respond(400, 'text/plain', str(error))
                 return

@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.254
+
+- **Filer med flera ljudspår: engelska väljs automatiskt, och du kan välja spår själv.** Tidigare lyssnade AI:n alltid på det första ljudspåret. En film med en dubbning först och originalet efter (som Man of War-trailern, med tysk dubbning som spår 0) fick därför undertexter av dubbningens felhörda ord och stoppades av kvalitetskontrollen. Nu hoppas kommentar- och syntolkningsspår över, ett spår som är märkt som engelskt kontrolleras mot ljudet, spår utan språkmärkning avlyssnas, och finns inget engelskt spår används filens standardspår (annars det första). Filer med bara ett ljudspår påverkas inte och avlyssnas inte extra.
+- **Eget val i gränssnittet.** För filer med minst två ljudspår visas rutan **Ljudspår** bredvid **Skapa svensk AI-undertext**. Väljer du ett spår används det alltid, utan avlyssning, och valet följer med vid omförsök och omkörning. Jobbets modellrad visar vilket spår som lästes och varför. Massval, automatisk start och Radarr/Sonarr väljer alltid automatiskt.
+
 ## 0.8.253
 
 - **Rättelse av 0.8.252: moln-GPU ska fungera på 24 GB-kort, och texten som rekommenderade 32 GB-kort är borttagen.** Mätprovet visade att granskaren gemma4:31b hittar färre påhittade fel än gemma4:26b, men inte att en fil alltid klarar granskningen: en Man of War-körning på ett 32 GB-kort stoppades ändå. Planen beskriver nu bara vad som mättes.

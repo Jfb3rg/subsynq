@@ -37,6 +37,9 @@ def initialize_jobs(database):
         # left running by a crash mid-job, instead of leaking cost forever.
         if "cloud_instance_id" not in existing:
             db.execute("ALTER TABLE subtitle_jobs ADD COLUMN cloud_instance_id INTEGER")
+        # The audio track (ffprobe stream index) the user picked by hand; NULL = the worker chooses (English first).
+        if "audio_track" not in existing:
+            db.execute("ALTER TABLE subtitle_jobs ADD COLUMN audio_track INTEGER")
         # Recreate it because SQLite cannot alter an index predicate in place.
         db.execute("DROP INDEX IF EXISTS one_active_subtitle_job")
         db.execute("""CREATE UNIQUE INDEX one_active_subtitle_job
@@ -46,14 +49,15 @@ def initialize_jobs(database):
                                      'restart_queued','restarting')""")
 
 
-def enqueue_job(database, media_path, media_name):
+def enqueue_job(database, media_path, media_name, audio_track=None):
+    """Queue a subtitle job. `audio_track` is the audio stream the user picked; None lets the worker choose."""
     stamp = now()
     try:
         with sqlite3.connect(database, timeout=5) as db:
             cursor = db.execute(
-                "INSERT INTO subtitle_jobs(media_path,media_name,status,progress,message,created_at,updated_at) "
-                "VALUES (?,?, 'queued',0,'Väntar på AI-worker',?,?)",
-                (media_path, media_name, stamp, stamp),
+                "INSERT INTO subtitle_jobs(media_path,media_name,status,progress,message,created_at,updated_at,"
+                "audio_track) VALUES (?,?, 'queued',0,'Väntar på AI-worker',?,?,?)",
+                (media_path, media_name, stamp, stamp, audio_track),
             )
             return cursor.lastrowid
     except sqlite3.IntegrityError as error:
@@ -80,10 +84,14 @@ def enqueue_restart(database, media_path, media_name, subtitle_path):
     stamp = now()
     try:
         with sqlite3.connect(database, timeout=5) as db:
+            # A re-run keeps the audio track the user picked for the earlier run of this file.
+            earlier = db.execute("SELECT audio_track FROM subtitle_jobs WHERE media_path=? "
+                                 "ORDER BY id DESC LIMIT 1", (media_path,)).fetchone()
             cursor = db.execute(
-                "INSERT INTO subtitle_jobs(media_path,media_name,status,progress,message,output_path,created_at,updated_at) "
-                "VALUES (?,?, 'restart_queued',0,'Väntar på säker borttagning innan omkörning',?,?,?)",
-                (media_path, media_name, subtitle_path, stamp, stamp),
+                "INSERT INTO subtitle_jobs(media_path,media_name,status,progress,message,output_path,created_at,"
+                "updated_at,audio_track) "
+                "VALUES (?,?, 'restart_queued',0,'Väntar på säker borttagning innan omkörning',?,?,?,?)",
+                (media_path, media_name, subtitle_path, stamp, stamp, earlier[0] if earlier else None),
             )
             return cursor.lastrowid
     except sqlite3.IntegrityError as error:

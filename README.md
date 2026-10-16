@@ -78,6 +78,13 @@ Manuell start är standard. Automatisk skanning och jobbstart kan väljas i
 inställningarna. Befintliga SubSynq-undertexter skrivs inte över automatiskt;
 borttagning via gränssnittet kräver bekräftelse.
 
+Har filen flera ljudspår (till exempel en dubbning först och originalet efter)
+lyssnar SubSynq på det engelska när det går: kommentar- och syntolkningsspår
+hoppas över, en språkmärkning kontrolleras mot ljudet och spår utan märkning
+avlyssnas. Finns inget engelskt spår används filens standardspår. Bredvid
+**Skapa svensk AI-undertext** finns då rutan **Ljudspår** där du kan välja ett
+spår själv; det valet används alltid, även vid omförsök och omkörning.
+
 ## Modeller och körsätt
 
 Whisper large-v3 används för avlyssning. Qwen3-ASR och selektiva Whisper
