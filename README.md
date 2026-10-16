@@ -78,6 +78,10 @@ Manuell start är standard. Automatisk skanning och jobbstart kan väljas i
 inställningarna. Befintliga SubSynq-undertexter skrivs inte över automatiskt;
 borttagning via gränssnittet kräver bekräftelse.
 
+Webhooks från Radarr, Sonarr, Jellyfin och Emby köar bara ett jobb när
+**Starta undertextjobb automatiskt** (Inställningar › Allmänt) är på. Är den av
+händer ingenting när en fil importeras.
+
 Har filen flera ljudspår (till exempel en dubbning först och originalet efter)
 väljer SubSynq själv: ett svenskt spår först (det behöver ingen översättning),
 annars ett engelskt. Kommentar- och syntolkningsspår hoppas över, en

@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.256"
+VERSION = "0.8.257"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1133,7 +1133,8 @@ def render_settings_content(theme, accent, hardware, preference, token, saved,
         f"<input type='checkbox' name='auto_start_jobs' value='1'{start_checked} "
         "onchange='this.closest(\"form\").requestSubmit()'>"
         "<span>Starta undertextjobb automatiskt för nyupptäckta filer</span></label>"
-        "<p class='muted'>Kräver automatisk sökning ovan. Gäller bara filer som aldrig haft ett "
+        "<p class='muted'>Gäller också webhooks från Radarr, Sonarr, Jellyfin och Emby: är den här av köar de inget jobb. "
+        "Automatisk sökning ovan krävs för biblioteksskanningen. Gäller bara filer som aldrig haft ett "
         "jobb tidigare — en misslyckad eller underkänd fil körs aldrig om av sig själv.</p>"
         "<label class='checkbox-row'>"
         f"<input type='checkbox' name='include_english_subtitle' value='1'{english_checked} "
@@ -1200,7 +1201,8 @@ def render_media_settings_content(token, webhook_token, radarr_root_prefix, sona
         "<label>Sonarr rotmapp (motsvarande för serier, jämfört med SubSynqs eget /tv)<br>"
         f"<input type='text' name='sonarr_root_prefix' value='{escape(sonarr_root_prefix, quote=True)}' "
         "placeholder='t.ex. /data/tv' style='width:100%;max-width:420px;'></label>"
-        "<p class='muted'>Bara händelsen \"Download\" köar ett jobb. Andra händelser, inklusive "
+        "<p class='muted'>Bara händelsen \"Download\" köar ett jobb, och bara när \"Starta undertextjobb automatiskt\" är på "
+        "under Inställningar › Allmänt. Andra händelser, inklusive "
         "\"Test\", besvaras men ignoreras.</p>"
         "<p><button type='submit'>Spara rotmappar</button></p>"
         "</form>"
@@ -2076,7 +2078,7 @@ class Handler(BaseHTTPRequestHandler):
                     "('webhook_token','radarr_root_prefix','sonarr_root_prefix',"
                     "'jellyfin_movies_root_prefix','jellyfin_tv_root_prefix',"
                     "'emby_movies_root_prefix','emby_tv_root_prefix',"
-                    "'ignore_existing_subtitle')"))
+                    "'ignore_existing_subtitle','auto_start_jobs')"))
         except sqlite3.Error:
             self.respond(503, "text/plain", "Databasen är inte tillgänglig just nu.")
             return
@@ -2138,6 +2140,14 @@ class Handler(BaseHTTPRequestHandler):
                 ))
         except (KeyError, TypeError, ValueError) as error:
             self.respond(400, 'text/plain', str(error))
+            return
+        if metadata.get('auto_start_jobs') != '1':
+            # The same switch as for the library scan: with "Starta undertextjobb automatiskt" off, nothing starts a
+            # (billable) job by itself, and that includes the webhooks. Real case 2026-10-16: Sonarr imported an
+            # episode and its webhook queued a cloud job although the setting was off.
+            self.respond(200, 'application/json', json.dumps({
+                'status': 'skipped',
+                'reason': 'Automatisk jobbstart är av under Inställningar, så webhooken köar inget jobb.'}))
             return
         reason = queue_webhook_media(media, metadata.get('ignore_existing_subtitle') == '1')
         if reason:

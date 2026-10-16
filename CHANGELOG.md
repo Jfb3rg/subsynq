@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.257
+
+- **Webhooks köar inget jobb när automatisk jobbstart är av.** Tidigare kunde Radarr, Sonarr, Jellyfin och Emby starta ett undertextjobb (och därmed en hyrd moln-GPU) när en fil importerades, även om **Starta undertextjobb automatiskt** var avstängt. Nu köar webhookarna bara ett jobb när den inställningen är på; annars svarar de "hoppade över" och inget händer. Texterna under Inställningar säger detsamma.
+
 ## 0.8.256
 
 - **Ljudspår: svenska först, sedan engelska.** Har en film ett svenskt ljudspår väljs det (det behöver ingen översättning), annars det engelska, annars filens standardspår. Spår utan språkmärkning avlyssnas, så ett svenskt eller engelskt spår hittas även när filen saknar märkning, och en märkning som inte stämmer med ljudet litas inte på. Finns flera spår på samma språk hoppas kommentar- och syntolkningsspår över, och bland resten väljs filens standardspår, sedan det med flest kanaler (huvudmixen före en omärkt stereokommentar). Du kan fortfarande välja spår själv i rutan **Ljudspår**.
