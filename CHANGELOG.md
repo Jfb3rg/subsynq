@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.262
+
+- **Filmlistan kläms inte ihop längre på surfplatta och dator.** På skärmbredder över 700 px kunde namnkolumnen i listorna Filmer, Serier och Extra bli några få bokstäver bred, så att filmens namn bröts efter två eller tre tecken per rad. Orsaken var ljudspårsväljaren ("Ljudspår", som visas för filer med flera ljudspår): den blev lika bred som sitt längsta spårnamn, över 1 000 px för en film med många spår, och tvingade hela tabellen till ca 2 000 px. Nu har fillistorna fast kolumnbredd (namnet får 60 %), väljaren är exakt lika bred som sin cell, långa spårnamn kortas i väljaren och statusetiketten får radbrytas upp till 1 100 px bredd. Kontrollerat med ett riktigt bibliotek på 621 filmer, 2 242 avsnitt och 40 extrafiler på 500–1 920 px (före: alla 621 filmrader 39 px breda och sidan 2 000 px bred; efter: namnkolumnen minst 379 px och ingen sidledes scroll). Telefonvyn (700 px och smalare) var inte påverkad.
+- **Bilderna är oberoende av filrättigheterna i källträdet.** `Dockerfile`, `Dockerfile.ai` och `Dockerfile.ai-cuda` gör de kopierade källfilerna läsbara för alla efter kopieringen (`RUN chmod -R a+rX`). En källfil utan läsrätt för andra användare kunde annars göra att arbetaren, som körs som en annan användare, inte kunde läsa den och startade om i en loop.
+
 ## 0.8.261
 
 - **Reservläsning för språk med eget alfabet.** När skriften avslöjar språket (till exempel tamil eller koreanska) läser SubSynq om talet med det språket fixerat. Ser den läsningen opålitlig ut, med mycket text i fel alfabet eller låg säkerhet, läser Whisper large-v2 samma tal och används bara om den är tydligt bättre. Annars ändras ingenting och ingen extra tid går åt. Särskilda finjusterade tamil- och koreanamodeller prövades men var sämre, så de används inte.

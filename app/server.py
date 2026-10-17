@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.261"
+VERSION = "0.8.262"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -154,6 +154,9 @@ def requested_audio_track(value, item):
     return index
 
 
+AUDIO_TRACK_TITLE_LIMIT = 40
+
+
 def render_audio_track_choice(item, lang="sv"):
     """A drop-down in the start form for a file with several audio tracks: automatic or one named track."""
     probe = item.get('probe') or {}
@@ -167,7 +170,9 @@ def render_audio_track_choice(item, lang="sv"):
         if track.get('channels'):
             parts.append(f"{track['channels']} {t('audio_track_channels', lang)}")
         if track.get('title'):
-            parts.append(track['title'])
+            # A long track name must not make the drop-down (and with it the table) as wide as the name.
+            title = ' '.join(str(track['title']).split())
+            parts.append(title if len(title) <= AUDIO_TRACK_TITLE_LIMIT else title[:AUDIO_TRACK_TITLE_LIMIT - 1].rstrip() + '…')
         options.append(f"<option value='{int(track['index'])}'>{escape(' · '.join(part for part in parts if part))}</option>")
     return (f"<label class='audio-pick'>{escape(t('audio_track_label', lang))} "
             f"<select name='audio_track'>{''.join(options)}</select></label> ")

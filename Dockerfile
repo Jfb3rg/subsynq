@@ -8,6 +8,9 @@ RUN groupadd --gid 1000 subsynq && useradd --uid 1000 --gid subsynq --no-create-
     && mkdir -p /config /movies /tv /extra /models \
     && chown subsynq:subsynq /config /models
 COPY app/ /app/
+# The image never depends on the file modes of the source tree (a source file whose mode lacked read for everyone once made
+# the worker, which runs as another user, fail to import it and restart in a loop).
+RUN chmod -R a+rX /app
 USER subsynq
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

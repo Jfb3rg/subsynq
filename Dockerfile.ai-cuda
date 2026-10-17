@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir -c /tmp/constraints-worker.txt \
     && pip check
 COPY app/ /app/
 COPY ai/ /ai/
+# The image never depends on the file modes of the source tree (a source file whose mode lacked read for everyone once made
+# the worker, which runs as another user, fail to import it and restart in a loop).
+RUN chmod -R a+rX /app /ai
 USER subsynq
 # Runtime libraries only: no Torch/Qwen dependency in the Whisper worker.
 ENV HF_HOME=/models/huggingface \

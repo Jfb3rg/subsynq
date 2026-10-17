@@ -169,6 +169,12 @@ section, .card { background: var(--sur); border: 1px solid var(--bd); border-rad
 table { width: 100%; border-collapse: collapse; text-align: left; }
 td, th { padding: 10px 0; border-bottom: 1px solid var(--bd); }
 .filename { overflow-wrap: anywhere; width: 70%; padding-right: 16px; }
+/* A file list never lets its content set the column widths. The audio-track drop-down (sized by its longest track name,
+   over 1000 px for a Blu-ray with many tracks) once made the table 2000 px wide and squeezed every name to a few letters
+   per line on a tablet or desktop; the name column now keeps 60 % of the table whatever the other column holds. */
+table.files { table-layout: fixed; }
+table.files th:first-child, table.files td.filename { width: 60%; }
+table.files td { overflow-wrap: anywhere; }
 .warning { border-left: 3px solid var(--wn); padding-left: 12px; color: var(--wn); }
 .success { color: var(--ok); background: var(--okb); border: 1px solid var(--ok); border-radius: 8px; padding: 10px 12px; }
 .hardware-form { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; }
@@ -209,8 +215,8 @@ details.row-more[open] > summary::after { content: " ▴"; }
 .job-message { display: block; margin: 6px 0; }
 .job-hardware { display: block; margin: 6px 0; color: var(--sec); }
 .start-job-form { margin-top: 8px; }
-.audio-pick { display: inline-block; margin: 0 8px 6px 0; font-size: 14px; }
-.audio-pick select { max-width: 100%; font-size: 14px; padding: 6px 8px; }
+.audio-pick { display: block; max-width: 100%; margin: 0 0 6px; font-size: 14px; }
+.audio-pick select { display: block; width: 100%; max-width: 100%; min-width: 0; margin-top: 4px; font-size: 14px; padding: 6px 8px; text-overflow: ellipsis; }
 .small-button { padding: 8px 11px; font-size: 14px; }
 .small-link { display: block; margin-top: 8px; font-size: 14px; }
 .delete-job-form { margin-top: 8px; }
@@ -247,7 +253,8 @@ details.row-more[open] > summary::after { content: " ▴"; }
   .nav-spacer { display: none; }
   .nav-group { flex: 1 1 100%; }
 }
-@media (max-width: 650px) { .subtitle-status { white-space: normal; } .season-group summary small { display: block; margin-left: 24px; } }
+@media (max-width: 1100px) { .subtitle-status { white-space: normal; } }
+@media (max-width: 650px) { .season-group summary small { display: block; margin-left: 24px; } }
 /* Phone layout. A table's name column used to be squeezed to two letters per line by the state column and its
    buttons (overflow-wrap:anywhere lets the column shrink to nothing), and a wide table pushed the page sideways. */
 @media (max-width: 700px) {

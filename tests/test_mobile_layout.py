@@ -16,6 +16,35 @@ def phone_css():
     return INDEX[start:INDEX.index('\n}\n', start)]
 
 
+class WideLayoutTests(unittest.TestCase):
+    """The tablet and desktop widths (above the 700 px phone block). A drop-down sized by its longest option once made the film
+    table 2000 px wide and squeezed every name to a few letters per line (reproduced on a real library of 621 films)."""
+
+    def test_a_file_list_never_lets_its_content_size_the_columns(self):
+        self.assertIn('table.files { table-layout: fixed; }', INDEX)
+        self.assertIn('table.files th:first-child, table.files td.filename { width: 60%; }', INDEX)
+        self.assertIn('table.files td { overflow-wrap: anywhere; }', INDEX)
+
+    def test_the_audio_drop_down_is_as_wide_as_its_cell_not_as_its_longest_track_name(self):
+        self.assertIn('.audio-pick select { display: block; width: 100%; max-width: 100%; min-width: 0;', INDEX)
+        self.assertIn('text-overflow: ellipsis;', INDEX[INDEX.index('.audio-pick select'):INDEX.index('\n', INDEX.index('.audio-pick select'))])
+
+    def test_the_status_pill_may_wrap_up_to_a_desktop_width(self):
+        self.assertIn('@media (max-width: 1100px) { .subtitle-status { white-space: normal; } }', INDEX)
+
+    def test_a_long_track_name_is_cut_in_the_drop_down(self):
+        long_title = 'Director commentary with the cast and crew about every scene of the whole film in surround ' * 3
+        tracks = [{'index': 1, 'language': 'eng', 'codec': 'dts', 'channels': 6, 'title': long_title},
+                  {'index': 2, 'language': 'swe', 'codec': 'ac3', 'channels': 2, 'title': 'Svenska'}]
+        item = {'probe': {'status': 'ok', 'audio': tracks}}
+        html = server.render_audio_track_choice(item)
+        options = re.findall(r"<option value='(\d+)'>(.*?)</option>", html)
+        self.assertEqual([value for value, _ in options], ['1', '2'])
+        self.assertTrue(options[0][1].endswith('…'))
+        self.assertLessEqual(len(options[0][1]), 90, 'the whole label stays bounded however long the track name is')
+        self.assertIn('Svenska', options[1][1], 'a short title is kept whole')
+
+
 class PhoneLayoutTests(unittest.TestCase):
     def test_file_lists_are_stackable_so_the_name_keeps_the_whole_line(self):
         item = {'path': '/extra/a.mp4', 'name': 'a.mp4', 'kind': 'media', 'size_bytes': 1024,
