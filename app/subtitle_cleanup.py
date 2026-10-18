@@ -9,6 +9,8 @@ import json
 import os
 import re
 import shutil
+import tempfile
+import threading
 import time
 from datetime import datetime
 from html import escape
@@ -140,12 +142,42 @@ def scan_srt(roots):
     return items
 
 
+def write_atomically(target, text):
+    """Replace `target` in one step. The temporary file has its own unique name: with one shared name, two saves at the same
+    moment (several scan clicks) both wrote it and the first rename took it from the other ("cleanup-scan.json.tmp" not found)."""
+    target = Path(target)
+    descriptor, name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.chmod(name, 0o644)       # mkstemp creates 0600; the saved file stays readable like a normally created one
+        os.replace(name, target)
+    except BaseException:
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
+        raise
+
+
 def save_scan(config, items, now=None):
-    config = Path(config)
-    target = config / "cleanup-scan.json"
-    temporary = config / "cleanup-scan.json.tmp"
-    temporary.write_text(json.dumps({"scanned_at": now or time.time(), "items": items}), encoding="utf-8")
-    temporary.replace(target)
+    write_atomically(Path(config) / "cleanup-scan.json", json.dumps({"scanned_at": now or time.time(), "items": items}))
+
+
+SCAN_LOCK = threading.Lock()
+
+
+def scan_if_needed(config, roots, jobs, requested):
+    """Scan the subtitle folders and save the result, but only ONE scan at a time. A scan of a big library takes tens of seconds
+    (the Unraid log: 40-50 s with eight at once, 8 s alone), so a click that arrives meanwhile waits for the running scan and shares
+    its result instead of starting another one that slows both down. `requested` is when the click came in; a saved scan that
+    finished after that already answers it. Returns True when this call did the scanning."""
+    with SCAN_LOCK:
+        finished = load_scan(config)["scanned_at"]
+        if finished is not None and finished >= requested:
+            return False
+        save_scan(config, mark_stale(scan_srt(roots), jobs))
+        return True
 
 
 def load_scan(config):
@@ -190,10 +222,7 @@ def filter_query(filters):
 
 def save_filters(config, filters):
     """Remember the last-used filters so a reload or the menu link keeps them."""
-    target = Path(config) / "cleanup-filters.json"
-    temporary = Path(config) / "cleanup-filters.json.tmp"
-    temporary.write_text(json.dumps(filter_query(filters)), encoding="utf-8")
-    temporary.replace(target)
+    write_atomically(Path(config) / "cleanup-filters.json", json.dumps(filter_query(filters)))
 
 
 def load_filters(config):
@@ -377,10 +406,7 @@ def load_retention(config):
 
 def save_retention(config, days):
     days = min(max(int(days), 0), MAX_RETENTION_DAYS)
-    target = Path(config) / "cleanup-settings.json"
-    temporary = Path(config) / "cleanup-settings.json.tmp"
-    temporary.write_text(json.dumps({"trash_days": days}), encoding="utf-8")
-    temporary.replace(target)
+    write_atomically(Path(config) / "cleanup-settings.json", json.dumps({"trash_days": days}))
     return days
 
 

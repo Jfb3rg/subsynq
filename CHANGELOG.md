@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.265
+
+- **Städa undertexter kraschar inte längre när du klickar flera gånger på Skanna om.** Skanningen av en stor undertextmapp tar tid (på ett stort bibliotek 8 till 40 sekunder), och om du klickade igen eller ändrade ett filter medan den pågick startade en ny skanning ovanpå, och flera av dem misslyckades med "Skanningen misslyckades. Se loggen." Nu körs bara en skanning åt gången: ett nytt klick under en pågående skanning väntar på den och visar samma resultat, vilket också gör att alla blir klara snabbare. Filter och lagringstid för papperskorgen sparas dessutom säkert även om två sparningar sker samtidigt.
+
 ## 0.8.264
 
 - **Ny knapp: "Bara utan undertext".** Över listorna Filmer, Serier och Extra finns nu två val: **Alla** och **Bara utan undertext**, båda med antal. Med det andra valet visas bara de filmer, serier och avsnitt som ännu saknar svensk undertext, och rubriken visar till exempel "12 av 621 filer". Serier där allt redan har undertext göms. Valet följer med när du skapar en undertext, avbryter, tar bort, kör om, markerar flera eller skannar, så du hamnar kvar i samma lista. Är allt redan klart står det att alla filer har svensk undertext. En inbäddad svensk undertext räknas som förut efter inställningen under Inställningar.

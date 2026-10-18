@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.264"
+VERSION = "0.8.265"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -2424,6 +2424,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/cleanup":
                 # A submitted filter form always carries "kind"; a plain visit (menu link,
                 # reload, redirect after a move) falls back to the last-used filters.
+                request_started = time.time()
                 try:
                     if "kind" in query:
                         cleanup_filters = subtitle_cleanup.parse_filters(query)
@@ -2431,8 +2432,8 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         cleanup_filters = subtitle_cleanup.load_filters(CONFIG)
                     if query.get("scan", [""])[0] == "1":
-                        subtitle_cleanup.save_scan(CONFIG, subtitle_cleanup.mark_stale(
-                            subtitle_cleanup.scan_srt(CLEANUP_ROOTS), jobs))
+                        # One scan at a time: clicks that arrive while it runs wait and share its result.
+                        subtitle_cleanup.scan_if_needed(CONFIG, CLEANUP_ROOTS, jobs, request_started)
                         # Redirect so a reload shows the saved result instead of rescanning.
                         self.send_response(303)
                         self.send_header("Location", "/cleanup?" + urlencode(
