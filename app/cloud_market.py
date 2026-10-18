@@ -184,16 +184,50 @@ def order_offers_for_rental(offers, max_hourly, prefer_country='', prefer_machin
     allowed = [offer for offer in offers
                if max_hourly is None or offer.get('price') is None or offer['price'] <= max_hourly]
     unknown = len(REGION_GROUPS)
+    floor = min((_ranking_cost(offer) for offer in allowed), default=0)
+
+    def wanted_country(offer):
+        # A country is a preference, not worth a rental that costs much more than the cheapest one (traffic prices differ 40 times).
+        # Only offers that carry a whole-job estimate are held to it; the others keep the country wish as before.
+        if not prefer_country or offer.get('country') != prefer_country:
+            return False
+        if not isinstance(offer.get('estimated_job_cost'), (int, float)):
+            return True
+        return offer['estimated_job_cost'] <= floor * 1.5 + .05
+
     return sorted(allowed, key=lambda offer: (
         0 if prefer_machine is not None and offer.get('machine_id') == prefer_machine else 1,
-        0 if prefer_country and offer.get('country') == prefer_country else 1,
+        0 if wanted_country(offer) else 1,
         REGION_GROUP_RANK.get(offer.get('region'), unknown),
-        offer['price'] if isinstance(offer.get('price'), (int, float)) else float('inf')))
+        _ranking_cost(offer)))
+
+
+def _ranking_cost(offer):
+    """What a rental is ranked by within a region: the estimated cost of a whole job where the offer carries it (a GPU
+    chain rental: hour price plus download traffic), otherwise the hour price."""
+    if isinstance(offer.get('estimated_job_cost'), (int, float)):
+        return offer['estimated_job_cost']
+    return offer['price'] if isinstance(offer.get('price'), (int, float)) else float('inf')
 
 
 def _read_json(request):
     with urlopen(request, timeout=10) as response:
         return json.load(response)
+
+
+# What a whole-chain GPU rental really costs: Vast bills the hour AND every gigabyte the server downloads, and the chain downloads
+# a lot (Gemma 27B and 26B ~35 GB, Whisper v3 and v2 ~6 GB, Qwen ~5 GB, torch and other packages ~5 GB, Ollama ~1.5 GB: ~55 GB).
+# The price per gigabyte differs 40 times between hosts (0.0007 to 0.027 USD/GB, offers 2026-10-18), so a host that looks cheap by the
+# hour could cost 0.9 USD per job instead of 0.2 (measured on two Tamil jobs: 0.87 USD each, hourly price alone said 0.06-0.12).
+CHAIN_JOB_HOURS = .5
+CHAIN_DOWNLOAD_GB = 55
+DEFAULT_DOWNLOAD_COST_PER_GB = .01      # a host that does not say what its traffic costs is assumed to be in the middle
+
+
+def estimated_job_cost(price, download_cost_per_gb, *, hours=CHAIN_JOB_HOURS, download_gb=CHAIN_DOWNLOAD_GB):
+    """USD for one whole-chain job on a host: the hour price for the hours plus the download traffic."""
+    per_gb = DEFAULT_DOWNLOAD_COST_PER_GB if download_cost_per_gb is None else download_cost_per_gb
+    return round(float(price) * hours + float(per_gb) * download_gb, 2)
 
 
 def _price(value):
@@ -223,7 +257,8 @@ def normalize_vast(payload):
         location = location.strip()[:60] if isinstance(location, str) else ''
         country = country_from_geolocation(location)
         machine = offer.get('machine_id')
-        result.append({'id': str(offer_id), 'gpu': gpu, 'price': price,
+        traffic = _price(offer.get('inet_down_cost'))
+        result.append({'id': str(offer_id), 'gpu': gpu, 'price': price, 'download_cost_per_gb': traffic,
                        'machine_id': machine if isinstance(machine, int) and not isinstance(machine, bool) else None,
                        'vram_gb': round(vram / 1024, 1) if known else None,
                        'vram_mb': vram if known else None,
@@ -326,8 +361,10 @@ def fetch_vast_chain_gpu_offers(key, gpu_query, reader=_read_json):
         speeds = {str(offer.get('id')): offer for offer in good}
         for item in result:
             raw = speeds.get(item['id']) or {}
+            item['estimated_job_cost'] = estimated_job_cost(item['price'], item.get('download_cost_per_gb'))
             item['detail'] = (f"{item['detail']} · ner {int(raw.get('inet_down') or 0)} Mbit/s"
                               f" · tillförl. {raw.get('reliability', 0):.2f}"
+                              f" · ca {item['estimated_job_cost']:.2f} USD per jobb"
                               + (f" · {item['location']}" if item.get('location') else ''))
             # Lets a rental that turned out slow skip the same machine's other offers.
             item['machine_id'] = raw.get('machine_id')

@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.263
+
+- **Hyrning av GPU-server räknar nu med nedladdningskostnaden.** Vast tar betalt både per timme och per nedladdad gigabyte, och SubSynqs kedja hämtar ca 55 GB modeller och paket på varje ny server. Priset per gigabyte skiljer 40 gånger mellan värdar (0,0007 till 0,027 USD). Timpriset ensamt gav därför fel bild: två tamilska jobb kostade ca 0,87 USD var, där timpriset sa 0,06–0,12. Nu rankas erbjudandena efter beräknad kostnad per jobb (timpris × 0,5 timme + trafikpris × 55 GB), erbjudandelistan visar "ca X USD per jobb", jobbets hårdvarurad visar den beräknade kostnaden, och ett önskat land väljs bara om servern inte är mycket dyrare än den billigaste.
+
 ## 0.8.262
 
 - **Filmlistan kläms inte ihop längre på surfplatta och dator.** På skärmbredder över 700 px kunde namnkolumnen i listorna Filmer, Serier och Extra bli några få bokstäver bred, så att filmens namn bröts efter två eller tre tecken per rad. Orsaken var ljudspårsväljaren ("Ljudspår", som visas för filer med flera ljudspår): den blev lika bred som sitt längsta spårnamn, över 1 000 px för en film med många spår, och tvingade hela tabellen till ca 2 000 px. Nu har fillistorna fast kolumnbredd (namnet får 60 %), väljaren är exakt lika bred som sin cell, långa spårnamn kortas i väljaren och statusetiketten får radbrytas upp till 1 100 px bredd. Kontrollerat med ett riktigt bibliotek på 621 filmer, 2 242 avsnitt och 40 extrafiler på 500–1 920 px (före: alla 621 filmrader 39 px breda och sidan 2 000 px bred; efter: namnkolumnen minst 379 px och ingen sidledes scroll). Telefonvyn (700 px och smalare) var inte påverkad.
