@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.265"
+VERSION = "0.8.266"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -2463,7 +2463,7 @@ class Handler(BaseHTTPRequestHandler):
                 content = subtitle_cleanup.render_cleanup_content(
                     subtitle_cleanup.load_scan(CONFIG), cleanup_filters,
                     subtitle_cleanup.list_trash(CONFIG / "trash"), SCAN_TOKEN, notice, cleanup_page,
-                    retention_days=retention_days, lang=ui_lang)
+                    retention_days=retention_days, lang=ui_lang, scanning=subtitle_cleanup.scan_running())
                 page_title, active_nav = t("page_title_cleanup", data["ui_language"]), "cleanup"
             elif path == "/settings/models":
                 content = models_card.render_models_page(

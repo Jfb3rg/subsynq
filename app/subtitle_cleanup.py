@@ -167,6 +167,10 @@ def save_scan(config, items, now=None):
 SCAN_LOCK = threading.Lock()
 
 
+def scan_running():
+    return SCAN_LOCK.locked()
+
+
 def scan_if_needed(config, roots, jobs, requested):
     """Scan the subtitle folders and save the result, but only ONE scan at a time. A scan of a big library takes tens of seconds
     (the Unraid log: 40-50 s with eight at once, 8 s alone), so a click that arrives meanwhile waits for the running scan and shares
@@ -441,7 +445,7 @@ def format_size(size):
 
 
 def render_cleanup_content(scan, filters, trash_batches, token, notice="", page=1, now=None,
-                           retention_days=0, lang="sv"):
+                           retention_days=0, lang="sv", scanning=False):
     def T(key, **values):
         return t(key, lang).format(**values)
 
@@ -471,6 +475,9 @@ def render_cleanup_content(scan, filters, trash_batches, token, notice="", page=
         f"<input type='hidden' name='{name}' value='{escape(str(value), quote=True)}'>"
         for name, value in filter_params.items())
     notice_html = f"<p class='success' role='status'>{escape(notice)}</p>" if notice else ""
+    # Shown at once when "Rescan" is clicked (index.html) and from the server while a scan is running, e.g. after a reload.
+    scan_note_html = (f"<p class='scan-note' role='status' data-scan-note{'' if scanning else ' hidden'}>"
+                      f"<span class='scan-pulse' aria-hidden='true'>●</span> {escape(T('cleanup_scanning'))}</p>")
     filter_form = (
         "<form action='/cleanup' method='get' class='cleanup-filters'>"
         f"<label>{escape(T('cleanup_filter_type'))} <select name='kind'>"
@@ -585,7 +592,7 @@ def render_cleanup_content(scan, filters, trash_batches, token, notice="", page=
     return (
         f"<div class='card'><h2>{escape(T('cleanup_heading'))}</h2>"
         f"<p class='muted'>{escape(T('cleanup_intro'))}</p>"
-        f"{notice_html}{filter_form}"
+        f"{notice_html}{scan_note_html}{filter_form}"
         f"<p class='muted'>{escape(T('cleanup_last_scan', when=scanned, other=counts['other'], ai=counts['ai']))}</p></div>"
         f"<div class='card'><h2>{escape(T('cleanup_matches_heading', n=len(matches), size=format_size(total_size)))}</h2>"
         f"{pager}{form_start}{table}{actions}{pager}</div>"

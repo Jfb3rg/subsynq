@@ -21,7 +21,7 @@ class ReloadGuardTests(unittest.TestCase):
 
     def test_every_automatic_reload_names_its_reason(self):
         reasons = re.findall(r"autoReload\('([a-z]+)'", PAGE)
-        self.assertEqual(sorted(reasons), ["hardware", "models", "queue", "scan", "status"])
+        self.assertEqual(sorted(reasons), ["cleanup", "hardware", "models", "queue", "scan", "status"])
         for reason in set(reasons):
             self.assertIn(f"{reason}:'", PAGE[PAGE.index("const reloadReasons"):PAGE.index("function reloadState")],
                           f"{reason} needs a Swedish name in the pause notice")

@@ -383,6 +383,8 @@ STRINGS = {
     "cleanup_search": {"sv": "Sökord", "en": "Search"},
     "cleanup_filter_btn": {"sv": "Filtrera", "en": "Filter"},
     "cleanup_rescan_btn": {"sv": "Skanna om mapparna", "en": "Rescan folders"},
+    "cleanup_scanning": {"sv": "Skannar undertextmapparna… Det kan ta en stund på ett stort bibliotek. Låt sidan vara öppen, resultatet visas när skanningen är klar.",
+                         "en": "Scanning the subtitle folders… This can take a while on a big library. Leave the page open; the result appears when the scan is done."},
     "scan_target_movie": {"sv": "filmer", "en": "movies"},
     "scan_target_episode": {"sv": "serier", "en": "series"},
     "scan_target_media": {"sv": "extra", "en": "extra"},

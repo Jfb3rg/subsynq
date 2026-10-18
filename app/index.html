@@ -123,6 +123,7 @@ small { color: var(--sec); }
 .bulk-ask { padding: 10px 12px; border: 1px solid var(--ac); border-radius: 8px; background: var(--acb); }
 .bulk-ask[hidden] { display: none; }
 .scan-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.scan-note { margin: 10px 0; color: var(--ac); font-weight: 650; }
 .library-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
 .filter-label { color: var(--mut); font-size: 13px; font-weight: 650; }
 .filter-button { display: inline-flex; align-items: center; padding: 8px 12px; border: 1px solid var(--bd); border-radius: 8px; background: var(--hi); color: var(--tx); font-size: 14px; text-decoration: none; }
@@ -331,7 +332,7 @@ const reloadLogKey='subsynq-reload-log',reloadPauseKey='subsynq-reload-pause';
 const reloadWindowMs=25000,reloadLimit=6,reloadPauseMs=300000;
 // A reload of the same kind waits at least this long after the last one, so a running job (its progress changes the
 // list every second or two) cannot make the page blink and fetch itself again every few seconds.
-const reloadMinGapMs={queue:15000,status:15000,hardware:15000,models:5000,scan:3000};
+const reloadMinGapMs={queue:15000,status:15000,hardware:15000,models:5000,scan:3000,cleanup:5000};
 // Real log, dev 2026-10-14: the user tapped "Kö" while a job ran; the page's own reload was issued before the new page
 // had arrived and replaced the tap, so the queue page could not be opened at all. A tap on a link or a form submit
 // therefore blocks every automatic reload for 15 s (3 s for a finger that only touched a link).
@@ -345,7 +346,7 @@ function linkOf(event){
 document.addEventListener('pointerdown',event=>{if(linkOf(event))noteNavigation(3000)},true);
 document.addEventListener('click',event=>{if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&linkOf(event))noteNavigation(15000)},true);
 document.addEventListener('submit',()=>noteNavigation(15000),true);
-const reloadReasons={queue:'jobblistan',scan:'skanningskortet',models:'modellkortet',hardware:'hårdvarukortet',status:'statusraden'};
+const reloadReasons={queue:'jobblistan',scan:'skanningskortet',cleanup:'skanningen i Städa undertexter',models:'modellkortet',hardware:'hårdvarukortet',status:'statusraden'};
 function reloadState(){
   let log=[],until=0;
   try{
@@ -470,6 +471,23 @@ document.addEventListener('change',event=>{
       if(error&&error.name==='AbortError')return;
       if(ticket===cloudListRequest)window.location.href=address;
     });
+});
+// "Rescan folders" in Städa undertexter takes seconds to minutes on a big library: say so at once and ignore repeated clicks
+// (each extra click used to start another scan). A reload while the server is still scanning shows the same note and checks again.
+document.querySelectorAll('form.cleanup-filters').forEach(form=>{
+  const note=document.querySelector('[data-scan-note]');
+  form.addEventListener('submit',event=>{
+    if(!event.submitter||event.submitter.name!=='scan')return;
+    if(form.dataset.scanning){event.preventDefault();return;}
+    form.dataset.scanning='1';
+    if(note)note.hidden=false;
+  });
+  window.addEventListener('pageshow',event=>{
+    if(!event.persisted||!form.dataset.scanning)return;
+    delete form.dataset.scanning;      // back/forward restores the page as it was before the click
+    if(note&&!note.dataset.serverScan)note.hidden=true;
+  });
+  if(note&&!note.hidden){note.dataset.serverScan='1';setTimeout(()=>autoReload('cleanup'),6000);}
 });
 // In a big library a series loads its seasons from the server when it is opened.
 document.querySelectorAll('details.series-group[data-lazy]').forEach(group=>{

@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.266
+
+- **Städa undertexter visar nu tydligt att en skanning pågår.** När du klickar på "Skanna om mapparna" dyker raden "Skannar undertextmapparna…" upp direkt, och ytterligare klick medan skanningen pågår ignoreras. Laddar du om sidan eller öppnar den i en annan flik medan en skanning fortfarande körs visas samma rad, och sidan uppdaterar sig själv när skanningen är klar.
+
 ## 0.8.265
 
 - **Städa undertexter kraschar inte längre när du klickar flera gånger på Skanna om.** Skanningen av en stor undertextmapp tar tid (på ett stort bibliotek 8 till 40 sekunder), och om du klickade igen eller ändrade ett filter medan den pågick startade en ny skanning ovanpå, och flera av dem misslyckades med "Skanningen misslyckades. Se loggen." Nu körs bara en skanning åt gången: ett nytt klick under en pågående skanning väntar på den och visar samma resultat, vilket också gör att alla blir klara snabbare. Filter och lagringstid för papperskorgen sparas dessutom säkert även om två sparningar sker samtidigt.
