@@ -123,6 +123,10 @@ small { color: var(--sec); }
 .bulk-ask { padding: 10px 12px; border: 1px solid var(--ac); border-radius: 8px; background: var(--acb); }
 .bulk-ask[hidden] { display: none; }
 .scan-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.library-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.filter-label { color: var(--mut); font-size: 13px; font-weight: 650; }
+.filter-button { display: inline-flex; align-items: center; padding: 8px 12px; border: 1px solid var(--bd); border-radius: 8px; background: var(--hi); color: var(--tx); font-size: 14px; text-decoration: none; }
+.filter-button[aria-current='true'] { border-color: var(--ac); background: var(--acb); color: var(--ac); font-weight: 650; }
 button.secondary-button { background: var(--hi); color: var(--tx); border: 1px solid var(--bd); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .scan-pulse { animation: scan-pulse 1.6s ease-in-out infinite; }
@@ -277,7 +281,7 @@ details.row-more[open] > summary::after { content: " ▴"; }
   /* The job list: title on its own line, state and buttons below it. */
   .queue-row .title { flex: 1 1 calc(100% - 40px); min-width: 0; }
   /* Controls: comfortable to tap, never wider than the screen, a drop-down as wide as its card. */
-  button, .small-button { min-height: 42px; }
+  button, .small-button, .filter-button { min-height: 42px; }
   .small-link { padding: 6px 0; }
   .season-group .track-details summary { background: none; padding: 4px 0; font-weight: 400; }
   select { min-width: 0; width: 100%; }
@@ -474,7 +478,8 @@ document.querySelectorAll('details.series-group[data-lazy]').forEach(group=>{
     group.dataset.loaded='1';
     const body=group.querySelector('[data-series-body]');
     try{
-      const response=await fetch('/library/series?series='+encodeURIComponent(group.dataset.series),{cache:'no-store'});
+      const onlyMissing=new URLSearchParams(location.search).get('show')==='missing'?'&show=missing':'';
+      const response=await fetch('/library/series?series='+encodeURIComponent(group.dataset.series)+onlyMissing,{cache:'no-store'});
       if(!response.ok)throw new Error(String(response.status));
       body.innerHTML=await response.text();
       body.querySelectorAll('.season-group').forEach(folder=>{folder.open=restoredSeasons.has(folder.dataset.season);});

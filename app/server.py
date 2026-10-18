@@ -30,7 +30,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.263"
+VERSION = "0.8.264"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -85,10 +85,20 @@ ACCENTS = {
 LIBRARY_KIND_LABELS = (("movie", "Filmer"), ("episode", "Serier"), ("media", "Extra"))
 
 
-def library_return_path(kind, event):
+def library_show(value):
+    """"missing" = the list shows only files that still need a Swedish subtitle; anything else = all files."""
+    return "missing" if value == "missing" else "all"
+
+
+def show_input(show):
+    """Hidden field that carries the list filter through a form post (nothing for the plain list)."""
+    return "<input type='hidden' name='return_show' value='missing'>" if show == "missing" else ""
+
+
+def library_return_path(kind, event, show="all"):
     if kind not in {"movie", "episode", "media"}:
         kind = "episode"
-    return f"/library?kind={kind}&job={event}"
+    return f"/library?kind={kind}&job={event}" + ("&show=missing" if show == "missing" else "")
 
 
 def format_local_timestamp(iso_stamp):
@@ -209,7 +219,7 @@ def perform_library_scan(choice=scan_state.ALL):
     return result
 
 
-def render_scan_buttons(selected, library, scanning, token, lang="sv"):
+def render_scan_buttons(selected, library, scanning, token, lang="sv", show="all"):
     """One button for the library being viewed, one for everything, and when each was last scanned."""
     root = scan_state.LIBRARY_ROOTS[selected]
     connected = Path(root).is_dir()
@@ -221,7 +231,7 @@ def render_scan_buttons(selected, library, scanning, token, lang="sv"):
     return (
         "<form action='/scan' method='post' class='scan-actions'>"
         f"<input type='hidden' name='kind' value='{escape(selected, quote=True)}'>"
-        f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
+        f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>{show_input(show)}"
         f"<button type='submit' name='library' value='{escape(selected, quote=True)}'{one_disabled}>"
         f"{escape(t('scan_btn_' + selected, lang))}</button>"
         f"<button type='submit' name='library' value='{scan_state.ALL}' class='secondary-button'{all_disabled}>"
@@ -357,7 +367,7 @@ def auto_scan_loop():
             auto_start_missing_jobs(result["items"], metadata.get("ignore_existing_subtitle") == "1")
 
 
-def render_media_row(item, nested=False, token="", job=None, ignore_existing=False, lang="sv"):
+def render_media_row(item, nested=False, token="", job=None, ignore_existing=False, lang="sv", show="all"):
     missing = needs_swedish_subtitle(item, ignore_existing)
     row_class = " class='subtitle-missing'" if missing else ""
     episode = (f"<strong>{escape(item.get('episode_code') or t('episode_fallback', lang))}</strong> · "
@@ -399,7 +409,7 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
                 f"onsubmit=\"return confirm('{escape(t('confirm_cancel_job', lang), quote=True)}')\">"
                 f"<input type='hidden' name='token' value='{escape(token)}'>"
                 f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>"
-                f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>"
+                f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>{show_input(show)}"
                 f"<input type='hidden' name='job_id' value='{int(job['id'])}'>"
                 f"<button type='submit' class='small-button danger'>{escape(t('action_cancel_job', lang))}</button></form>"
             )
@@ -437,7 +447,7 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
             f"onsubmit=\"return confirm('{escape(t('confirm_restart', lang), quote=True)}')\">"
             f"<input type='hidden' name='token' value='{escape(token)}'>"
             f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>"
-            f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>"
+            f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>{show_input(show)}"
             f"<button type='submit' class='small-button'>{escape(t('action_rerun', lang))}</button></form>"
         )
     if item.get('ai_sv_exists') and token and not_active:
@@ -446,7 +456,7 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
             f"onsubmit=\"return confirm('{escape(t('confirm_delete', lang), quote=True)}')\">"
             f"<input type='hidden' name='token' value='{escape(token)}'>"
             f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>"
-            f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>"
+            f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>{show_input(show)}"
             f"<button type='submit' class='small-button danger'>{escape(t('action_delete', lang))}</button></form>"
         )
     if (item.get('ai_sv_exists') and item.get('ai_sv_path') and token and not_active
@@ -457,7 +467,7 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
             f"onsubmit=\"return confirm('{escape(t('confirm_recreate', lang), quote=True)}')\">"
             f"<input type='hidden' name='token' value='{escape(token)}'>"
             f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>"
-            f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>"
+            f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>{show_input(show)}"
             "<input type='hidden' name='recreate' value='1'>"
             f"<button type='submit' class='small-button'>{escape(t('action_recreate', lang))}</button></form>"
         )
@@ -476,7 +486,7 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
         start_html = (
             "<form action='/jobs/start' method='post' class='start-job-form preserve-seasons'>"
             f"<input type='hidden' name='token' value='{escape(token)}'>"
-            f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>"
+            f"<input type='hidden' name='media_path' value='{escape(item['path'])}'>{show_input(show)}"
             f"{render_audio_track_choice(item, lang)}"
             f"<button type='submit' class='small-button'>{escape(t('action_create_subtitle', lang))}</button></form>"
         )
@@ -514,7 +524,7 @@ ACTIVE_JOB_STATUSES = frozenset({"queued", "transcribing", "translating", "verif
                                  "restart_queued", "restarting"})
 
 
-def render_bulk_bar(selected, token, lang="sv"):
+def render_bulk_bar(selected, token, lang="sv", show="all"):
     """One form for acting on many ticked library rows at once (see render_media_row)."""
     confirm_start = escape(t("bulk_confirm_start", lang), quote=True)
     confirm_delete = escape(t("bulk_confirm_delete", lang), quote=True)
@@ -522,7 +532,7 @@ def render_bulk_bar(selected, token, lang="sv"):
     return (
         "<form id='bulk-form' class='bulk-bar preserve-seasons' data-bulk-bar action='/jobs/bulk' method='post'>"
         f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
-        f"<input type='hidden' name='return_kind' value='{escape(selected, quote=True)}'>"
+        f"<input type='hidden' name='return_kind' value='{escape(selected, quote=True)}'>{show_input(show)}"
         f"<p class='muted' data-bulk-hint hidden>{escape(t('bulk_none_usable', lang))}</p>"
         f"<p class='muted'><strong><span data-bulk-count>0</span> {escape(t('bulk_selected', lang))}</strong> · "
         f"<button type='button' class='small-button' data-bulk-select='start'>{escape(t('bulk_select_missing', lang))}</button> "
@@ -537,6 +547,17 @@ def render_bulk_bar(selected, token, lang="sv"):
         "<p class='bulk-ask' data-bulk-ask hidden><strong data-bulk-ask-text></strong> "
         f"<button type='button' class='small-button' data-bulk-yes>{escape(t('bulk_ask_yes', lang))}</button> "
         f"<button type='button' class='small-button' data-bulk-no>{escape(t('bulk_ask_no', lang))}</button></p></form>")
+
+
+def render_library_filter(selected, show, total, missing, lang="sv"):
+    """Two links above the list: every file, or only the files that still need a Swedish subtitle."""
+    def link(value, label, count):
+        href = f"/library?kind={selected}" + ("&show=missing" if value == "missing" else "")
+        current = " aria-current='true'" if show == value else ""
+        return f"<a class='filter-button' href='{escape(href, quote=True)}'{current}>{escape(label)} ({count})</a>"
+    return (f"<nav class='library-filter' aria-label='{escape(t('filter_label', lang), quote=True)}'>"
+            f"<span class='filter-label'>{escape(t('filter_label', lang))}</span>"
+            f"{link('all', t('filter_all', lang), total)}{link('missing', t('filter_missing', lang), missing)}</nav>")
 
 
 LIBRARY_ROOT_NAMES = ("tv", "movies", "extra")
@@ -581,7 +602,7 @@ def series_group_name(series, category):
     return f"{category} / {series}" if category else series
 
 
-def render_seasons(group_name, seasons, token, jobs, ignore_existing, lang):
+def render_seasons(group_name, seasons, token, jobs, ignore_existing, lang, show="all"):
     """The season blocks (with their episode rows) of ONE series."""
     output = []
     for season in sorted(seasons, key=lambda label: (
@@ -594,7 +615,7 @@ def render_seasons(group_name, seasons, token, jobs, ignore_existing, lang):
         missing_text = (f" · {missing} {t('missing_subtitle_suffix', lang)}" if missing
                         else f" · {t('all_have_subtitle', lang)}")
         rows = "".join(render_media_row(item, nested=True, token=token, job=jobs.get(item['path']),
-                                          ignore_existing=ignore_existing, lang=lang) for item in episodes)
+                                          ignore_existing=ignore_existing, lang=lang, show=show) for item in episodes)
         season_key = escape(f"{group_name}␟{season}", quote=True)
         output.append(
             f"<details class='season-group' data-season='{season_key}'><summary>"
@@ -606,20 +627,20 @@ def render_seasons(group_name, seasons, token, jobs, ignore_existing, lang):
     return "".join(output)
 
 
-def render_series_body(items, group_name, token="", jobs=None, ignore_existing=False, lang="sv"):
+def render_series_body(items, group_name, token="", jobs=None, ignore_existing=False, lang="sv", show="all"):
     """The seasons of one series for the lazily loaded part of a big library, or None when there is no such series."""
     jobs = jobs or {}
     for (series, category), seasons in group_series(items, lang).items():
         if series_group_name(series, category) == group_name:
-            return render_seasons(group_name, seasons, token, jobs, ignore_existing, lang)
+            return render_seasons(group_name, seasons, token, jobs, ignore_existing, lang, show)
     return None
 
 
-def render_library(items, selected, token="", jobs=None, ignore_existing=False, lang="sv"):
+def render_library(items, selected, token="", jobs=None, ignore_existing=False, lang="sv", show="all"):
     jobs = jobs or {}
     if selected != "episode":
         rows = "".join(render_media_row(item, token=token, job=jobs.get(item['path']),
-                                         ignore_existing=ignore_existing, lang=lang) for item in items)
+                                         ignore_existing=ignore_existing, lang=lang, show=show) for item in items)
         return (f"<table class='stack files'><thead><tr><th>{escape(t('table_header_file', lang))}</th>"
                 f"<th>{escape(t('table_header_subtitle', lang))}</th></tr></thead>"
                 f"<tbody>{rows}</tbody></table>") if rows else f"<p>{escape(t('no_video_files', lang))}</p>"
@@ -637,7 +658,7 @@ def render_library(items, selected, token="", jobs=None, ignore_existing=False, 
         series_key = escape(group_name, quote=True)
         # A big library would otherwise put thousands of rows in one page; a series then loads its seasons when opened.
         body = (f"<div class='series-body' data-series-body data-failed='{escape(t('series_load_failed', lang), quote=True)}'><p class='muted'>{escape(t('series_loading', lang))}</p></div>"
-                if lazy else render_seasons(group_name, seasons, token, jobs, ignore_existing, lang))
+                if lazy else render_seasons(group_name, seasons, token, jobs, ignore_existing, lang, show))
         lazy_attribute = " data-lazy='1'" if lazy else ""
         output.append(
             f"<details class='series-group' data-series='{series_key}'{lazy_attribute}><summary>"
@@ -1831,7 +1852,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(400, 'text/plain', str(error))
                 return
             self.send_response(303)
-            self.send_header('Location', f"/library?kind={item['kind']}&job=queued")
+            self.send_header('Location', library_return_path(item['kind'], 'queued', library_show(form.get('return_show', [''])[0])))
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -1878,7 +1899,7 @@ class Handler(BaseHTTPRequestHandler):
                     skipped += 1
             logging.info('Flervalsåtgärd %s: %d köade, %d hoppades över', action, done, skipped)
             self.send_response(303)
-            self.send_header('Location', library_return_path(return_kind, 'bulk')
+            self.send_header('Location', library_return_path(return_kind, 'bulk', library_show(form.get('return_show', [''])[0]))
                              + f'&bulk_action={action}&done={done}&skipped={skipped}')
             self.send_header('Content-Length', '0')
             self.end_headers()
@@ -1904,7 +1925,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(400, 'text/plain', str(error))
                 return
             self.send_response(303)
-            self.send_header('Location', library_return_path(item['kind'], 'deleting'))
+            self.send_header('Location', library_return_path(item['kind'], 'deleting', library_show(form.get('return_show', [''])[0])))
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -1931,7 +1952,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(400, 'text/plain', str(error))
                 return
             self.send_response(303)
-            self.send_header('Location', library_return_path(item['kind'], 'restarting'))
+            self.send_header('Location', library_return_path(item['kind'], 'restarting', library_show(form.get('return_show', [''])[0])))
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -1952,7 +1973,8 @@ class Handler(BaseHTTPRequestHandler):
                     saved = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
                 library = json.loads(saved[0]) if saved else {'items': []}
                 item = runnable_library_item(library, media_path)
-                destination = library_return_path(item['kind'] if item else 'episode', 'cancelled')
+                destination = library_return_path(item['kind'] if item else 'episode', 'cancelled',
+                                                  library_show(form.get('return_show', [''])[0]))
             self.send_header('Location', destination)
             self.send_header('Content-Length', '0')
             self.end_headers()
@@ -1974,7 +1996,8 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(0.02)    # let the status card show up on the page we redirect to
         self.send_response(303)
         selected = form.get("kind", ["episode"])[0]
-        self.send_header("Location", "/library?kind=" + (selected if selected in ("movie", "episode", "media") else "episode"))
+        self.send_header("Location", "/library?kind=" + (selected if selected in ("movie", "episode", "media") else "episode")
+                         + ("&show=missing" if library_show(form.get("return_show", [""])[0]) == "missing" else ""))
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -2268,8 +2291,11 @@ class Handler(BaseHTTPRequestHandler):
             except (sqlite3.Error, OSError, RuntimeError, ValueError):
                 self.respond(503, 'text/plain', 'Biblioteket kunde inte läsas.')
                 return
-            body = render_series_body([item for item in library['items'] if item.get('kind', 'media') == 'episode'],
-                                      group, SCAN_TOKEN, jobs, data['ignore_existing_subtitle'], data['ui_language'])
+            show = library_show(parse_qs(query_string).get('show', [''])[0])
+            episodes = [item for item in library['items'] if item.get('kind', 'media') == 'episode']
+            if show == 'missing':
+                episodes = [item for item in episodes if needs_swedish_subtitle(item, data['ignore_existing_subtitle'])]
+            body = render_series_body(episodes, group, SCAN_TOKEN, jobs, data['ignore_existing_subtitle'], data['ui_language'], show)
             if body is None:
                 self.respond(404, 'text/plain', 'Serien finns inte i den aktuella skanningen.')
                 return
@@ -2455,7 +2481,10 @@ class Handler(BaseHTTPRequestHandler):
                 selected = query.get("kind", ["episode"])[0]
                 if selected not in ("movie", "episode", "media"):
                     selected = "episode"
-                visible = [item for item in library["items"] if item.get("kind", "media") == selected]
+                show = library_show(query.get("show", [""])[0])
+                everything = [item for item in library["items"] if item.get("kind", "media") == selected]
+                visible = ([item for item in everything if needs_swedish_subtitle(item, data["ignore_existing_subtitle"])]
+                           if show == "missing" else everything)
                 rows = "".join(f"<tr><td><code>{escape(name)}</code></td><td>{'Tillgänglig' if info['exists'] else ('Valfri, inte ansluten' if name in scan_state.OPTIONAL_ROOTS else 'Saknas')}</td></tr>"
                                for name, info in data["paths"].items())
                 queued_notice = ('<p class="success" role="status">✓ Undertextjobbet är köat. Statusen visas vid avsnittet.</p>'
@@ -2467,13 +2496,20 @@ class Handler(BaseHTTPRequestHandler):
                         done=query.get("done", ["0"])[0][:9], skipped=query.get("skipped", ["0"])[0][:9])) + '</p>')
                 kind_keys = {"movie": "kind_movie", "episode": "kind_episode", "media": "kind_media"}
                 kind_label = t(kind_keys.get(selected, "kind_media"), data["ui_language"])
+                file_count = (t("filter_count", data["ui_language"]).format(shown=len(visible), total=len(everything))
+                              if show == "missing" else f"{len(visible)} filer")
+                library_html = (f"<p>{escape(t('filter_none_missing', data['ui_language']))}</p>"
+                                if show == "missing" and everything and not visible else
+                                render_library(visible, selected, SCAN_TOKEN, jobs, data['ignore_existing_subtitle'],
+                                               data['ui_language'], show))
                 content = (
-                    f"<div class='card'><h2>{escape(kind_label)} · {len(visible)} filer</h2>"
+                    f"<div class='card'><h2>{escape(kind_label)} · {escape(file_count)}</h2>"
                     f"<p class='muted'>{escape(t('scan_intro', data['ui_language']))}</p>"
-                    f"{render_scan_buttons(selected, library, SCAN_STATUS.running, SCAN_TOKEN, data['ui_language'])}"
+                    f"{render_scan_buttons(selected, library, SCAN_STATUS.running, SCAN_TOKEN, data['ui_language'], show)}"
                     f"{queued_notice}"
-                    f"{render_bulk_bar(selected, SCAN_TOKEN, data['ui_language']) if visible else ''}"
-                    f"<div class='library-list'>{render_library(visible, selected, SCAN_TOKEN, jobs, data['ignore_existing_subtitle'], data['ui_language'])}</div>"
+                    f"{render_library_filter(selected, show, len(everything), sum(needs_swedish_subtitle(item, data['ignore_existing_subtitle']) for item in everything), data['ui_language']) if everything else ''}"
+                    f"{render_bulk_bar(selected, SCAN_TOKEN, data['ui_language'], show) if visible else ''}"
+                    f"<div class='library-list'>{library_html}</div>"
                     "<p class='muted'>SubSynq startar aldrig hela biblioteket automatiskt i nuvarande version, om inte automatisk sökning/jobbstart aktiveras under Inställningar. En inbäddad svensk originalundertext, exempelvis PGS, räknas normalt som täckning och hoppas över – det går att ändra under Inställningar. Befintliga AI-undertexter skrivs aldrig över. En underkänd AI-fil kan tas bort här och därefter köras om, och en fil vars video bytts ut sedan undertexten skapades får en egen \"Kör igen\"-knapp.</p></div>"
                     f"<div class='card'><h2>Anslutna mappar</h2><p class='muted'>/tv är ditt valda seriebibliotek och /extra är valfri. /config sparar databasen och /models innehåller AI-modellerna.</p>"
                     f"<table><thead><tr><th>Mapp i containern</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table></div>"

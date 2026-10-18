@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.264
+
+- **Ny knapp: "Bara utan undertext".** Över listorna Filmer, Serier och Extra finns nu två val: **Alla** och **Bara utan undertext**, båda med antal. Med det andra valet visas bara de filmer, serier och avsnitt som ännu saknar svensk undertext, och rubriken visar till exempel "12 av 621 filer". Serier där allt redan har undertext göms. Valet följer med när du skapar en undertext, avbryter, tar bort, kör om, markerar flera eller skannar, så du hamnar kvar i samma lista. Är allt redan klart står det att alla filer har svensk undertext. En inbäddad svensk undertext räknas som förut efter inställningen under Inställningar.
+
 ## 0.8.263
 
 - **Hyrning av GPU-server räknar nu med nedladdningskostnaden.** Vast tar betalt både per timme och per nedladdad gigabyte, och SubSynqs kedja hämtar ca 55 GB modeller och paket på varje ny server. Priset per gigabyte skiljer 40 gånger mellan värdar (0,0007 till 0,027 USD). Timpriset ensamt gav därför fel bild: två tamilska jobb kostade ca 0,87 USD var, där timpriset sa 0,06–0,12. Nu rankas erbjudandena efter beräknad kostnad per jobb (timpris × 0,5 timme + trafikpris × 55 GB), erbjudandelistan visar "ca X USD per jobb", jobbets hårdvarurad visar den beräknade kostnaden, och ett önskat land väljs bara om servern inte är mycket dyrare än den billigaste.
