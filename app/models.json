@@ -1,9 +1,11 @@
 {
   "format": 1,
-  "note": "Vilka AI-modeller SubSynq använder. Den här filen följer med programmet. Lägg en egen kopia som /config/models.json för att byta modell: SubSynq laddar då ner den nya, och den gamla kan tas bort under Inställningar > Modeller. Fälten: kind = faster-whisper | hf | ollama, name = modellens namn, role (valfri) = translation eller review för de Gemma-modeller som översätter och granskar.",
+  "note": "Vilka AI-modeller SubSynq använder. Den här filen följer med programmet. Lägg en egen kopia som /config/models.json för att byta modell: SubSynq laddar då ner den nya, och den gamla kan tas bort under Inställningar > Modeller. Fälten: kind = faster-whisper | hf | ollama, name = modellens namn, optional = true för ett frivilligt språkpaket som bara hämtas när du slår på det under Inställningar > Modeller (language = språkkod), role (valfri) = translation eller review för de Gemma-modeller som översätter och granskar.",
   "models": [
     {"id": "whisper-large-v3", "kind": "faster-whisper", "name": "large-v3", "label": "Whisper large-v3", "size_gb": 2.9, "used_by": "worker"},
     {"id": "whisper-large-v2", "kind": "faster-whisper", "name": "large-v2", "label": "Whisper large-v2", "size_gb": 2.9, "used_by": "worker"},
+    {"id": "whisper-kb-swedish", "kind": "faster-whisper", "name": "KBLab/kb-whisper-large", "label": "KB-Whisper large (svenska)", "size_gb": 2.9, "used_by": "worker", "optional": true, "language": "sv"},
+    {"id": "whisper-nb-norwegian", "kind": "faster-whisper", "name": "NbAiLab/nb-whisper-large", "label": "NB-Whisper large (norska)", "size_gb": 6.2, "used_by": "worker", "optional": true, "language": "no"},
     {"id": "qwen3-asr", "kind": "hf", "name": "Qwen/Qwen3-ASR-1.7B", "label": "Qwen3-ASR 1.7B", "size_gb": 4.4, "used_by": "qwen-asr"},
     {"id": "qwen3-aligner", "kind": "hf", "name": "Qwen/Qwen3-ForcedAligner-0.6B", "label": "Qwen3-ForcedAligner 0.6B", "size_gb": 1.8, "used_by": "qwen-asr"},
     {"id": "gemma-translation", "kind": "ollama", "role": "translation", "name": "gemma3:12b", "label": "Gemma 3 12B (översättning)", "size_gb": 8.1, "used_by": "translate-engine"},

@@ -1,0 +1,517 @@
+{
+  "provenance": "Actual full CPU ASR, Dev 0.8.330, dev-Nr8khC (908.535 s); selected original audio stream 0; unchanged texts/times from trace",
+  "final": [
+    {
+      "start": 7.208,
+      "end": 8.01,
+      "text": "Give me the code.",
+      "confidence": 0.8068295121192932
+    },
+    {
+      "start": 8.19,
+      "end": 14.5,
+      "text": "You were arrested wearing a woman's skirt.",
+      "confidence": 0.49429941177368164
+    },
+    {
+      "start": 14.82,
+      "end": 15.94,
+      "text": "Technically it's a dress.",
+      "confidence": 0.7416482716798782,
+      "words": [
+        {
+          "start": 14.9,
+          "end": 15.26,
+          "text": "Technically",
+          "probability": 0.8205538988113403
+        },
+        {
+          "start": 15.26,
+          "end": 15.52,
+          "text": "it's",
+          "probability": 0.7416482716798782
+        },
+        {
+          "start": 15.52,
+          "end": 15.6,
+          "text": "a",
+          "probability": 0.9948694705963135
+        },
+        {
+          "start": 15.6,
+          "end": 15.86,
+          "text": "dress.",
+          "probability": 0.8642008304595947
+        }
+      ]
+    },
+    {
+      "start": 16.584,
+      "end": 17.6,
+      "text": "I'd like it back, please.",
+      "confidence": 0.984994500875473
+    },
+    {
+      "start": 17.62,
+      "end": 18.96,
+      "text": "It's one of my favorites.",
+      "confidence": 0.7875049710273743
+    },
+    {
+      "start": 20.648,
+      "end": 22.19,
+      "text": "The Allies are going to attack Hitler.",
+      "confidence": 0.540507435798645
+    },
+    {
+      "start": 22.19,
+      "end": 23.5,
+      "text": "It's absolutely imperative.",
+      "confidence": 0.9950178861618042
+    },
+    {
+      "start": 24.08,
+      "end": 27.8,
+      "text": "Hitler believes the biggest attack is coming of Calais.",
+      "confidence": 0.6715391278266907
+    },
+    {
+      "start": 27.85,
+      "end": 30.56,
+      "text": "but in fact, we'll be landing in Normandy.",
+      "confidence": 0.6613907217979431
+    },
+    {
+      "start": 31.624,
+      "end": 34.4,
+      "text": "Prime Minister, I believe we need to create an entire American army",
+      "confidence": 0.8430773019790649
+    },
+    {
+      "start": 35.688,
+      "end": 38.44,
+      "text": "Whatever we do only has to look convincing from 10,000 feet.",
+      "confidence": 0.6074469089508057
+    },
+    {
+      "start": 38.52,
+      "end": 41.04,
+      "text": "Imagine this is a direct line to Adolf Hitler.",
+      "confidence": 0.8164314031600952
+    },
+    {
+      "start": 41.06,
+      "end": 42.72,
+      "text": "And he'll do anything you tell him to.",
+      "confidence": 0.6285943388938904
+    },
+    {
+      "start": 45.192,
+      "end": 47.28,
+      "text": "We'll need tanks, airplanes, ships, men."
+    },
+    {
+      "start": 52.808,
+      "end": 54.25,
+      "text": "I've assembled a rather brilliant team.",
+      "confidence": 0.46483132243156433
+    },
+    {
+      "start": 57.576,
+      "end": 58,
+      "text": "Pop off.",
+      "confidence": 0.721189558506012
+    },
+    {
+      "start": 58.04,
+      "end": 59.02,
+      "text": "Disco pop off.",
+      "confidence": 0.8358097672462463
+    },
+    {
+      "start": 60.584,
+      "end": 61.82,
+      "text": "It's a two -pronged attack."
+    },
+    {
+      "start": 62.16,
+      "end": 64.34,
+      "text": "Infiltrate German intelligence from the inside.",
+      "confidence": 0.9492617249488831
+    },
+    {
+      "start": 69.032,
+      "end": 70.67,
+      "text": "Even Hitler will buy a front-row ticket.",
+      "confidence": 0.7163884341716766
+    },
+    {
+      "start": 70.98,
+      "end": 71.62,
+      "text": "Action!",
+      "confidence": 0.1991555392742157
+    },
+    {
+      "start": 72.03,
+      "end": 73.49,
+      "text": "Let's give him hell on earth!",
+      "confidence": 0.3719136416912079
+    },
+    {
+      "start": 75.48,
+      "end": 76.12,
+      "text": "Right!",
+      "confidence": 0.9085538983345032
+    },
+    {
+      "start": 76.968,
+      "end": 77.85,
+      "text": "Welcome, Martini.",
+      "confidence": 0.4520932734012604
+    },
+    {
+      "start": 80.968,
+      "end": 81.83,
+      "text": "Shaken, not stirred.",
+      "confidence": 0.9618368744850159
+    },
+    {
+      "start": 82.696,
+      "end": 85.13,
+      "text": "Let's get ready to enjoy ourselves.",
+      "confidence": 0.9577012658119202
+    },
+    {
+      "start": 87.912,
+      "end": 88.52,
+      "text": "Good God.",
+      "confidence": 0.8998523354530334
+    },
+    {
+      "start": 89.487,
+      "end": 90.82,
+      "text": "I wish we had time to build more.",
+      "confidence": 0.9347390532493591
+    },
+    {
+      "start": 91.976,
+      "end": 94.64,
+      "text": "Question, do we think that wind could be an issue?",
+      "confidence": 0.8748564124107361
+    },
+    {
+      "start": 95.41,
+      "end": 95.91,
+      "text": "I know not.",
+      "confidence": 0.5242347717285156
+    },
+    {
+      "start": 96.14,
+      "end": 97.24,
+      "text": "Well, if you're sure.",
+      "confidence": 0.9780358076095581
+    },
+    {
+      "start": 100.552,
+      "end": 102.46,
+      "text": "If it works, you'll be saving countless lives.",
+      "confidence": 0.7946467995643616
+    },
+    {
+      "start": 103.84,
+      "end": 104.34,
+      "text": "It's showtime.",
+      "confidence": 0.7567921280860901
+    },
+    {
+      "start": 105.864,
+      "end": 107.06,
+      "text": "Just blow something up!",
+      "confidence": 0.7379918694496155,
+      "words": [
+        {
+          "start": 105.48,
+          "end": 106.08,
+          "text": "Just",
+          "probability": 0.7379918694496155
+        },
+        {
+          "start": 106.08,
+          "end": 106.36,
+          "text": "blow",
+          "probability": 0.9797225594520569
+        },
+        {
+          "start": 106.36,
+          "end": 106.72,
+          "text": "something",
+          "probability": 0.9979873895645142
+        },
+        {
+          "start": 106.72,
+          "end": 106.98,
+          "text": "up!",
+          "probability": 0.9956674575805664
+        }
+      ],
+      "corroborated": true
+    },
+    {
+      "start": 113.48,
+      "end": 114.18,
+      "text": "Exploding pen.",
+      "confidence": 0.912784993648529
+    },
+    {
+      "start": 115.88,
+      "end": 116.6,
+      "text": "Let's get started.",
+      "confidence": 0.994001179933548
+    },
+    {
+      "start": 118.952,
+      "end": 120.71,
+      "text": "We're sending our men on a suicide mission.",
+      "confidence": 0.9903831779956818
+    },
+    {
+      "start": 122.152,
+      "end": 123.65,
+      "text": "The plan needs to show courage.",
+      "confidence": 0.4005827009677887
+    },
+    {
+      "start": 124.42,
+      "end": 125.38,
+      "text": "Jason!",
+      "confidence": 0.3976406157016754
+    },
+    {
+      "start": 126.54,
+      "end": 127.5,
+      "text": "Strength.",
+      "confidence": 0.9532352089881897
+    },
+    {
+      "start": 133.47,
+      "end": 134.37,
+      "text": "Fortitude.",
+      "confidence": 0.9545826315879822
+    },
+    {
+      "start": 134.46,
+      "end": 136.78,
+      "text": "Yes, fortitude.",
+      "confidence": 0.8832147121429443
+    },
+    {
+      "start": 141.128,
+      "end": 141.63,
+      "text": "Risky.",
+      "confidence": 0.9938941597938538
+    },
+    {
+      "start": 141.63,
+      "end": 142.54,
+      "text": "Thrilling.",
+      "confidence": 0.9968320727348328
+    },
+    {
+      "start": 142.86,
+      "end": 143.82,
+      "text": "Unpredictable.",
+      "confidence": 0.9940443336963654
+    },
+    {
+      "start": 144.52,
+      "end": 145.84,
+      "text": "Exactly how I like my missions.",
+      "confidence": 0.9619344472885132
+    }
+  ],
+  "rescue": [
+    {
+      "start": 10.54,
+      "end": 17.22,
+      "text": "you were arrested wearing a woman's skirt technically it's a dress i'd like it back",
+      "confidence": 0.6223180294036865,
+      "words": [
+        {
+          "start": 10.62,
+          "end": 11.2,
+          "text": "you",
+          "probability": 0.6223180294036865
+        },
+        {
+          "start": 11.2,
+          "end": 11.62,
+          "text": "were",
+          "probability": 0.8893020153045654
+        },
+        {
+          "start": 11.62,
+          "end": 12.12,
+          "text": "arrested",
+          "probability": 0.966529369354248
+        },
+        {
+          "start": 12.12,
+          "end": 13.28,
+          "text": "wearing",
+          "probability": 0.8923430442810059
+        },
+        {
+          "start": 13.28,
+          "end": 13.54,
+          "text": "a",
+          "probability": 0.997051477432251
+        },
+        {
+          "start": 13.54,
+          "end": 14,
+          "text": "woman's",
+          "probability": 0.9618657231330872
+        },
+        {
+          "start": 14,
+          "end": 14.42,
+          "text": "skirt",
+          "probability": 0.9720589518547058
+        },
+        {
+          "start": 14.42,
+          "end": 15.1,
+          "text": "technically",
+          "probability": 0.9060069918632507
+        },
+        {
+          "start": 15.1,
+          "end": 15.44,
+          "text": "it's",
+          "probability": 0.9476900994777679
+        },
+        {
+          "start": 15.44,
+          "end": 15.48,
+          "text": "a",
+          "probability": 0.9891947507858276
+        },
+        {
+          "start": 15.48,
+          "end": 15.7,
+          "text": "dress",
+          "probability": 0.9979082345962524
+        },
+        {
+          "start": 15.7,
+          "end": 16.82,
+          "text": "i'd",
+          "probability": 0.80922070145607
+        },
+        {
+          "start": 16.82,
+          "end": 16.88,
+          "text": "like",
+          "probability": 0.9990493655204773
+        },
+        {
+          "start": 16.88,
+          "end": 17.08,
+          "text": "it",
+          "probability": 0.9947116374969482
+        },
+        {
+          "start": 17.08,
+          "end": 17.22,
+          "text": "back",
+          "probability": 0.9987107515335083
+        }
+      ],
+      "corroborated": false
+    }
+  ],
+  "v2": [
+    {
+      "start": 10.88,
+      "end": 14.68,
+      "text": "You were arrested, wearing a woman's skirt.",
+      "confidence": 0.6761125922203064,
+      "words": [
+        {
+          "start": 10.96,
+          "end": 11.54,
+          "text": "You",
+          "probability": 0.6761125922203064
+        },
+        {
+          "start": 11.54,
+          "end": 11.74,
+          "text": "were",
+          "probability": 0.8268822431564331
+        },
+        {
+          "start": 11.74,
+          "end": 12.26,
+          "text": "arrested,",
+          "probability": 0.6883581280708313
+        },
+        {
+          "start": 12.74,
+          "end": 13.48,
+          "text": "wearing",
+          "probability": 0.8280993103981018
+        },
+        {
+          "start": 13.48,
+          "end": 13.68,
+          "text": "a",
+          "probability": 0.9977254271507263
+        },
+        {
+          "start": 13.68,
+          "end": 14.22,
+          "text": "woman's",
+          "probability": 0.8904188871383667
+        },
+        {
+          "start": 14.22,
+          "end": 14.6,
+          "text": "skirt.",
+          "probability": 0.8955457806587219
+        }
+      ]
+    },
+    {
+      "start": 14.82,
+      "end": 15.94,
+      "text": "Technically it's a dress.",
+      "confidence": 0.7416482716798782,
+      "words": [
+        {
+          "start": 14.9,
+          "end": 15.26,
+          "text": "Technically",
+          "probability": 0.8205538988113403
+        },
+        {
+          "start": 15.26,
+          "end": 15.52,
+          "text": "it's",
+          "probability": 0.7416482716798782
+        },
+        {
+          "start": 15.52,
+          "end": 15.6,
+          "text": "a",
+          "probability": 0.9948694705963135
+        },
+        {
+          "start": 15.6,
+          "end": 15.86,
+          "text": "dress.",
+          "probability": 0.8642008304595947
+        }
+      ]
+    }
+  ]
+}

@@ -6,7 +6,7 @@ from unittest.mock import patch
 sys.path.insert(0, '/ai')
 sys.path.insert(0, '/app')
 import worker
-from translation_qa import is_address_choice, refuted_target_claim, unfounded_flags
+from translation_qa import is_address_choice, is_self_contradiction, refuted_target_claim, unfounded_flags
 
 
 def flag(row_id, reason, category='meaning', source_quote='x', target_quote='y'):
@@ -106,6 +106,67 @@ class AddressChoiceTests(unittest.TestCase):
     def test_a_finding_that_adds_a_second_problem_is_kept(self):
         finding = flag(16, "Adressaten ändras från formellt 'Sie' till informellt 'du', samt ett grammatikfel i 'en Mörder'.")
         self.assertFalse(is_address_choice(finding, 'dass Sie sich in einen Mörder hineinversetzen', 'att du kan sätta dig in i en Mörder'))
+
+
+# Real findings: Nelly Rapp (dev jobs 57, 60, 61, 62, 63) and FRANCE (job 71). The reviewer calls a word wrong and then names the same word as right.
+SELF_CONTRADICTING = [
+    (row(22, 'Men vems stjärt?', 'Men vems stjärt?'),
+     flag(22, "Ordfel i 'stjärt'. Det korrekta ordet är 'stjärt' (vilket redan finns i källan), men i målspråket är det stavat fel eller så är det en "
+              "förväxling med 'stjärta'. Eftersom källan är svensk och målet är svenskt, är 'stjärt' inte ett korrekt ord i detta sammanhang.", 'grammar')),
+    (row(11, 'Des civils, des enfants, des hommes, des femmes.', 'Civila, barn, män, kvinnor.'),
+     flag(11, "Ordet 'Civila' är felstavat; det korrekta ordet är 'Civila' (pluralis) men i detta sammanhang är det troligtvis en felskrivning av "
+              "'Civila' eller 'Civilister'.", 'grammar')),
+]
+
+
+class SelfContradictionTests(unittest.TestCase):
+    def test_a_word_named_as_wrong_and_as_right_is_set_aside_with_its_reason(self):
+        for item, finding in SELF_CONTRADICTING:
+            with self.subTest(row=item['id']):
+                self.assertTrue(is_self_contradiction(finding, item['sv']))
+                kept, removed = unfounded_flags([finding], [item])
+                self.assertEqual(kept, [])
+                self.assertEqual(removed[0]['why'], 'granskaren anger samma ord som fel och som rätt')
+                self.assertEqual(removed[0]['reason'], finding['reason'])
+
+    def test_a_real_spelling_finding_is_kept(self):
+        item = row(3, 'Tack för maten.', 'Tack för matten.')
+        for reason in ("Ordet 'matten' är felstavat; det korrekta ordet är 'maten'.", "Ordet 'matten' ska vara 'maten'.",
+                       "'matten' borde vara 'maten' eftersom källan säger mat."):
+            with self.subTest(reason=reason):
+                finding = flag(3, reason, 'grammar')
+                self.assertFalse(is_self_contradiction(finding, item['sv']))
+                self.assertEqual(unfounded_flags([finding], [item]), ([finding], []))
+
+    def test_a_difference_of_a_capital_is_a_real_finding(self):
+        item = row(1, 'Je suis suédois.', 'Jag är svensk och bor i sverige.')
+        finding = flag(1, "Ordet 'sverige' är felstavat; det korrekta ordet är 'Sverige'.", 'grammar')
+        self.assertFalse(is_self_contradiction(finding, item['sv']))
+
+    def test_a_second_problem_in_the_same_remark_keeps_the_finding(self):
+        item = row(22, 'Men vems stjärt?', 'Men vems stjärt?')
+        finding = flag(22, "Ordet 'stjärt' är felstavat; det korrekta ordet är 'stjärt', dessutom saknas ett frågeord.", 'grammar')
+        self.assertFalse(is_self_contradiction(finding, item['sv']))
+
+    def test_the_word_must_stand_in_the_row_as_written(self):
+        finding = flag(22, "Ordet 'stjärt' är felstavat; det korrekta ordet är 'stjärt'.", 'grammar')
+        self.assertFalse(is_self_contradiction(finding, 'Men vems rumpa?'))
+
+    def test_a_remark_without_a_stated_correction_is_not_touched(self):
+        finding = flag(1, "Ordet 'stjärt' passar inte i sammanhanget.", 'grammar')
+        self.assertFalse(is_self_contradiction(finding, 'Men vems stjärt?'))
+        self.assertFalse(is_self_contradiction(flag(1, '', 'grammar'), 'Men vems stjärt?'))
+
+    def test_other_categories_are_never_removed_by_it(self):
+        item, finding = SELF_CONTRADICTING[0]
+        for category in ('untranslated', 'transliteration', 'fragment', 'source_uncertain'):
+            self.assertEqual(unfounded_flags([{**finding, 'category': category}], [item]), ([{**finding, 'category': category}], []), category)
+
+    def test_the_real_reviewer_slip_no_longer_fails_a_row_in_the_real_review(self):
+        item, finding = SELF_CONTRADICTING[0]
+        kept, removed = unfounded_flags([finding, flag(5, "Källan innehåller en negation som översättningen tappat.")], [item, row(5, 'Non, jamais.', 'Ja, alltid.')])
+        self.assertEqual([entry['id'] for entry in removed], [22])
+        self.assertEqual([entry['id'] for entry in kept], [5], 'a different finding in the same review stays')
 
 
 class UnfoundedFlagsTests(unittest.TestCase):

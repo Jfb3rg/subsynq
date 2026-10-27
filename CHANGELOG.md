@@ -10,6 +10,19 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.334
+
+Samlad utgåva av utvecklingsversionerna 0.8.267–0.8.334.
+
+- **Molnsession:** knappen "Starta molnsession" på Översikt och Kö hyr en server och laddar ner modellerna en gång; jobben använder den tills du trycker "Stoppa molnsession". Den stängs automatiskt efter en timme utan jobb och när workern startas om, och kortet visar kostnaden hittills.
+- **Kö-sidan:** "Kör om" på varje avslutad körning och "Ta bort AI-undertext" på körningar som har en AI-undertext (med bekräftelse). Kön räknar väntande omkörningar och borttagningar. Sidan stannar där du var när du trycker på en knapp i stället för att hoppa till toppen.
+- **Osäkra repliker:** en färdig undertext kan ha en lista över rader som granskningen tvekade om eller där ljudet var otydligt ("Visa osäkra repliker"), med källtext, svensk text och orsak. Otydliga repliker läses först om med tre modeller; det som fortfarande är oklart behålls och listas, och filen nekas bara om mer än en tredjedel av replikerna är oklara.
+- **Språkpaket (frivilliga, avstängda som standard):** KB-Whisper large för svenskt tal och NB-Whisper large för norskt tal under Inställningar › Modeller, även på hyrd server.
+- **Taligenkänning:** repliker som saknades i resultatet återvinns när två modellfamiljer hör samma sak; tappade inledningsord sätts tillbaka (med en extra Qwen-lyssning när bara en läsning hörde dem); felhörda ord rättas när flera läsare är överens; upprepade meningsstarter, dubblerade fraser och eftertexternas textningsrader tas bort; starttider flyttas till där talet börjar och korta rader visas något längre när pausen rymmer det; rader som bara finns i en dubbnings gemensamma bakgrund stryks.
+- **Översättning och granskning:** hela avsnitt granskas i sin helhet; ett block med många fel översätts om som en enhet; omöversättning via engelska för språk med egen skrift; fasta betydelseregler (till exempel caribou = ren, Prime Minister = premiärminister, militär tank = stridsvagn, norska "må ikke" = "får inte"); engelska mått räknas om till metriska; genusfel som "en vapen" fångas.
+- **Ordlista:** `/config/glossary.json` med ord som taligenkänningen hör fel, till exempel `[{"heard": "snow goat", "write": "snowgo"}]`.
+- **Hyrd GPU:** Whisper och Qwen släpper GPU-minnet före översättningen (mycket snabbare översättning på 24 GB-kort), och rapporterna visar modellerna som verkligen körde.
+
 ## 0.8.266
 
 - **Städa undertexter visar nu tydligt att en skanning pågår.** När du klickar på "Skanna om mapparna" dyker raden "Skannar undertextmapparna…" upp direkt, och ytterligare klick medan skanningen pågår ignoreras. Laddar du om sidan eller öppnar den i en annan flik medan en skanning fortfarande körs visas samma rad, och sidan uppdaterar sig själv när skanningen är klar.

@@ -19,18 +19,21 @@ from library import SEASON_FOLDER, VIDEO_EXTENSIONS, has_embedded_swedish_subtit
 from probe import probe_media
 from presentation import LANGUAGES as TRACK_LANGUAGES, format_file_size, render_tracks
 from hardware import allowed_preferences, load_hardware, render_hardware
+import cloud_session
 from cloud_cost import load_profile, parse_profile, render_cloud_cost, render_cloud_market
 from cloud_market import (PROVIDERS, catalog, load_keys, save_key, remove_key, normalize_gpu_query,
                           normalize_vram_bands)
 from jobs import (ACTIVE, enqueue_delete, enqueue_job, enqueue_restart, initialize_jobs,
                   latest_events, latest_jobs, recent_events, request_cancel)
 from i18n import LANGUAGES, t
+import model_manager
+import doubtful_report
 import models_card
 import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.266"
+VERSION = "0.8.334"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -959,8 +962,14 @@ def queue_status_label(status, lang="sv"):
     return t(key, lang) if key else (status or "")
 
 
+# A finished run of a file can be run again from the queue page ("Kör om"; the user 2026-10-25: a small button under the queue and the recent
+# events). Only the file's LATEST run, and never one that is still queued or running.
+RERUNNABLE_STATUSES = ('failed', 'quality_failed', 'completed', 'cancelled', 'deleted')
+
+
 def retry_failed_job(database, media_path, job_id, *, replace_existing=False):
-    """Retry only the currently failed job, using normal library/queue guards."""
+    """Run a file again from its latest finished run, using normal library/queue guards. An existing AI subtitle is only replaced
+    (moved to the trash by the restart) after the user's explicit confirmation."""
     with sqlite3.connect(database) as db:
         saved = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
         ignore = db.execute("SELECT value FROM metadata WHERE key='ignore_existing_subtitle'").fetchone()
@@ -970,8 +979,8 @@ def retry_failed_job(database, media_path, job_id, *, replace_existing=False):
     if item is None:
         raise ValueError('Filen finns inte i den aktuella biblioteksskanningen.')
     if (not job or job.get('id') != job_id
-            or job.get('status') not in ('failed', 'quality_failed')):
-        raise ValueError('Körningen är inte längre misslyckad eller underkänd. Ladda om sidan.')
+            or job.get('status') not in RERUNNABLE_STATUSES):
+        raise ValueError('Körningen är inte längre den senaste avslutade för filen. Ladda om sidan.')
     if item.get('ai_sv_exists'):
         if not replace_existing or not item.get('ai_sv_path'):
             raise ValueError('En AI-undertext finns redan. Ladda om sidan och bekräfta omkörningen.')
@@ -995,7 +1004,7 @@ def render_queue_job_row(job, library_by_path, token, *, cancellable, lang="sv")
     cancel_html = ""
     retry_html = ""
     item = library_by_path.get(job.get('media_path'))
-    if not cancellable and status in ('failed', 'quality_failed') and token and item:
+    if not cancellable and status in RERUNNABLE_STATUSES and token and item:
         replace = bool(item.get('ai_sv_exists'))
         confirmation = (f" onsubmit=\"return confirm('{escape(t('confirm_restart', lang), quote=True)}')\""
                         if replace else '')
@@ -1006,6 +1015,16 @@ def render_queue_job_row(job, library_by_path, token, *, cancellable, lang="sv")
             f"<input type='hidden' name='job_id' value='{int(job.get('id') or 0)}'>"
             f"<input type='hidden' name='replace_existing' value='{int(replace)}'>"
             f"<button type='submit' class='small-button'>{escape(t('action_retry_failed', lang))}</button></form>")
+    delete_html = ""
+    if not cancellable and status in RERUNNABLE_STATUSES and token and item and item.get('ai_sv_exists') and item.get('ai_sv_path'):
+        # The user 2026-10-25: delete the subtitle from the queue page too, not only from the library lists.
+        delete_html = (
+            "<form action='/jobs/delete' method='post' "
+            f"onsubmit=\"return confirm('{escape(t('confirm_delete', lang), quote=True)}')\">"
+            f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
+            f"<input type='hidden' name='media_path' value='{escape(job.get('media_path') or '', quote=True)}'>"
+            "<input type='hidden' name='return_kind' value='queue'>"
+            f"<button type='submit' class='small-button danger'>{escape(t('action_delete', lang))}</button></form>")
     if cancellable:
         progress = int(job.get("progress") or 0)
         progress_html = (f"<div class='progress-track' style='margin-top:6px;'>"
@@ -1030,12 +1049,17 @@ def render_queue_job_row(job, library_by_path, token, *, cancellable, lang="sv")
         f"<div class='title'>{escape(job.get('media_name') or job.get('media_path') or '')}"
         f"<br><small class='muted'>{message}</small>{progress_html}"
         + (f"<br><small class='muted'>{escape(details)}</small>" if details else "")
+        + (f"<br><small>{doubtful_report.report_link(job['id'], lang)}</small>"
+           if status == 'completed' and doubtful_report.has_report(CONFIG, job.get('id') or 0) else "")
         + "</div>"
-        f"<span class='pill {pill_class}'>{escape(label)}</span>{cancel_html}{retry_html}</div>"
+        f"<span class='pill {pill_class}'>{escape(label)}</span>{cancel_html}{retry_html}{delete_html}</div>"
     )
 
 
-PROCESSING_STATUSES = ("transcribing", "translating", "verifying", "writing", "cancel_requested")
+PROCESSING_STATUSES = ("transcribing", "translating", "verifying", "writing", "cancel_requested", "restarting", "deleting")
+# Waiting work of every kind: a re-run of a file that has an AI subtitle ("Kör om") waits as restart_queued and a removal as delete_queued.
+# The menu counts them (jobs.ACTIVE) and so must the queue card (the user 2026-10-25: "3 i kö" in the menu, "Kö · 0" on the page).
+WAITING_STATUSES = ("queued", "restart_queued", "delete_queued")
 
 
 def paginate(items, page, per_page=7):
@@ -1064,7 +1088,7 @@ def render_queue_content(library_items, jobs, token, queue_page=1, history_page=
     all_jobs = list(jobs.values())
     processing = sorted((job for job in all_jobs if job.get("status") in PROCESSING_STATUSES),
                         key=lambda job: job.get("updated_at") or "", reverse=True)
-    queued = sorted((job for job in all_jobs if job.get("status") == "queued"),
+    queued = sorted((job for job in all_jobs if job.get("status") in WAITING_STATUSES),
                     key=lambda job: job.get("updated_at") or "")
     finished = sorted((job for job in all_jobs if job.get("status") not in ACTIVE),
                       key=lambda job: job.get("updated_at") or "", reverse=True)
@@ -1510,8 +1534,8 @@ class Handler(BaseHTTPRequestHandler):
                              '/cloud-cost', '/cloud-key', '/cloud-key/remove', '/cloud-refresh',
                              '/cloud-offer', '/jobs/start', '/jobs/retry', '/jobs/delete', '/jobs/restart', '/jobs/cancel',
                              '/cleanup/trash', '/cleanup/restore', '/cleanup/empty', '/cleanup/retention',
-                             '/jobs/bulk', '/models/remove', '/models/update', '/login', '/settings/security',
-                             '/api/client-timing'):
+                             '/jobs/bulk', '/models/remove', '/models/update', '/models/pack', '/login', '/settings/security',
+                             '/api/client-timing', '/cloud/session/start', '/cloud/session/stop'):
             self.respond(404, "text/plain", "Sidan saknas")
             return
         try:
@@ -1744,6 +1768,24 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
+        if self.path == '/models/pack':
+            # Switch an optional language pack on or off; the worker's model manager downloads a pack that was switched on.
+            pack_id = form.get('id', [''])[0]
+            known = {spec.id for spec in model_manager.load_catalogue(model_manager.catalogue_paths(str(CONFIG))).specs if spec.optional}
+            if pack_id not in known:
+                self.respond(400, 'text/plain', 'Okänt språkpaket.')
+                return
+            try:
+                model_manager.set_pack(CONFIG, pack_id, form.get('enabled', [''])[0] == '1')
+            except OSError as error:
+                self.respond(503, 'text/plain', f'Valet kunde inte sparas: {error}')
+                return
+            logging.info('Språkpaket %s: %s', pack_id, 'på' if form.get('enabled', [''])[0] == '1' else 'av')
+            self.send_response(303)
+            self.send_header('Location', '/settings/models?requested=pack')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
         if self.path == '/models/remove':
             # Only asks the worker to remove old models; the worker re-checks that each one is
             # no longer listed in models.json and was installed by SubSynq itself.
@@ -1814,6 +1856,20 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_response(303)
             self.send_header('Location', location)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        if self.path in ('/cloud/session/start', '/cloud/session/stop'):
+            # A cloud session (app/cloud_session.py): the page only asks; the worker rents, keeps and destroys the server.
+            try:
+                cloud_session.request(DATABASE, self.path.rsplit('/', 1)[1])
+            except (ValueError, sqlite3.Error) as error:
+                self.respond(400, 'text/plain', str(error))
+                return
+            # Back to the page the button was pressed on (overview or queue), where the card is.
+            back = urlsplit(self.headers.get('Referer') or '').path
+            self.send_response(303)
+            self.send_header('Location', back if back in ('/', '/queue') else '/queue')
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -1925,7 +1981,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(400, 'text/plain', str(error))
                 return
             self.send_response(303)
-            self.send_header('Location', library_return_path(item['kind'], 'deleting', library_show(form.get('return_show', [''])[0])))
+            self.send_header('Location', '/queue?job=deleting' if form.get('return_kind', [''])[0] == 'queue'
+                             else library_return_path(item['kind'], 'deleting', library_show(form.get('return_show', [''])[0])))
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -2302,7 +2359,7 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(200, 'text/html', body)
             return
         if path not in ("/", "/library", "/settings", "/settings/theme", "/settings/media", "/settings/cloud", "/settings/security",
-                        "/settings/log", "/settings/models", "/queue", "/cleanup", "/health", "/api/status", "/api/library",
+                        "/settings/log", "/settings/models", "/queue", "/cleanup", "/report", "/health", "/api/status", "/api/library",
                         "/api/jobs", "/api/log"):
             self.respond(404, "application/json", json.dumps({"error": "Not found"}))
             return
@@ -2322,7 +2379,7 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(200, 'application/json', json.dumps({'events': latest_events(DATABASE)}))
             return
         if path in ("/", "/library", "/settings", "/settings/theme", "/settings/media", "/settings/security",
-                    "/settings/cloud", "/settings/log", "/settings/models", "/queue", "/cleanup"):
+                    "/settings/cloud", "/settings/log", "/settings/models", "/queue", "/cleanup", "/report"):
             query = parse_qs(urlsplit(self.path).query)
             jobs = latest_jobs(DATABASE)
             display_hardware = dict(data["hardware"])
@@ -2345,6 +2402,7 @@ class Handler(BaseHTTPRequestHandler):
                                                    data["hardware_preference"], SCAN_TOKEN,
                                                    data["ui_language"], cloud_providers,
                                                    data["cloud_cost_profile"])
+                content = cloud_session.render(cloud_session.load(DATABASE), data["hardware_preference"], SCAN_TOKEN) + content
                 page_title, active_nav = t("page_title_overview", data["ui_language"]), "overview"
             elif path == "/settings":
                 content = render_settings_content(data["theme"], data["accent"], display_hardware,
@@ -2420,6 +2478,7 @@ class Handler(BaseHTTPRequestHandler):
                 content = render_queue_content(library["items"], jobs, SCAN_TOKEN,
                                                 parse_page("queue_page"), parse_page("page"),
                                                 data["ui_language"])
+                content = cloud_session.render(cloud_session.load(DATABASE), data["hardware_preference"], SCAN_TOKEN) + content
                 page_title, active_nav = t("page_title_queue", data["ui_language"]), "queue"
             elif path == "/cleanup":
                 # A submitted filter form always carries "kind"; a plain visit (menu link,
@@ -2465,6 +2524,13 @@ class Handler(BaseHTTPRequestHandler):
                     subtitle_cleanup.list_trash(CONFIG / "trash"), SCAN_TOKEN, notice, cleanup_page,
                     retention_days=retention_days, lang=ui_lang, scanning=subtitle_cleanup.scan_running())
                 page_title, active_nav = t("page_title_cleanup", data["ui_language"]), "cleanup"
+            elif path == "/report":
+                try:
+                    report_job = int(query.get("job", ["0"])[0])
+                except ValueError:
+                    report_job = 0
+                content = doubtful_report.render_report_content(doubtful_report.load_report(CONFIG, report_job), data["ui_language"])
+                page_title, active_nav = t("page_title_doubtful", data["ui_language"]), "queue"
             elif path == "/settings/models":
                 content = models_card.render_models_page(
                     models_card.load_status(CONFIG), SCAN_TOKEN, data["ui_language"],

@@ -17,6 +17,9 @@ granskar resultatet och sparar en SRT-fil bredvid videon.
 - Skapa svenska AI-undertexter och välja en extra engelsk undertext i inställningarna.
 - Markera flera filer i biblioteket och köa undertexter eller ta bort AI-undertexter på en gång.
 - Följa jobb i kön, avbryta en körning och se historik och fel i loggen.
+- **Köra om** en avslutad körning och **ta bort en AI-undertext** direkt från Kö-sidan (med bekräftelse).
+- Se **osäkra repliker** för en färdig undertext: rader där ljudet var otydligt eller granskningen tvekade listas med källtext, svensk text och orsak, så att du vet vad du ska kontrollera.
+- Starta en **molnsession** när du kör flera jobb på hyrd GPU: modellerna laddas ner en gång och servern stängs när du trycker Stopp (eller efter en timme utan jobb).
 - **Städa undertexter:** hitta gamla eller trasiga `.srt`-filer (andra än SubSynqs egna, tomma eller med fel teckenkodning, dubbletter, undertexter vars video bytts ut) och flytta dem till en återställbar papperskorg.
 - Välja hårdvara och tema i webbgränssnittet.
 
@@ -71,8 +74,18 @@ Installationen består av fyra tjänster:
 1. Öppna webbgränssnittet på installationens valda adress och port.
 2. Välj hårdvara under **Inställningar** och skanna biblioteket.
 3. Öppna en film, ett avsnitt eller ett klipp och välj **Skapa svensk AI-undertext**.
-4. Följ arbetet under **Kö**. Vid fel visar historiken orsaken och möjlighet att köra om.
-5. Öppna den skapade undertexten och kontrollera text och tider mot videon.
+4. Följ arbetet under **Kö**. Vid fel visar historiken orsaken; varje avslutad körning kan köras om.
+5. Öppna den skapade undertexten och kontrollera text och tider mot videon. Står det
+   **Visa osäkra repliker** vid jobbet, börja med de raderna.
+
+Är ljudet otydligt på några repliker (till exempel musik under talet) läses de om
+med tre modeller. Det som fortfarande är oklart behålls med den bästa läsningen och
+listas som osäkra repliker; hela filen nekas bara om mer än en tredjedel av
+replikerna är oklara.
+
+Hör taligenkänningen samma ord fel i fil efter fil kan du lägga en **ordlista** i
+`/config/glossary.json` (i `data/config/`), till exempel
+`[{"heard": "snow goat", "write": "snowgo"}]`. Hela ord byts innan något översätts.
 
 Manuell start är standard. Automatisk skanning och jobbstart kan väljas i
 inställningarna. Befintliga SubSynq-undertexter skrivs inte över automatiskt;
@@ -93,7 +106,7 @@ spår själv; det valet används alltid, även vid omförsök och omkörning.
 
 ## Modeller och körsätt
 
-Whisper large-v3 används för avlyssning. Qwen3-ASR och selektiva Whisper
+Whisper large-v3 används för taligenkänning. Qwen3-ASR och selektiva Whisper
 large-v2-pass kontrollerar osäkra delar. Gemma 3 12B används för
 källgranskning och översättning, Gemma 4 12B för slutgranskning och rättning.
 
@@ -108,6 +121,11 @@ byta eller uppgradera en modell lägger du en egen kopia som `/config/models.jso
 gamla ligger kvar tills du själv tar bort den under **Inställningar → Modeller**;
 SubSynq tar aldrig bort något av sig själv. Kvalitetskontrollerna är avstämda mot de
 modeller som listas, så kör ett prov efter ett modellbyte.
+
+Under **Inställningar → Modeller** finns också frivilliga **språkpaket**, avstängda
+som standard: KB-Whisper large för svenskt tal och NB-Whisper large för norskt tal
+(cirka 6 GB var). Påslagna laddas de ner och används som extra läsare när ljudet är
+på det språket.
 
 SubSynq kontrollerar också var 12:e timme om det finns en **nyare version** av de
 listade modellerna. Det visas under **Inställningar → Modeller** som "ny version finns",
@@ -127,10 +145,13 @@ undertextjobb körs.
 Välj inte hårdvara enbart efter att den syns i en lista. Gemma kan kräva mycket
 minne på värden, så kontrollera ledigt RAM före körning.
 
-**Molnläget är fortfarande under utveckling.** Hela kedjan på en hyrd GPU
-är inte verifierad och kort uppstart är ännu olöst. Molnjobb kan kosta
-pengar och skickar ljud och dialogtext till den hyrda servern. Läs
-[CLOUD-GPU.md](CLOUD-GPU.md) före användning.
+**Molnläget är fortfarande under utveckling.** Molnjobb kostar pengar (per timme
+och per hämtad GB) och skickar ljud och dialogtext till den hyrda servern. Läs
+[CLOUD-GPU.md](CLOUD-GPU.md) före användning. Varje molnjobb hyr annars en egen
+server och laddar ner modellerna (10–20 minuter); med **Starta molnsession** på
+Översikt eller Kö görs det en gång, och jobben använder samma server tills du
+trycker **Stoppa molnsession**. Sessionen stängs automatiskt efter en timme utan
+jobb och när workern startas om; kortet visar kostnaden hittills.
 
 ## Lagring
 

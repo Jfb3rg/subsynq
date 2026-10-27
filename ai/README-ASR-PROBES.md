@@ -5,9 +5,6 @@ WhisperX samt NeMo Conformer-CTC. Det är INTE en ny produktionsbackend, kvalite
 automatisk källrättare. Inga databas-/kö-/SRT-funktioner importeras.
 Appversionen ändras inte av denna separata testmiljö.
 
-> Byggfilerna för provbilderna (`Dockerfile.*-probe`) ingår inte i den här utgåvan;
-> kommandona nedan förutsätter dem och gäller bara om du bygger provmiljön själv.
-
 ## Testmiljö
 
 Bygg `docker build -f Dockerfile.asr-probe -t subsynq-asr-probe:20260928 .`.
@@ -165,7 +162,7 @@ ursprunglig AAC-kodning varit klippt. Filter kan själva ge fullskalevärden;
 mest flytande text eller hög ordsannolikhet är INTE ett Hindi-facit.
 Bevara JSON-rapporter och rensa endast den egna temporära ljudvolymen
 efter kontroll av exakt namn och inga beroende containrar. Originalmedia
-och modellvikter förblir orörda. Resultat/avgränsningar i den interna statusloggen.
+och modellvikter förblir orörda. Resultat/avgränsningar i senaste `STATUS.md`.
 
 Filterdokumentation: https://ffmpeg.org/ffmpeg-filters.html#pan-1,
 https://ffmpeg.org/ffmpeg-filters.html#highpass och
@@ -379,7 +376,7 @@ under `data/diagnostics/king-don2-reference-20260929/` för analys,
 ej i Git och inte för distribution. Publicerat spår:
 https://music.apple.com/us/song/1122289144.
 Jämför den inte med andra medier utan att först kontrollera licens,
-utgåva och ljudets faktiska innehåll. Se den interna statusloggen för
+utgåva och ljudets faktiska innehåll. Se senaste `STATUS.md` för
 exakta hashvärden, träffar och avgränsning i KING-provet.
 
 ## Matchade ASR-fönster mot extern ljudreferens
@@ -402,7 +399,7 @@ skrivbar, `--network none`, inga produktionshemligheter eller Docker-socket.
 Jämför publicerad text först EFTER transkribering. `reference` är en
 diagnostisk variant, aldrig en produktionsingång eller automatisk facitkälla.
 Kör `silence` separat för direkt hallucineringstest utan VAD. Se senaste
-den interna statusloggen för konkreta KING-resultat och tydliga begränsningar.
+`STATUS.md` för konkreta KING-resultat och tydliga begränsningar.
 
 ## Talnärvaro över flera klipp – endast diagnostik
 
@@ -421,4 +418,4 @@ känslig-VAD-täckning BEVISAR inte tal: musik kan reagera. En publik
 referens eller tidigare undertext är bara jämförelseunderlag, inte facit
 för nytt klipp. Något säkert instrumentalt realklipp var inte mänskligt
 etiketterat i 2026-09-29-provet; generella musikregler kan därför inte
-härledas från dess JSON-rapporter. Se den interna statusloggen.
+härledas från dess JSON-rapporter. Se senaste `STATUS.md`.

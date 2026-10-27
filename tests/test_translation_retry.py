@@ -180,7 +180,10 @@ class ApprovedRetryRowsTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as folder, patch.object(worker, 'QUALITY_REPORTS', Path(folder)), \
                 patch.object(worker, 'check_cancelled'):
-            def review(job, rows):
+            finals = []
+
+            def review(job, rows, **kwargs):
+                finals.append(kwargs.get('final', False))
                 calls.append([dict(row) for row in rows])
                 if len(calls) == 1:
                     (Path(folder) / 'job-4.json').write_text(json.dumps(self.report()), encoding='utf-8')
@@ -193,6 +196,7 @@ class ApprovedRetryRowsTests(unittest.TestCase):
                 self.assertEqual(result[0], first[0])
                 self.assertEqual(calls[1], result)
                 self.assertEqual(len(calls[1]), 2)
+                self.assertEqual(finals, [False, True], 'only the second attempt may keep a few remaining findings')
                 self.assertTrue((Path(folder) / 'job-4-attempt1.json').exists())
 
 

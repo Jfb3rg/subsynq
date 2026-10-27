@@ -1,0 +1,283 @@
+{
+  "provenance": "Actual complete CPU ASR run dev-T7aCTt, English ffprobe stream 1, 2026-10-25; excerpt only",
+  "rows": [
+    {
+      "start": 51.208,
+      "end": 52.31,
+      "text": "Come on, baby, get in.",
+      "confidence": 0.9730282425880432
+    },
+    {
+      "start": 53.672,
+      "end": 55.03,
+      "text": "What's First time in Kyiv?",
+      "confidence": 0.7020022124052048
+    },
+    {
+      "start": 56.15,
+      "end": 59.18,
+      "text": "Take what you want.",
+      "confidence": 0.8915247917175293
+    }
+  ],
+  "profiles": [
+    {
+      "profile": "Whisper läser sammanhang",
+      "window": {
+        "start": 0,
+        "end": 90
+      },
+      "language": null,
+      "vad_filter": true,
+      "minimum_probability": 0.25,
+      "segment_text": " What's up? First time in Kyiv?",
+      "no_speech_prob": 0.5644491314888,
+      "avg_logprob": -0.2213887147546753,
+      "words": [
+        {
+          "text": " What's",
+          "start": 53.29,
+          "end": 53.77,
+          "probability": 0.7020022124052048
+        },
+        {
+          "text": " up?",
+          "start": 53.77,
+          "end": 53.77,
+          "probability": 0.9992747902870178
+        },
+        {
+          "text": " First",
+          "start": 53.93,
+          "end": 54.17,
+          "probability": 0.994347870349884
+        },
+        {
+          "text": " time",
+          "start": 54.17,
+          "end": 54.47,
+          "probability": 0.998611330986023
+        },
+        {
+          "text": " in",
+          "start": 54.47,
+          "end": 54.61,
+          "probability": 0.9895273447036743
+        },
+        {
+          "text": " Kyiv?",
+          "start": 54.61,
+          "end": 54.95,
+          "probability": 0.7735867202281952
+        }
+      ]
+    },
+    {
+      "profile": "Kontrollerar luckor och tider",
+      "window": {
+        "start": 44,
+        "end": 74
+      },
+      "language": null,
+      "vad_filter": true,
+      "minimum_probability": 0.15,
+      "segment_text": " What's up? First time in Kiev? Yeah. Take what you want. We're headed to Kharkiv.",
+      "no_speech_prob": 0.5011084079742432,
+      "avg_logprob": -0.22440751580631033,
+      "words": [
+        {
+          "text": " What's",
+          "start": 53.3,
+          "end": 53.78,
+          "probability": 0.7583010792732239
+        },
+        {
+          "text": " up?",
+          "start": 53.78,
+          "end": 53.78,
+          "probability": 0.9989749193191528
+        },
+        {
+          "text": " First",
+          "start": 53.92,
+          "end": 54.18,
+          "probability": 0.9913596510887146
+        },
+        {
+          "text": " time",
+          "start": 54.18,
+          "end": 54.46,
+          "probability": 0.9982522130012512
+        },
+        {
+          "text": " in",
+          "start": 54.46,
+          "end": 54.62,
+          "probability": 0.99172443151474
+        },
+        {
+          "text": " Kiev?",
+          "start": 54.62,
+          "end": 54.88,
+          "probability": 0.48202675580978394
+        },
+        {
+          "text": " Yeah.",
+          "start": 55.34,
+          "end": 55.82,
+          "probability": 0.9663813710212708
+        },
+        {
+          "text": " Take",
+          "start": 56.2,
+          "end": 56.68,
+          "probability": 0.9146690368652344
+        },
+        {
+          "text": " what",
+          "start": 58.47,
+          "end": 58.69,
+          "probability": 0.9988573789596558
+        },
+        {
+          "text": " you",
+          "start": 58.69,
+          "end": 58.83,
+          "probability": 0.9990993738174438
+        },
+        {
+          "text": " want.",
+          "start": 58.83,
+          "end": 59.09,
+          "probability": 0.9996235370635986
+        },
+        {
+          "text": " We're",
+          "start": 60.03,
+          "end": 60.510000000000005,
+          "probability": 0.9842175841331482
+        },
+        {
+          "text": " headed",
+          "start": 60.510000000000005,
+          "end": 60.67,
+          "probability": 0.9837546944618225
+        },
+        {
+          "text": " to",
+          "start": 60.67,
+          "end": 60.83,
+          "probability": 0.9994660019874573
+        },
+        {
+          "text": " Kharkiv.",
+          "start": 60.83,
+          "end": 61.33,
+          "probability": 0.9137223561604818
+        }
+      ]
+    },
+    {
+      "profile": "Whisper v2 kontrollerar ordfragment",
+      "window": {
+        "start": 44,
+        "end": 56
+      },
+      "language": null,
+      "vad_filter": false,
+      "minimum_probability": 0.25,
+      "segment_text": " What's up? First time in Kiev?",
+      "no_speech_prob": 0.6301978826522827,
+      "avg_logprob": -0.3118675609804549,
+      "words": [
+        {
+          "text": " What's",
+          "start": 53.66,
+          "end": 53.82,
+          "probability": 0.7177938222885132
+        },
+        {
+          "text": " up?",
+          "start": 53.82,
+          "end": 54,
+          "probability": 0.9153860807418823
+        },
+        {
+          "text": " First",
+          "start": 54.08,
+          "end": 54.3,
+          "probability": 0.8736799955368042
+        },
+        {
+          "text": " time",
+          "start": 54.3,
+          "end": 54.56,
+          "probability": 0.8111532926559448
+        },
+        {
+          "text": " in",
+          "start": 54.56,
+          "end": 54.76,
+          "probability": 0.8847120404243469
+        },
+        {
+          "text": " Kiev?",
+          "start": 54.76,
+          "end": 55.019999999999996,
+          "probability": 0.5079795718193054
+        }
+      ]
+    },
+    {
+      "profile": "Whisper v2 kontrollerar ordfragment",
+      "window": {
+        "start": 49,
+        "end": 66
+      },
+      "language": null,
+      "vad_filter": false,
+      "minimum_probability": 0.25,
+      "segment_text": " What's up? First time in Kiev?",
+      "no_speech_prob": 0.15319348871707916,
+      "avg_logprob": -0.31049371966057354,
+      "words": [
+        {
+          "text": " What's",
+          "start": 53.66,
+          "end": 53.82,
+          "probability": 0.6442020088434219
+        },
+        {
+          "text": " up?",
+          "start": 53.82,
+          "end": 54,
+          "probability": 0.9143035411834717
+        },
+        {
+          "text": " First",
+          "start": 54.08,
+          "end": 54.3,
+          "probability": 0.870256781578064
+        },
+        {
+          "text": " time",
+          "start": 54.3,
+          "end": 54.58,
+          "probability": 0.8160523176193237
+        },
+        {
+          "text": " in",
+          "start": 54.58,
+          "end": 54.76,
+          "probability": 0.8907599449157715
+        },
+        {
+          "text": " Kiev?",
+          "start": 54.76,
+          "end": 55,
+          "probability": 0.620819091796875
+        }
+      ]
+    }
+  ]
+}

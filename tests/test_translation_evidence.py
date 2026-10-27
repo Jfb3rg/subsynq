@@ -191,7 +191,7 @@ class TranslationEvidenceTests(unittest.TestCase):
         self.assertNotIn('source', request['rows'][0])
         self.assertEqual(request['source_context'], [{'id': 1, 'source': self.rows[1]['source']}])
         self.assertEqual(request['grammar_findings'], [{'id': 1,
-            'target_quote': self.rows[1]['sv'], 'reason': 'Felaktig svensk grammatik.'}])
+            'target_quote': self.rows[1]['sv']}])
         self.assertNotIn('source_quote', request['grammar_findings'][0])
 
     def test_grammar_evidence_is_current_target_only_and_requested(self):
@@ -203,8 +203,7 @@ class TranslationEvidenceTests(unittest.TestCase):
                 patch.object(worker, 'check_cancelled'):
             worker.repair_target_grammar({'id': 9}, self.rows, {1}, flags=flags)
         findings = json.loads(model.call_args.args[0]['prompt'])['grammar_findings']
-        self.assertEqual(findings, [{'id': 1, 'target_quote': self.rows[1]['sv'],
-                                    'reason': 'Felaktig svensk grammatik.'}])
+        self.assertEqual(findings, [{'id': 1, 'target_quote': self.rows[1]['sv']}])
 
     def test_stale_grammar_quote_after_meaning_repair_is_not_reused(self):
         responses = [
@@ -266,7 +265,8 @@ class TranslationEvidenceTests(unittest.TestCase):
         with patch.object(worker, 'call_ollama', return_value=answer), \
                 patch.object(worker, 'check_cancelled'):
             with self.assertRaises(RuntimeError):
-                worker.repair_flagged_translation({'id': 9}, self.rows, [flag(self.rows[1])])
+                worker.repair_flagged_translation_once({'id': 9}, self.rows, [flag(self.rows[1])])
+            self.assertEqual(worker.repair_flagged_translation({'id': 9}, self.rows, [flag(self.rows[1])]), self.rows, 'the wrapper leaves the row flagged instead')
 
     def run_saved_review(self, initial_flags, final_flags):
         responses = [
@@ -329,16 +329,18 @@ class TranslationEvidenceTests(unittest.TestCase):
         responses = [
             {'response': json.dumps({'flags': [flag(self.rows[1])]})},
             {'response': 'not JSON'},
+            {'response': json.dumps({'flags': [flag(self.rows[1])]})},       # the re-review: the row is still flagged, the gate refuses
         ]
         with tempfile.TemporaryDirectory() as folder, \
                 patch.object(worker, 'QUALITY_REPORTS', Path(folder)), \
                 patch.object(worker, 'call_ollama', side_effect=responses), \
                 patch.object(worker, 'check_cancelled'):
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(worker.SourceQualityError):
                 worker.review_and_save_translation({'id': 9}, self.rows)
             saved = json.loads((Path(folder) / 'job-9.json').read_text())
         self.assertEqual(saved['repair_steps'][0]['response'], 'not JSON')
-        self.assertEqual(saved['status'], 'error')
+        self.assertEqual(saved['repair_steps'][-1]['stage'], 'repair_failed')
+        self.assertEqual(saved['status'], 'unusable')
 
     def test_unsafe_edit_is_discarded_per_row_without_losing_valid_agreement_fix(self):
         rows = [self.rows[1], {'id': 4, 'source': 'I am not leaving.', 'sv': 'Jag går inte.'}]
@@ -356,6 +358,8 @@ class TranslationEvidenceTests(unittest.TestCase):
         responses = [
             {'response': json.dumps({'flags': [flag(self.rows[0])]})},
             {'response': json.dumps({'rows': [{'id': 0, 'sv': 'Jag kommer aldrig tillbaka.'}]})},
+            # The grammar edit was discarded (word count), so the repair that reads the remark gets the line too (0.8.323).
+            {'response': json.dumps({'rows': [{'id': 0, 'sv': 'Jag kommer tillbaka.'}]})},
             {'response': '{"flags":[]}'},
         ]
         with tempfile.TemporaryDirectory() as folder, \
@@ -364,11 +368,11 @@ class TranslationEvidenceTests(unittest.TestCase):
                 patch.object(worker, 'check_cancelled'):
             worker.review_and_save_translation({'id': 9}, self.rows)
             saved = json.loads((Path(folder) / 'job-9.json').read_text())
-        self.assertEqual(model.call_count, 3)
+        self.assertEqual(model.call_count, 4)
         self.assertEqual(saved['status'], 'usable')
         self.assertEqual(self.rows[0]['sv'], 'Jag kommer tillbaka.')
         reviewed = json.loads(model.call_args.args[0]['prompt'])['rows']
-        self.assertEqual(reviewed, self.rows)
+        self.assertEqual(reviewed, self.rows, 'a short file is re-reviewed in full after a repair')
 
 
 class UntranslatedQuoteTests(unittest.TestCase):

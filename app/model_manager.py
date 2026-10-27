@@ -20,6 +20,7 @@ import json
 import hashlib
 import os
 import shutil
+import tempfile
 import threading
 import time
 import urllib.request
@@ -38,6 +39,7 @@ CATALOGUE_FILE = "models.json"
 STATUS_FILE = "models-status.json"
 LEDGER_FILE = "models-installed.json"
 REMOVE_REQUEST_FILE = "models-remove-request.json"
+PACKS_FILE = "language-packs.json"
 UPDATE_REQUEST_FILE = "models-update-request.json"
 UPDATE_CHECK_SECONDS = 12 * 3600   # how often to look for newer versions of the listed models
 OLLAMA_REGISTRY = "https://registry.ollama.ai"
@@ -57,6 +59,8 @@ class ModelSpec:
     size_gb: float   # approximate download size: disk-space check and the display
     used_by: str
     role: str = ""   # 'translation' | 'review' for the Gemma models the worker calls
+    optional: bool = False   # a language pack: only downloaded while it is switched on (language-packs.json)
+    language: str = ""       # the language an optional pack is for, e.g. 'sv'
 
     @property
     def key(self):
@@ -97,7 +101,8 @@ def parse_catalogue(data):
         except (TypeError, ValueError):
             raise CatalogueError(f'modell {number}: size_gb måste vara ett tal') from None
         specs.append(ModelSpec(entry["id"], entry["kind"], entry["name"].strip(), entry["label"], size,
-                               str(entry.get("used_by", "")), str(entry.get("role", ""))))
+                               str(entry.get("used_by", "")), str(entry.get("role", "")),
+                               entry.get("optional") is True, str(entry.get("language", ""))))
     return specs
 
 
@@ -148,11 +153,21 @@ def _now():
 
 
 def _write_json(path, data):
+    """Replace the file in one step through a temporary file of its own (two writers must never share one temporary name)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    os.replace(temporary, path)
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, ensure_ascii=False))
+        os.chmod(name, 0o644)
+        os.replace(name, path)
+    except BaseException:
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
+        raise
 
 
 def _read_json(path, default):
@@ -160,6 +175,24 @@ def _read_json(path, default):
         return json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return default
+
+
+# ------------------------------------------------------------- optional language packs
+
+def enabled_packs(config_dir="/config"):
+    """Ids of the optional language packs the user has switched on (Settings > Models); none until then."""
+    data = _read_json(Path(config_dir) / PACKS_FILE, {})
+    ids = data.get("enabled", []) if isinstance(data, dict) else []
+    return {entry for entry in ids if isinstance(entry, str)}
+
+
+def set_pack(config_dir, spec_id, enabled):
+    ids = enabled_packs(config_dir)
+    if enabled:
+        ids.add(spec_id)
+    else:
+        ids.discard(spec_id)
+    _write_json(Path(config_dir) / PACKS_FILE, {"enabled": sorted(ids)})
 
 
 # ---------------------------------------------------------------- disk helpers
@@ -429,6 +462,8 @@ class ModelManager:
         self.ledger_path = self.config_dir / LEDGER_FILE
         self.request_path = self.config_dir / REMOVE_REQUEST_FILE
         self.update_request_path = self.config_dir / UPDATE_REQUEST_FILE
+        self.packs_path = self.config_dir / PACKS_FILE
+        self._enabled = set()
         self.is_busy = is_busy or (lambda: False)   # True while a subtitle job is running
         self.now = now
         self._update_checked_ts = 0.0
@@ -453,15 +488,26 @@ class ModelManager:
     def ready(self):
         return self._ready
 
+    def _is_wanted(self, spec):
+        """Every listed model except an optional language pack that is switched off."""
+        return not spec.optional or spec.id in self._enabled
+
+    def _packs_stamp(self):
+        try:
+            return self.packs_path.stat().st_mtime_ns
+        except OSError:
+            return 0
+
     # --- status file
     def _write(self, force=True):
         if not force and time.monotonic() - self._last_write < 1.0:
             return
         self._last_write = time.monotonic()
         with self._lock:
-            done = sum(1 for m in self._models.values() if m["state"] == "present")
+            wanted = [m for m in self._models.values() if m.get("enabled", True)]
+            done = sum(1 for m in wanted if m["state"] == "present")
             data = {"updated_at": _now(), "state": self._state, "message": self._message,
-                    "notice": self._notice, "ready": self._ready, "done": done, "total": len(self._models),
+                    "notice": self._notice, "ready": self._ready, "done": done, "total": len(wanted),
                     "source": self._source, "catalogue_errors": list(self._catalogue_errors),
                     "update_checked_at": self._update_checked_at,
                     "obsolete": [dict(m) for m in self._obsolete],
@@ -481,11 +527,13 @@ class ModelManager:
         self.specs = list(catalogue.specs)
         self._source = str(catalogue.source) if catalogue.source else ""
         self._catalogue_errors = list(catalogue.errors or [])
+        self._enabled = enabled_packs(self.config_dir)
         with self._lock:
             self._models = {
                 s.id: self._models.get(s.id, {}) | {
                     "id": s.id, "label": s.label, "used_by": s.used_by, "size_gb": s.size_gb,
-                    "name": s.name, "kind": s.kind}
+                    "name": s.name, "kind": s.kind, "optional": s.optional, "language": s.language,
+                    "enabled": self._is_wanted(s)}
                 for s in self.specs}
             for model in self._models.values():
                 model.setdefault("update", "")          # "" | current | available | unknown
@@ -523,7 +571,7 @@ class ModelManager:
         request = _read_json(self.request_path, {})
         keys = request.get("keys", []) if isinstance(request, dict) else []
         ledger = self._ledger()
-        wanted = {s.key for s in self.specs}
+        wanted = {s.key for s in self.specs if self._is_wanted(s)}      # a switched-off language pack may be removed
         messages = []
         for key in keys:
             entry = ledger.get(key)
@@ -661,7 +709,7 @@ class ModelManager:
         self._process_update_request()
         self._record_present()
         self._write()
-        missing = [s for s in self.specs if self._models[s.id]["state"] != "present"]
+        missing = [s for s in self.specs if self._is_wanted(s) and self._models[s.id]["state"] != "present"]
         if not missing:
             self._ready, self._state = True, "ready"
             self._write()
@@ -677,7 +725,7 @@ class ModelManager:
         for spec in missing:
             if not self._download_one(spec):
                 failures += 1
-        self._ready = failures == 0 and all(m["state"] == "present" for m in self._models.values())
+        self._ready = failures == 0 and all(m["state"] == "present" for m in self._models.values() if m.get("enabled", True))
         self._state = "ready" if self._ready else "error"
         if self._ready:
             self._message = ""
@@ -749,12 +797,12 @@ class ModelManager:
     # --- forever
     def _wait(self, seconds):
         """Sleep, but wake early when the Models page has asked for a removal."""
-        remaining = seconds
+        remaining, stamp = seconds, self._packs_stamp()
         while remaining > 0:
             step = min(WAIT_STEP, remaining)
             self.sleep(step)
             remaining -= step
-            if self.request_path.exists() or self.update_request_path.exists():
+            if self.request_path.exists() or self.update_request_path.exists() or self._packs_stamp() != stamp:
                 return
 
     def run_forever(self):

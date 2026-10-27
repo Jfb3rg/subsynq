@@ -25,6 +25,12 @@ ASR_MODEL = os.environ.get("SUBSYNQ_QWEN_ASR_MODEL", "Qwen/Qwen3-ASR-1.7B")
 ALIGNER_MODEL = os.environ.get(
     "SUBSYNQ_QWEN_ALIGNER_MODEL", "Qwen/Qwen3-ForcedAligner-0.6B"
 )
+# Languages the official Qwen3-ASR does not cover can be answered by a community fine-tune of the same architecture. Tamil:
+# lemuralabs/tamil-asr-qwen3 (Apache-2.0, 1,475 h of Tamil of which 803 h conversational; FLEURS-Tamil WER 25 % against Whisper
+# large-v3 49 % by its card). It detects the language itself and has no forced aligner (the aligner does not know Tamil), so it
+# only answers text readings. Set SUBSYNQ_QWEN_TAMIL_MODEL to "" to switch it off.
+LANGUAGE_MODELS = {"tamil": os.environ.get("SUBSYNQ_QWEN_TAMIL_MODEL", "lemuralabs/tamil-asr-qwen3")}
+LANGUAGE_ALIASES = {"ta": "tamil", "tam": "tamil", "tamil": "tamil"}
 DEVICE = os.environ.get("SUBSYNQ_QWEN_DEVICE", "cpu")
 DTYPE_NAME = os.environ.get(
     "SUBSYNQ_QWEN_DTYPE", "float32" if DEVICE == "cpu" else "float16"
@@ -44,13 +50,25 @@ if DTYPE_NAME not in DTYPES:
     raise ValueError(f"Unsupported dtype: {DTYPE_NAME}")
 
 model = None
+model_id = None
 last_used = 0.0
+loaded_since_start = False      # a model has been loaded by this process (then a hard unload restarts it)
 model_lock = threading.Lock()
 
 
+def language_model(language):
+    """(checkpoint, language to pass on) for a language clue from the worker: the fine-tune for a language the official model
+    does not cover, otherwise the official model and the clue unchanged."""
+    key = LANGUAGE_ALIASES.get(str(language or "").strip().lower())
+    if key and LANGUAGE_MODELS.get(key):
+        return LANGUAGE_MODELS[key], None
+    return ASR_MODEL, language or None
+
+
 def release_model():
-    global model
+    global model, model_id
     model = None
+    model_id = None
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -58,6 +76,18 @@ def release_model():
         ctypes.CDLL('libc.so.6').malloc_trim(0)
     except (OSError, AttributeError):
         pass
+
+
+def restart_process():
+    """Start this same service over again in the same process slot, as soon as no request is running. It is the only way to hand ALL of a CUDA
+    process's memory back to the card (weights that stay referenced, the allocator's cache, the CUDA context): on a rented RTX 3090 this
+    process kept 3.6 GiB after `release_model`, so the translation model got 16.7 GiB instead of the 18-20 it needs and generated 4 tokens/s
+    instead of 33 (STATUS natt 43). The models load again on the next request."""
+    def restart():
+        with model_lock:
+            time.sleep(0.3)                       # the answer to /unload has left
+            os.execv(sys.executable, [sys.executable, *sys.orig_argv[1:]])
+    threading.Thread(target=restart, daemon=True).start()
 
 
 def free_memory():
@@ -92,13 +122,20 @@ class LazyAligner:
         return self.real.align(*args, **kwargs)
 
 
-def load_model(*, with_alignment=True):
-    global model, last_used
+def load_model(*, with_alignment=True, language=None):
+    global model, model_id, last_used, loaded_since_start
+    loaded_since_start = True
+    wanted, _ = language_model(language)
+    if model is not None and model_id != wanted:
+        release_model()
+    if wanted != ASR_MODEL:
+        with_alignment = False                      # the aligner does not know the fine-tune's language
     if model is None:
-        print(f"Loading {ASR_MODEL} on {DEVICE}", flush=True)
+        print(f"Loading {wanted} on {DEVICE}", flush=True)
         common = {"dtype": DTYPES[DTYPE_NAME], "device_map": DEVICE}
+        model_id = wanted
         model = Qwen3ASRModel.from_pretrained(
-            ASR_MODEL,
+            wanted,
             max_inference_batch_size=1,
             max_new_tokens=256,
             **common,
@@ -179,10 +216,12 @@ def child_main(arguments):
     """Entry point of the per-request process: load, transcribe, write the payload, exit."""
     path, wav_path, language, out_path = arguments
     try:
-        active_model = load_model(with_alignment=path == "/transcribe")
+        checkpoint, passed_language = language_model(language)
+        stamped = path == "/transcribe" and checkpoint == ASR_MODEL
+        active_model = load_model(with_alignment=stamped, **({'language': language} if checkpoint != ASR_MODEL else {}))
         result = active_model.transcribe(
-            audio=wav_path, language=language or None,
-            return_time_stamps=path == "/transcribe")[0]
+            audio=wav_path, language=passed_language,
+            return_time_stamps=stamped)[0]
         data = result_payload(result)
         code = 0
     except Exception as error:
@@ -211,15 +250,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(200, {
             "status": "ready", "device": DEVICE, "model_loaded": model is not None,
             "aligner_loaded": model is not None and model.forced_aligner is not None,
-            "asr_model": ASR_MODEL, "aligner_model": ALIGNER_MODEL,
+            "asr_model": ASR_MODEL, "aligner_model": ALIGNER_MODEL, "language_models": LANGUAGE_MODELS,
         })
 
     def do_POST(self):
         global last_used
-        if self.path == "/unload":
+        route, _, query = self.path.partition("?")
+        if route == "/unload":
             with model_lock:
                 release_model()
-            self.send_json(200, {"status": "ready", "model_loaded": False})
+            hard = "hard=1" in query.split("&") and DEVICE == "cuda" and loaded_since_start
+            self.send_json(200, {"status": "ready", "model_loaded": False, "restarting": hard})
+            if hard:
+                restart_process()
             return
         if self.path not in ("/transcribe", "/identify"):
             self.send_json(404, {"status": "not_found"})
@@ -243,10 +286,12 @@ class Handler(BaseHTTPRequestHandler):
                         # next request hit the container limit), see STATUS.
                         response = run_child(self.path, audio.name, language)
                     else:
-                        active_model = load_model(with_alignment=self.path == '/transcribe')
+                        checkpoint, passed_language = language_model(language)
+                        stamped = self.path == '/transcribe' and checkpoint == ASR_MODEL
+                        active_model = load_model(with_alignment=stamped, **({'language': language} if checkpoint != ASR_MODEL else {}))
                         result = active_model.transcribe(
-                            audio=audio.name, language=language,
-                            return_time_stamps=self.path == "/transcribe"
+                            audio=audio.name, language=passed_language,
+                            return_time_stamps=stamped
                         )[0]
                         response = result_payload(result)
                         last_used = time.monotonic()

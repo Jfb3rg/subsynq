@@ -2,10 +2,21 @@ import sys
 import unittest
 
 sys.path.insert(0, '/ai')
-from source_audio_probe import source_window
+from source_audio_probe import source_audio_map, source_window
 
 
 class SourceAudioProbeTests(unittest.TestCase):
+    def test_saved_ffprobe_stream_wins_over_first_audio_stream(self):
+        self.assertEqual(source_audio_map({'audio_track': {'index': 1}}), '0:1')
+        self.assertEqual(source_audio_map({'audio_track': {'index': 0}}), '0:0')
+        self.assertEqual(source_audio_map({'audio_track': {'index': 1}}, 2), '0:2')
+
+    def test_unknown_or_invalid_stream_is_not_silently_guessed(self):
+        for report in ({}, {'audio_track': None}, {'audio_track': {'index': -1}},
+                       {'audio_track': {'index': True}}, {'audio_track': {'index': '1'}}):
+            with self.subTest(report=report), self.assertRaises(ValueError):
+                source_audio_map(report)
+
     def test_saved_rows_get_context_without_cutting_start_below_zero(self):
         self.assertEqual(source_window([{'start': .5, 'end': 4}]), (0, 6))
         self.assertEqual(source_window([{'start': 8, 'end': 20}]), (6, 22))

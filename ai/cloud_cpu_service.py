@@ -64,7 +64,9 @@ ALLOWED_OPTIONS = {
     "temperature": (int, float),
 }
 
-ALLOWED_WHISPER_MODELS = ("large-v3", "large-v2")
+# KB-Whisper reads Swedish (app/swedish_reader.py) and NB-Whisper is the extra Norwegian reader (app/norwegian_reader.py), same repository names;
+# each is downloaded by faster-whisper on its first request. Without NB-Whisper here the rented server refused it (dev jobs 205, 206).
+ALLOWED_WHISPER_MODELS = ("large-v3", "large-v2", "KBLab/kb-whisper-large", "NbAiLab/nb-whisper-large")
 
 # At most ONE Whisper model is resident, as in the local worker: asking for
 # the other one drops the current model before loading it. `whisper_lock`
@@ -253,6 +255,25 @@ def activate_whisper(name):
     return whisper
 
 
+def release_gpu_memory():
+    """Hand the memory Whisper and Qwen3-ASR hold back to the card before the translation model loads. On a rented RTX 3090 they kept
+    7 GiB (3.4 + 3.6) through the whole translation, so gemma3:27b got 16.7 GiB, ran partly on the CPU and generated 4 tokens/s instead of
+    33 (STATUS natt 43). Both models load again on the next request. Returns {"whisper": was it loaded, "qwen": is it restarting (None: it
+    did not answer)}."""
+    global whisper, whisper_loaded
+    with whisper_lock:
+        had = whisper is not None
+        if had:
+            try:
+                whisper.model.unload_model()
+            except Exception:                         # the object is dropped either way
+                pass
+        whisper = whisper_loaded = None
+        gc.collect()
+    answer = local_json(QWEN_PORT, "/unload?hard=1", 20, "POST")
+    return {"whisper": had, "qwen": answer.get("restarting") if isinstance(answer, dict) else None}
+
+
 def load_whisper():
     try:
         with whisper_lock:
@@ -264,10 +285,10 @@ def load_whisper():
         print(f"Whisper kunde inte laddas: {error!r}", flush=True)
 
 
-def local_json(port, path, timeout=5):
+def local_json(port, path, timeout=5, method="GET"):
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     try:
-        connection.request("GET", path)
+        connection.request(method, path)
         response = connection.getresponse()
         body = response.read()
         if response.status != 200:
@@ -457,6 +478,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/transcribe":
                 self.transcribe()
+            elif path == "/release":
+                self.respond(200, release_gpu_memory())
             elif path.startswith("/qwen/"):
                 with track(qwen_phase(path[len("/qwen"):])):
                     self.forward("POST", QWEN_PORT, path[len("/qwen"):], self.read_body(MAX_AUDIO_BYTES))
@@ -491,7 +514,8 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error:
             self.respond(500, {"status": "error", "error": str(error)[:500]})
             return
-        self.respond(200, {"status": "ok", "language": info.language, "segments": rows})
+        self.respond(200, {"status": "ok", "language": info.language,
+                           "language_probability": getattr(info, "language_probability", None), "segments": rows})
 
     def log_message(self, _format, *_args):
         return

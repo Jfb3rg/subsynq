@@ -7,7 +7,7 @@ Real money: every function that creates or destroys a billable instance
 talks to Vast.ai's live API. Nothing here is called automatically; the
 caller (the web UI or a manual script) must ask the user first, every time,
 until the app's own "Starta molnjobb" button becomes the agreed-on consent
-per den interna statusloggen.
+per SETTINGS-PLAN.md / STATUS.md.
 """
 import ast
 import base64
@@ -21,7 +21,7 @@ from urllib.request import Request, urlopen
 
 VAST_API = "https://console.vast.ai/api/v0"
 # A stock, publicly available CUDA+PyTorch image -- no custom image to build
-# or push. gpu_service.py itself has no ROCm-specific code (see den interna statusloggen);
+# or push. gpu_service.py itself has no ROCm-specific code (see STATUS.md);
 # it only ever calls generic torch.cuda.* APIs, so it runs unmodified here.
 # 2.4.0-cuda12.4 was built in 2024, before the Blackwell architecture (RTX
 # 50-series) existed, and failed live on a real RTX 5060 Ti with "CUDA
@@ -59,6 +59,14 @@ CHAIN_PIP_INSTALL_SCRIPT = '''pip_install() {
   done
 }
 '''
+
+
+def llm_parallel():
+    """How many requests the rented server's Ollama may work on at once (SUBSYNQ_LLM_PARALLEL, 1 to 4; the worker splits long files to match)."""
+    try:
+        return max(1, min(4, int(os.environ.get('SUBSYNQ_LLM_PARALLEL', '1'))))
+    except ValueError:
+        return 1
 
 
 BOOTSTRAP_TEMPLATE = '''set -e -o pipefail
@@ -108,7 +116,7 @@ track_ollama() {
   tstep 'installerar Ollama'
   curl -fsSL https://ollama.com/install.sh | sh
   tstep 'startar Ollama'
-  OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 nohup ollama serve > /root/ollama.log 2>&1 &
+  OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 OLLAMA_NUM_PARALLEL=@PARALLEL@ OLLAMA_MAX_LOADED_MODELS=1 nohup ollama serve > /root/ollama.log 2>&1 &
   for i in $(seq 1 90); do curl -fs http://127.0.0.1:11434/api/tags > /dev/null && break; sleep 2; done
 @PULLS@
 }
@@ -193,7 +201,7 @@ def build_onstart_script(gpu_service_source):
         "set -e\n"
         "apt-get update && apt-get install -y --no-install-recommends libsndfile1\n"
         # Two separate pip install commands, matching the proven working
-        # the AMD ROCm image build exactly -- a single combined install forces
+        # Dockerfile.ai-rocm exactly -- a single combined install forces
         # pip's resolver to reconcile every pin together in one pass, which
         # fails outright: qwen-asr==0.0.6 hard-requires accelerate==1.12.0,
         # conflicting with the accelerate==1.10.1 pinned here (observed live:
@@ -315,6 +323,10 @@ def compact_shell(text):
                    if line.strip() and not line.lstrip().startswith("#"))
 
 
+# The pip constraint files go to the server through compact_shell as well: pip ignores their full-line comments, and the
+# boot script stood 75 characters under MAX_ONSTART_CHARS after NB-Whisper joined the gateway's allowed models (0.8.318).
+
+
 def compact_python(source):
     """Same program without comments and docstrings, to fit Vast.ai's boot-script limit.
 
@@ -328,7 +340,10 @@ def compact_python(source):
             if (body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)
                     and isinstance(body[0].value.value, str)):
                 node.body = body[1:] or [ast.Pass()]
-    return ast.unparse(tree) + "\n"
+    text = ast.unparse(tree) + "\n"
+    # One space per indentation level instead of four: the same program (checked below), about 290 fewer characters in the boot script.
+    narrow = "\n".join(" " * ((len(line) - len(line.lstrip(" "))) // 4) + line.lstrip(" ") for line in text.split("\n"))
+    return narrow if ast.dump(ast.parse(narrow)) == ast.dump(ast.parse(text)) else text
 
 
 def chain_image(device):
@@ -389,8 +404,8 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
     files = {
         "/root/cloud_cpu_service.py": compact_python(gateway_source),
         "/root/qwen_asr_service.py": compact_python(qwen_source),
-        "/root/constraints-qwen.txt": qwen_constraints,
-        "/root/constraints-worker.txt": whisper_constraints,
+        "/root/constraints-qwen.txt": compact_shell(qwen_constraints),
+        "/root/constraints-worker.txt": compact_shell(whisper_constraints),
         "/root/server.crt": tls_cert,
         "/root/server.key": tls_key,
     }
@@ -426,7 +441,7 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
     # Each track keeps its own /root/step.<track> and /root/failed.<track>; /health shows all.
     bootstrap = BOOTSTRAP_TEMPLATE.replace("@TORCH_INDEX@", torch_index).replace(
         "@PULLS@", pulls).replace("@GATEWAY_ENV@", gateway_env).replace(
-        "@QWEN_ENV@", qwen_env).replace("@PIP_INSTALL@", CHAIN_PIP_INSTALL_SCRIPT)
+        "@QWEN_ENV@", qwen_env).replace("@PIP_INSTALL@", CHAIN_PIP_INSTALL_SCRIPT).replace("@PARALLEL@", str(llm_parallel()))
     bootstrap = compact_shell(bootstrap)
     if prepared:
         bootstrap = (
@@ -439,7 +454,7 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
             "test -f /opt/subsynq-prepared\n"
             "python /ai/cloud_preflight.py\n"
             "step 'startar Ollama och Qwen från färdig image'\n"
-            "OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 OLLAMA_NUM_PARALLEL=1 "
+            f"OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 OLLAMA_NUM_PARALLEL={llm_parallel()} "
             "OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_MODELS=/models/ollama/models "
             "nohup ollama serve > /root/ollama.log 2>&1 &\n"
             f"{qwen_env} SUBSYNQ_QWEN_PORT=8091 HF_HUB_CACHE=/models/huggingface/hub "

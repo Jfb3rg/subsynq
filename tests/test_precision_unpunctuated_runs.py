@@ -113,12 +113,19 @@ class UnpunctuatedRunTests(unittest.TestCase):
         self.assertEqual(texts(prefer_precision_for_unpunctuated_runs(LONG_FIRST, shifted, SECOND_OPINION)),
                          texts(LONG_FIRST))
 
-    def test_a_replacement_that_would_overlap_the_next_cue_is_not_used(self):
+    def test_a_replacement_that_overlaps_the_next_cue_a_little_is_cut_there(self):
         long = LONG_FIRST[:-1] + [cue(48.2, 49.0, 'Wait.')]
         result = prefer_precision_for_unpunctuated_runs(long, SHORT_FIRST, SECOND_OPINION)
-        # The sentence that would end at 48.3 s runs into the cue that starts at 48.2 s: it is not used.
+        # The sentence that would end at 48.3 s runs 0.1 s into the cue that starts at 48.2 s: it is used and ends there (0.8.310; APOCALYPSE Z
+        # job 185 kept "Move away and keep" / "walking." because of such an overlap).
+        self.assertIn('And yet, the message is addressed to us.', texts(result))
+        used = next(row for row in result if row['text'] == 'And yet, the message is addressed to us.')
+        self.assertEqual(used['end'], 48.2)
+
+    def test_a_replacement_that_overlaps_the_next_cue_a_lot_is_not_used(self):
+        long = LONG_FIRST[:-1] + [cue(47.6, 49.0, 'Wait.')]
+        result = prefer_precision_for_unpunctuated_runs(long, SHORT_FIRST, SECOND_OPINION)
         self.assertNotIn('And yet, the message is addressed to us.', texts(result))
-        self.assertIn('message is addressed to us', texts(result))
 
     def test_a_short_pass_that_is_just_as_unpunctuated_is_no_improvement(self):
         long = [cue(1, 2, 'we have been waiting'), cue(2, 3, 'for you')]

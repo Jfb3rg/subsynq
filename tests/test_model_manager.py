@@ -36,15 +36,15 @@ def entry(**fields):
 
 
 class CatalogueTests(unittest.TestCase):
-    def test_the_shipped_models_file_lists_the_six_models_the_pipeline_loads(self):
+    def test_the_shipped_models_file_lists_the_eight_models_the_pipeline_loads(self):
         specs = parse_catalogue(json.loads(SHIPPED.read_text(encoding="utf-8")))
         self.assertEqual([s.name for s in specs],
-                         ["large-v3", "large-v2", "Qwen/Qwen3-ASR-1.7B", "Qwen/Qwen3-ForcedAligner-0.6B",
-                          "gemma3:12b", "gemma4:12b"])
+                         ["large-v3", "large-v2", "KBLab/kb-whisper-large", "NbAiLab/nb-whisper-large", "Qwen/Qwen3-ASR-1.7B",
+                          "Qwen/Qwen3-ForcedAligner-0.6B", "gemma3:12b", "gemma4:12b"])
         self.assertEqual({s.role: s.name for s in specs if s.role},
                          {"translation": "gemma3:12b", "review": "gemma4:12b"})
         self.assertEqual({s.kind for s in specs}, {"faster-whisper", "hf", "ollama"})
-        self.assertEqual(len({s.id for s in specs}), 6)
+        self.assertEqual(len({s.id for s in specs}), 8)
 
     def test_invalid_files_are_rejected_with_a_reason(self):
         for data, reason in (
@@ -63,7 +63,7 @@ class CatalogueTests(unittest.TestCase):
             own.write_text("{trasig", encoding="utf-8")
             result = load_catalogue([own, SHIPPED], environ={})
             self.assertEqual(result.source, SHIPPED)
-            self.assertEqual(len(result.specs), 6)
+            self.assertEqual(len(result.specs), 8)
             self.assertIn("models.json", result.errors[0])
             self.assertEqual(load_catalogue([Path(folder) / "saknas.json"], environ={}).specs, [])
 

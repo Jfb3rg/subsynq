@@ -439,6 +439,14 @@ if(sessionStorage.getItem(autoRefreshKey)==='1'){
 document.addEventListener('submit',event=>{
   if(event.target.matches&&event.target.matches('form.preserve-seasons'))rememberOpenSeasons();
 },true);
+// Every other button that posts a form: the answer is a new page, which the browser shows from the top (the user, 2026-10-26: "varje gång
+// när jag har tryckt på en knapp hamnar jag högst upp på sidan"). Remember where the page was; it is restored only when the answer is the
+// same page, within a minute. Runs after the form's own confirm(), so a cancelled dialog saves nothing.
+document.addEventListener('submit',event=>{
+  const form=event.target;
+  if(event.defaultPrevented||!form||!form.matches||form.matches('form.preserve-seasons')||(form.getAttribute('method')||'').toLowerCase()!=='post')return;
+  try{sessionStorage.setItem(scrollKey,JSON.stringify({path:location.pathname,y:window.scrollY,t:Date.now()}))}catch(error){}
+});
 // Moln-GPU: ticking a memory size swaps only the offer list (no reload, no jump to the top of the page).
 // The server renders the whole page for the same address; just #cloud-results is taken from it. If anything
 // goes wrong the page is simply loaded the ordinary way.
@@ -525,10 +533,17 @@ if(queuePanel)setInterval(async()=>{
     }
   }catch(error){/* Try again at the next interval. */}
 },4000);
-const savedScroll=sessionStorage.getItem(scrollKey);
+let savedScroll=null;
+try{savedScroll=sessionStorage.getItem(scrollKey);if(savedScroll!==null)sessionStorage.removeItem(scrollKey)}catch(error){savedScroll=null}
 if(savedScroll!==null){
-  sessionStorage.removeItem(scrollKey);
-  requestAnimationFrame(()=>window.scrollTo(0,Number(savedScroll)||0));
+  let target=null;
+  try{
+    const saved=JSON.parse(savedScroll);
+    target=saved&&typeof saved==='object'
+      ?(saved.path===location.pathname&&Date.now()-Number(saved.t||0)<60000?Number(saved.y):null)
+      :Number(saved);
+  }catch(error){target=null}
+  if(target!==null&&Number.isFinite(target))requestAnimationFrame(()=>window.scrollTo(0,target));
 }
 if(location.search.includes('saved=')){
   const url=new URL(location.href);

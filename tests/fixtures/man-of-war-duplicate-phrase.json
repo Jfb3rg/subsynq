@@ -1,0 +1,199 @@
+{
+  "base": [
+    {
+      "start": 87.93,
+      "end": 93.93,
+      "text": "This is what's left simple people we're trying to live their lives",
+      "confidence": 0.976806640625,
+      "confirmed_lead_onset": {
+        "start": 87.93,
+        "prefix": [
+          "this",
+          "is",
+          "what"
+        ],
+        "readings": [
+          "context",
+          "rescue"
+        ]
+      }
+    },
+    {
+      "start": 93.93,
+      "end": 96.27,
+      "text": "Trying to live their lives, trying to survive!",
+      "confidence": 0.5382080078125
+    }
+  ],
+  "v3": [
+    {
+      "start": 87.97,
+      "end": 91.1,
+      "text": "this is what's left simple people",
+      "confidence": 0.96728515625,
+      "words": [
+        {
+          "start": 88.05,
+          "end": 88.57,
+          "text": "this",
+          "probability": 0.9931640625
+        },
+        {
+          "start": 88.57,
+          "end": 88.73,
+          "text": "is",
+          "probability": 1
+        },
+        {
+          "start": 88.73,
+          "end": 89.03,
+          "text": "what's",
+          "probability": 0.9990234375
+        },
+        {
+          "start": 89.03,
+          "end": 89.31,
+          "text": "left",
+          "probability": 1
+        },
+        {
+          "start": 89.31,
+          "end": 91.09,
+          "text": "simple",
+          "probability": 0.96728515625
+        },
+        {
+          "start": 91.09,
+          "end": 91.55,
+          "text": "people",
+          "probability": 0.99609375
+        }
+      ],
+      "corroborated": false
+    },
+    {
+      "start": 91.1,
+      "end": 91.69,
+      "text": "Simple people.",
+      "confidence": 0.91748046875,
+      "words": [
+        {
+          "start": 90.65,
+          "end": 91.13,
+          "text": "Simple",
+          "probability": 0.91748046875
+        },
+        {
+          "start": 91.13,
+          "end": 91.61,
+          "text": "people.",
+          "probability": 0.99072265625
+        }
+      ],
+      "corroborated": false
+    },
+    {
+      "start": 93.01,
+      "end": 94.77,
+      "text": "We're trying to live their lives.",
+      "confidence": 0.814697265625,
+      "words": [
+        {
+          "start": 93.09,
+          "end": 93.57,
+          "text": "We're",
+          "probability": 0.814697265625
+        },
+        {
+          "start": 93.57,
+          "end": 93.81,
+          "text": "trying",
+          "probability": 0.998046875
+        },
+        {
+          "start": 93.81,
+          "end": 94.05,
+          "text": "to",
+          "probability": 0.99951171875
+        },
+        {
+          "start": 94.05,
+          "end": 94.23,
+          "text": "live",
+          "probability": 0.9658203125
+        },
+        {
+          "start": 94.23,
+          "end": 94.41,
+          "text": "their",
+          "probability": 0.98046875
+        },
+        {
+          "start": 94.41,
+          "end": 94.69,
+          "text": "lives.",
+          "probability": 0.99853515625
+        }
+      ],
+      "corroborated": false
+    }
+  ],
+  "v2": [
+    {
+      "start": 93.63,
+      "end": 96.41,
+      "text": "Trying to live their lives, trying to survive!",
+      "confidence": 0.52001953125,
+      "words": [
+        {
+          "start": 93.63,
+          "end": 93.93,
+          "text": "Trying",
+          "probability": 0.52001953125
+        },
+        {
+          "start": 93.93,
+          "end": 94.15,
+          "text": "to",
+          "probability": 0.9111328125
+        },
+        {
+          "start": 94.15,
+          "end": 94.33,
+          "text": "live",
+          "probability": 0.810546875
+        },
+        {
+          "start": 94.33,
+          "end": 94.51,
+          "text": "their",
+          "probability": 0.89990234375
+        },
+        {
+          "start": 94.51,
+          "end": 94.91,
+          "text": "lives,",
+          "probability": 0.76123046875
+        },
+        {
+          "start": 95.47,
+          "end": 95.77,
+          "text": "trying",
+          "probability": 0.7646484375
+        },
+        {
+          "start": 95.77,
+          "end": 96.03,
+          "text": "to",
+          "probability": 0.9091796875
+        },
+        {
+          "start": 96.03,
+          "end": 96.33,
+          "text": "survive!",
+          "probability": 0.7939453125
+        }
+      ]
+    }
+  ]
+}

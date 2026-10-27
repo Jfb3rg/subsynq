@@ -276,12 +276,14 @@ class BootstrapPipRetryTests(unittest.TestCase):
                            'if error:\n'
                            '    print(error, file=sys.stderr)\n'
                            '    sys.exit(7)\n')
-            pip.chmod(0o700)
+            # The diagnostic runner mounts /tmp noexec; invoke the fake pip
+            # through Python while executing the real retry shell unchanged.
             script = ('set -e -o pipefail\n'
                       f'trap \'echo failed > "{failed}"\' ERR\n'
                       f'sleep() {{ echo "$1" >> "{slept}"; }}\n'
+                      + f'pip_stub() {{ "{sys.executable}" "{pip}" "$@"; }}\n'
                       + cloud_gpu.CHAIN_PIP_INSTALL_SCRIPT
-                      + f'pip_install "{pip}" torch==2.9.1 --index-url https://download.pytorch.org/whl/cu128\n'
+                      + 'pip_install pip_stub torch==2.9.1 --index-url https://download.pytorch.org/whl/cu128\n'
                       + 'echo NEXT_PHASE\n')
             result = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=10)
             return (result, json.loads(state.read_text()), failed.exists(),
@@ -345,7 +347,7 @@ class FakeWhisper:
 
     def transcribe(self, path, **options):
         self.calls.append((Path(path).read_bytes(), options))
-        return [FakeSegment()], SimpleNamespace(language='en')
+        return [FakeSegment()], SimpleNamespace(language='en', language_probability=.91)
 
 
 class Backend(BaseHTTPRequestHandler):
@@ -462,6 +464,21 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(body['segments'][0]['words'][0]['probability'], 0.9)
         self.assertEqual(body['segments'][0]['no_speech_prob'], 0.1)
 
+    def test_kb_whisper_is_an_allowed_model_and_the_language_certainty_comes_back(self):
+        fake = FakeWhisper()
+        with patch.object(gateway, 'activate_whisper', return_value=fake) as activate:
+            status, body = self.request('POST', f'/{TOKEN}/transcribe', b'RIFFwav',
+                                        {'X-SubSynq-Whisper-Model': 'KBLab/kb-whisper-large'})
+        self.assertEqual(status, 200)
+        activate.assert_called_once_with('KBLab/kb-whisper-large')
+        self.assertEqual((body['language'], body['language_probability']), ('en', .91))
+
+    def test_the_servers_list_names_the_same_repository_as_the_worker(self):
+        import swedish_reader
+        self.assertIn(swedish_reader.REPOSITORY, gateway.ALLOWED_WHISPER_MODELS)
+        import norwegian_reader
+        self.assertIn(norwegian_reader.REPOSITORY, gateway.ALLOWED_WHISPER_MODELS, 'the rented server refused NB-Whisper (dev jobs 205, 206)')
+
     def test_transcribe_refuses_unknown_options_and_models(self):
         with patch.object(gateway, 'activate_whisper', return_value=FakeWhisper()) as activate:
             for headers in ({'X-SubSynq-Options': json.dumps({'task': 'translate'})},
@@ -561,6 +578,7 @@ class RemoteCpuWhisperTests(unittest.TestCase):
         self.assertEqual(json.loads(request.get_header('X-subsynq-options')),
                          {'language': 'sv', 'beam_size': 5, 'word_timestamps': True})
         self.assertEqual(info.language, 'sv')
+        self.assertIsNone(info.language_probability, 'an older server sends none')
         self.assertEqual((segments[0].no_speech_prob, segments[0].avg_logprob), (.2, -.4))
         self.assertEqual(segments[0].words[0].probability, .8)
         self.assertFalse(hasattr(model, 'model'))

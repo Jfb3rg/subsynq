@@ -34,6 +34,25 @@ class RowSelectionTests(unittest.TestCase):
         self.assertEqual(worker.swedish_rows_to_keep(batch, {0: 'da', 1: 'no'}), set())
 
 
+class CandidateTests(unittest.TestCase):
+    """Only a row that could be Swedish is asked about: real Swedish speech never slips past, English and Asian rows cost no model call."""
+
+    def test_swedish_speech_is_always_a_candidate(self):
+        for text in ('Hon är här.', 'Mamma, det här har blivit så stort.', 'Men vems stjärt?', 'Vi delar upp oss.', 'Du behöver inte oroa dig.',
+                     'Nyckeln är borta.', 'Vi renoverar lite bara.', 'Nu går vi.', 'Vad fan?', 'Kom.', 'Tack.', 'Okej.', 'Hallå?', 'ÖVER HUVUDET!'):
+            with self.subTest(text=text):
+                self.assertTrue(worker.might_be_swedish(text))
+
+    def test_english_french_japanese_and_korean_rows_are_not(self):
+        for text in ('We get caught up here in a whiteout,', "Dogs are doing good, though.", 'Cette célébrité s\'y démonte.', '神様と話してたんとちゃうで',
+                     '미꾸라지 마냥 미끄러운 거래', 'Hahaha!', '...'):
+            with self.subTest(text=text):
+                self.assertFalse(worker.might_be_swedish(text))
+
+    def test_danish_and_norwegian_are_still_asked_about_so_the_model_can_say_it_is_not_swedish(self):
+        self.assertTrue(worker.might_be_swedish('Jeg ved det ikke.'))
+
+
 class IdentifyTests(unittest.TestCase):
     def test_the_language_model_is_asked_once_per_batch_with_every_id_constrained(self):
         requests = []
@@ -46,8 +65,8 @@ class IdentifyTests(unittest.TestCase):
         self.assertEqual(kept, {1, 2, 5})
         self.assertEqual(len(requests), 1)
         schema = requests[0]['format']['properties']['rows']
-        self.assertEqual(schema['items']['properties']['id']['enum'], [0, 1, 2, 3, 4, 5])
-        self.assertEqual((schema['minItems'], schema['maxItems']), (6, 6))
+        self.assertEqual(schema['items']['properties']['id']['enum'], [0, 1, 2, 5], 'only the rows that could be Swedish are asked about')
+        self.assertEqual((schema['minItems'], schema['maxItems']), (4, 4))
         self.assertEqual(requests[0]['options']['temperature'], 0)
 
     def test_big_files_are_asked_in_batches(self):
@@ -55,6 +74,13 @@ class IdentifyTests(unittest.TestCase):
         calls = []
         kept = worker.identify_swedish_rows(many, lambda r: calls.append(1) or language_answer(r, {i: 'sv' for i in range(95)}))
         self.assertEqual((len(calls), len(kept)), (3, 95))
+
+    def test_rows_that_cannot_be_swedish_cost_no_model_call_at_all(self):
+        english = [{'id': i, 'source': text} for i, text in enumerate(
+            ['We get caught up here in a whiteout,', 'important to get there before the trail is getting blown over.', 'Dogs are doing good, though.'])]
+        calls = []
+        self.assertEqual(worker.identify_swedish_rows(english, lambda request: calls.append(request) or language_answer(request)), set())
+        self.assertEqual(calls, [])
 
     def test_any_failure_means_every_row_is_translated_as_before(self):
         for response in ({'response': 'not json'}, {'response': '{"rows": [{"id": 0, "language": "sv"}]}'},

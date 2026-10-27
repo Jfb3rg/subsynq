@@ -1,7 +1,7 @@
 """Minimal UI-language catalog for the interface chrome (navigation, page
 titles, top bar) -- svenska (default) and engelska. Deeper text such as
 error messages, quality-gate reasoning and settings card copy stays Swedish
-only for now; see the internal status log for the phased rollout.
+only for now; see SETTINGS-PLAN.md and STATUS.md for the phased rollout.
 """
 
 LANGUAGES = ("sv", "en")
@@ -291,6 +291,21 @@ STRINGS = {
         "sv": "Workern har inte rapporterat modellstatus än. Vänta en minut och ladda om sidan.",
         "en": "The worker has not reported model status yet. Wait a minute and reload the page."},
     "models_col_model": {"sv": "Modell", "en": "Model"},
+    "models_col_language": {"sv": "Språk", "en": "Language"},
+    "models_packs_heading": {"sv": "Språkpaket (frivilliga)", "en": "Language packs (optional)"},
+    "models_packs_intro": {
+        "sv": "Extra modeller för ett enskilt språk. De är avstängda från början och hämtas först när du slår på dem. Är ett paket av "
+              "används vanliga Whisper large-v3 för det språket, som förut. Jobb väntar medan ett påslaget paket hämtas.",
+        "en": "Extra models for a single language. They are off to begin with and are only downloaded when you switch them on. With a pack "
+              "off, plain Whisper large-v3 is used for that language, as before. Jobs wait while a pack you switched on is downloaded."},
+    "models_pack_off": {"sv": "av", "en": "off"},
+    "models_pack_off_disk": {"sv": "av (ligger kvar på disken)", "en": "off (still on the disk)"},
+    "models_pack_enable": {"sv": "Slå på och hämta", "en": "Switch on and download"},
+    "models_pack_disable": {"sv": "Slå av", "en": "Switch off"},
+    "models_pack_remove": {"sv": "Ta bort från disken", "en": "Remove from the disk"},
+    "models_pack_enable_confirm": {"sv": "Hämta ungefär {gb} GB och slå på paketet? Jobb väntar tills hämtningen är klar.",
+                                   "en": "Download about {gb} GB and switch the pack on? Jobs wait until the download is done."},
+    "models_pack_saved": {"sv": "✓ Sparat. Ett påslaget paket hämtas inom någon minut.", "en": "✓ Saved. A pack you switched on is downloaded within a minute."},
     "models_col_used_by": {"sv": "Används av", "en": "Used by"},
     "models_col_size": {"sv": "Storlek", "en": "Size"},
     "models_col_state": {"sv": "Status", "en": "Status"},
@@ -497,6 +512,20 @@ STRINGS = {
     "bulk_notice_started": {
         "sv": "✓ {done} filer köade; {skipped} hoppades över (redan jobb, ingen undertext att ta bort eller inte aktuell).",
         "en": "✓ {done} files queued; {skipped} skipped (already has a job, nothing to delete or no longer eligible)."},
+    "page_title_doubtful": {"sv": "Osäkra repliker", "en": "Doubtful lines"},
+    "doubtful_heading": {"sv": "Repliker som kan vara fel", "en": "Lines that may be wrong"},
+    "doubtful_intro": {
+        "sv": "Slutkontrollen tvivlade på {count} repliker efter en rättning och ett nytt översättningsförsök. Undertexten är ändå skriven, eftersom de är få "
+              "i förhållande till hela filen. Kontrollera dem mot ljudet.",
+        "en": "The final check still doubted {count} lines after one repair and a second translation attempt. The subtitle was written anyway, "
+              "because they are few compared with the whole file. Check them against the audio."},
+    "doubtful_missing": {"sv": "Ingen rapport finns för det här jobbet.", "en": "There is no report for this job."},
+    "doubtful_source": {"sv": "Det som sades (källtext)", "en": "What was said (source text)"},
+    "doubtful_swedish": {"sv": "Svensk undertext", "en": "Swedish subtitle"},
+    "doubtful_remark": {"sv": "Granskarens anmärkning", "en": "The reviewer's remark"},
+    "doubtful_cut_off": {"sv": "Källraden är avbruten mitt i en mening: en översättning kan inte rätta den.", "en": "The source line is cut off in the middle of a sentence: a translation cannot repair it."},
+    "doubtful_back": {"sv": "Tillbaka till kön", "en": "Back to the queue"},
+    "doubtful_link": {"sv": "Visa osäkra repliker", "en": "Show doubtful lines"},
     "bulk_notice_deleted": {
         "sv": "✓ {done} filer köade för borttagning av AI-undertext; {skipped} hoppades över (redan jobb, ingen undertext att ta bort eller inte aktuell).",
         "en": "✓ {done} files queued for AI subtitle removal; {skipped} skipped (already has a job, nothing to delete or no longer eligible)."},

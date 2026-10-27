@@ -61,6 +61,36 @@ def reading_language(readings, *, minimum_letters=8):
     return language if votes * 2 > len(counted) else None
 
 
+def window_language(choice, start, end, *, minimum_coverage=.8):
+    """Use heard language only where a selected track's probes cover this window.
+
+    Mixed or uncovered regions stay automatic; no whole-file majority vote.
+    """
+    if not isinstance(choice, dict) or end <= start:
+        return None
+    readings = choice.get('readings') or {}
+    if not isinstance(readings, dict):
+        return None
+    index = choice.get('index')
+    probes = readings.get(index, readings.get(str(index), []))
+    spans, languages = [], set()
+    for probe in probes:
+        if (not probe.get('whisper_language') or probe.get('speech_seconds', 0) < .5
+                or sum(c.isalpha() for c in str(probe.get('whisper_text', ''))) < 8):
+            continue
+        a, b = max(start, float(probe.get('start', 0))), min(end, float(probe.get('end', 0)))
+        if b > a:
+            spans.append((a, b))
+            languages.add(probe['whisper_language'])
+    if len(languages) != 1:
+        return None
+    covered, last = 0.0, start
+    for a, b in sorted(spans):
+        covered += max(0.0, b - max(a, last))
+        last = max(last, b)
+    return next(iter(languages)) if covered >= minimum_coverage * (end - start) else None
+
+
 def _result(track, method, heard, considered, *, stale_manual=False):
     return {'index': track['index'], 'language': tag_code(track.get('language')) or heard.get(track['index']),
             'method': method, 'stale_manual': stale_manual,

@@ -149,8 +149,8 @@ class ModelLifecycleTests(unittest.TestCase):
                 }
                 replacements.update({name: Mock() for name in (
                     'wait_for_database', 'gpu_health', 'set_hardware', 'recover_interrupted_jobs',
-                    'cleanup_orphaned_cloud_instances', 'prepare_asr_job', 'destroy_cloud_gpu',
-                    'release_language_model_before_asr', 'finish_model_job', 'update_job')})
+                    'cleanup_orphaned_cloud_instances', 'reset_cloud_session_after_restart', 'prepare_asr_job',
+                    'destroy_cloud_gpu', 'release_language_model_before_asr', 'finish_model_job', 'update_job')})
                 with ExitStack() as stack:
                     for name, replacement in replacements.items():
                         stack.enter_context(patch.object(worker, name, replacement))
@@ -216,6 +216,7 @@ class ModelLifecycleTests(unittest.TestCase):
                 patch.object(worker, 'set_hardware'), \
                 patch.object(worker, 'recover_interrupted_jobs'), \
                 patch.object(worker, 'cleanup_orphaned_cloud_instances'), \
+                patch.object(worker, 'reset_cloud_session_after_restart'), \
                 patch.object(worker.threading, 'Thread'), \
                 patch.object(worker, 'hardware_preference', return_value='cpu'), \
                 patch.object(worker, 'select_job_hardware', return_value=(None, False)), \

@@ -85,7 +85,7 @@ class TranslationPatchTests(unittest.TestCase):
         with patch.object(worker, 'check_cancelled'), patch.object(worker, 'call_ollama',
                 return_value={'response': json.dumps({'rows': self.answer('ljuset', 'mörkret')})}) as model:
             with self.assertRaises(RuntimeError):
-                worker.repair_flagged_translation({'id': -1}, self.rows, self.flags)
+                worker.repair_flagged_translation_once({'id': -1}, self.rows, self.flags)
         self.assertEqual(model.call_count, 2)
         self.assertIn('rejected_patch', json.loads(model.call_args.args[0]['prompt']))
         self.assertIn('ljuset', self.rows[0]['sv'])
@@ -110,7 +110,7 @@ class TranslationPatchTests(unittest.TestCase):
         with patch.object(worker, 'check_cancelled'), patch.object(worker, 'call_ollama',
                 return_value={'response': json.dumps({'rows': answer})}) as model:
             with self.assertRaises(RuntimeError):
-                worker.repair_flagged_translation({'id': -1}, self.rows, self.flags)
+                worker.repair_flagged_translation_once({'id': -1}, self.rows, self.flags)
         self.assertEqual(model.call_count, 2)
         self.assertIn('det här', self.rows[0]['sv'])
 
@@ -149,7 +149,7 @@ class TranslationPatchTests(unittest.TestCase):
                     patch.object(worker, 'call_ollama',
                         return_value={'response': json.dumps({'rows': answer})}) as model:
                 with self.assertRaises(RuntimeError):
-                    worker.repair_flagged_translation({'id': -1}, self.rows, self.flags)
+                    worker.repair_flagged_translation_once({'id': -1}, self.rows, self.flags)
                 self.assertEqual(model.call_count, 2)
                 self.assertIn('det här', self.rows[0]['sv'])
 

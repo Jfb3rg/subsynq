@@ -87,7 +87,7 @@ def render_models_banner(status, lang="sv", now=None):
         f"<table><tbody>{''.join(rows)}</tbody></table>{notes}</div>")
 
 
-_REQUEST_NOTICE = {"1": "models_remove_requested", "remove": "models_remove_requested",
+_REQUEST_NOTICE = {"pack": "models_pack_saved", "1": "models_remove_requested", "remove": "models_remove_requested",
                    "update": "models_update_requested", "check": "models_check_requested"}
 
 
@@ -110,7 +110,7 @@ def render_models_page(status, token, lang="sv", requested=""):
     heading = f"<h2>{escape(t('models_page_heading', lang))}</h2>"
     if not status:
         return (f"<div class='card'>{heading}<p class='muted'>{escape(t('models_page_no_status', lang))}</p></div>")
-    models = status.get("models", [])
+    models = [m for m in status.get("models", []) if not m.get("optional")]
     rows = "".join(
         f"<tr><td>{escape(str(m.get('label', '')))}<br><small class='muted'>{escape(str(m.get('name', '')))}</small></td>"
         f"<td class='muted'>{escape(str(m.get('used_by', '')))}</td>"
@@ -181,4 +181,47 @@ def render_models_page(status, token, lang="sv", requested=""):
                + f"<table><tbody>{boxes}</tbody></table>"
                f"<p><button type='submit' class='danger small-button' onclick=\"return confirm('{confirm}')\">"
                f"{escape(t('models_remove_button', lang))}</button></p></form></div>")
-    return listed + update + old
+    return listed + render_language_packs(status, token, lang) + update + old
+
+
+_LANGUAGE_NAMES = {"sv": {"sv": "svenska", "en": "Swedish"}, "no": {"sv": "norska", "en": "Norwegian"}}
+
+
+def render_language_packs(status, token, lang="sv"):
+    """The optional language packs: off until switched on, downloaded only then, removable from the disk once off."""
+    packs = [m for m in (status or {}).get("models", []) if m.get("optional")]
+    if not packs:
+        return ""
+    token_field = f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
+    rows = []
+    for pack in packs:
+        enabled = bool(pack.get("enabled"))
+        if enabled:
+            state = _state_text(pack, lang)
+            toggle = "0"
+            button = (f"<button type='submit' class='small-button'>{escape(t('models_pack_disable', lang))}</button>")
+        else:
+            state = t("models_pack_off_disk", lang) if pack.get("state") == "present" else t("models_pack_off", lang)
+            toggle = "1"
+            confirm = escape(t("models_pack_enable_confirm", lang).format(gb=pack.get("size_gb", "")), quote=True)
+            button = (f"<button type='submit' class='small-button' onclick=\"return confirm('{confirm}')\">"
+                      f"{escape(t('models_pack_enable', lang))}</button>")
+        switch = ("<form action='/models/pack' method='post' style='display:inline'>" + token_field
+                  + f"<input type='hidden' name='id' value='{escape(str(pack.get('id', '')), quote=True)}'>"
+                  f"<input type='hidden' name='enabled' value='{toggle}'>{button}</form>")
+        remove = ""
+        if not enabled and pack.get("state") == "present":
+            confirm = escape(t("models_remove_confirm", lang), quote=True)
+            remove = ("<form action='/models/remove' method='post' style='display:inline'>" + token_field
+                      + f"<input type='hidden' name='key' value='{escape(str(pack.get('kind', '')) + '|' + str(pack.get('name', '')), quote=True)}'>"
+                      f"<button type='submit' class='danger small-button' onclick=\"return confirm('{confirm}')\">"
+                      f"{escape(t('models_pack_remove', lang))}</button></form>")
+        language = _LANGUAGE_NAMES.get(str(pack.get("language", "")), {}).get(lang) or str(pack.get("language", ""))
+        # Stacked blocks, not a table: a row of buttons beside four columns is cut off on a phone (390/360 px).
+        rows.append(f"<div class='language-pack' style='padding:12px 0;border-top:1px solid var(--bd)'>"
+                    f"<strong>{escape(str(pack.get('label', '')))}</strong> <small class='muted'>{escape(str(pack.get('name', '')))}</small>"
+                    f"<p class='muted' style='margin:4px 0 10px'>{escape(t('models_col_language', lang))}: {escape(language)} · "
+                    f"{escape(str(pack.get('size_gb', '')))} GB · <span data-pack-state>{escape(state)}</span></p>"
+                    f"<div style='display:flex;flex-wrap:wrap;gap:8px'>{switch}{remove}</div></div>")
+    return (f"<div class='card'><h2>{escape(t('models_packs_heading', lang))}</h2>"
+            f"<p class='muted'>{escape(t('models_packs_intro', lang))}</p>{''.join(rows)}</div>")

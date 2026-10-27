@@ -2,6 +2,7 @@
 from difflib import SequenceMatcher
 from types import SimpleNamespace
 import bisect
+import itertools
 import math
 import re
 import unicodedata
@@ -423,6 +424,58 @@ def _balance_short_word_tails(groups, limited, *, start, end, joined,
                 continue
             groups[index - 1], groups[index] = left, right
             break
+
+
+START_LEAD = .12   # a subtitle may appear this long before the voice (the eye needs a moment)
+MAXIMUM_SPEECH_RATE = 6.0   # words per second a start may be moved to; see refine_starts
+
+
+def refine_starts(cues, spans, *, lead=START_LEAD, minimum_change=.1, maximum_change=1.2, minimum_duration=.4, maximum_rate=MAXIMUM_SPEECH_RATE,
+                  minimum_rate_words=3):
+    """Delay a cue that starts BEFORE the voice does to where the voice begins (minus `lead`): (cues, how many were changed, the shifts).
+
+    Whisper's first word of a sentence starts early after a pause: on Yukon Men S01E01 (44 min, 899 cues) the cue starts lay a median 0.45 s before
+    the onset of the speech (voice detection with no padding), the same all through the file, and cutting the audio later proved the first word still
+    intact 0.4 s after the cue start (STATUS natt 47). `spans` are the voiced stretches [(start, end), ...] in seconds. Only a delay is made: a cue that
+    starts inside a voiced stretch (several cues in one breath), or whose next voiced stretch begins more than `maximum_change` later, is left alone,
+    and a cue is never shortened below `minimum_duration`.
+
+    The voice detection lags behind the speech wherever music or noise lies under it (WIFE AND DOG: "And what did he find in Hell, Daddy?" spoken from
+    45.1 s, the detector found a voice from 45.6 s; MAN OF WAR: "They stormed the orphanage." from 30.6 s, found from 31.4 s), and on a fast line even
+    Yukon Men: of the seven fastest shifted cues a clean reading of the audio puts the first word 0.13 to 0.6 s BEFORE the moved start in six ("Did you guys
+    hear that?" moved to 'guys', "And we're running out of wood." to 'running'), 5 words in 0.51 s. A start is therefore never moved so late that the cue's words
+    (`minimum_rate_words` or more) would have to be spoken faster than `maximum_rate` words per second; it is moved as far as that allows. Text without spaces
+    between words (Chinese, Japanese) counts as one word and is not limited."""
+    spans = sorted((float(begin), float(finish)) for begin, finish in spans)
+    result, shifts, position = [], [], 0
+    for cue in cues:
+        start, end = float(cue['start']), float(cue['end'])
+        while position < len(spans) and spans[position][1] <= start:
+            position += 1
+        index = position
+        # cues are in time order, but one cue may start before the previous one's span ended: look from the first span that ends after the start
+        if index < len(spans):
+            onset = spans[index][0]
+            target = onset - lead
+            units = len(_normalized(str(cue.get('text', ''))).split())
+            if maximum_rate and units >= minimum_rate_words:
+                target = min(target, end - units / maximum_rate)
+            restored = cue.get('confirmed_lead_onset')
+            if isinstance(restored, dict):
+                prefix, readers, bound = restored.get('prefix'), restored.get('readings'), restored.get('start')
+                if (isinstance(prefix, list) and len(prefix) >= 3
+                        and isinstance(readers, list) and all(isinstance(name, str) for name in readers) and len(set(readers)) >= 2
+                        and type(bound) in (int, float) and math.isfinite(bound) and bound >= 0 and abs(bound - start) <= .001
+                        and _normalized(str(cue.get('text', ''))).split()[:len(prefix)] == prefix):
+                    # VAD can miss precisely the quiet word two readers restored.
+                    # Protect only this unchanged prefix at its measured start.
+                    target = min(target, bound)
+            if (onset > start and target - start >= minimum_change and onset - start <= maximum_change and end - target >= minimum_duration):
+                result.append({**cue, 'start': round(target, 3)})
+                shifts.append(round(target - start, 3))
+                continue
+        result.append(dict(cue))
+    return result, len(shifts), shifts
 
 
 def split_word_cues(words, *, minimum_probability=.25, maximum_duration=7,
@@ -1123,6 +1176,9 @@ def _match_precision_run(block, shorter, v2):
     return None
 
 
+MAXIMUM_EDGE_OVERLAP = .5
+
+
 def prefer_precision_for_unpunctuated_runs(merged, precision, v2=(), corroboration=()):
     """Where the long pass wrote a run of cues with no sentence end at all, use the short pass's sentences.
 
@@ -1162,8 +1218,18 @@ def prefer_precision_for_unpunctuated_runs(merged, precision, v2=(), corroborati
             if ((lead_extra and before[len(before) - len(lead_extra):] == lead_extra)
                     or (trail_extra and after[:len(trail_extra)] == trail_extra)):
                 continue
-            if ((result and replacement[0]['start'] < result[-1]['end'] - .05)
-                    or (last + 1 < len(rows) and replacement[-1]['end'] > rows[last + 1]['start'] + .05)):
+            # A small overlap with a neighbour is the passes' timing, not other speech: the edge is cut at the neighbour (APOCALYPSE Z, dev
+            # job 185: "Move away and keep walking, sir." ends 0.31 s into the long pass's "Do you hear me?" and the split "Move away and keep" /
+            # "walking." stayed). A larger overlap still refuses the replacement.
+            if result and replacement[0]['start'] < result[-1]['end'] - .05:
+                if result[-1]['end'] - replacement[0]['start'] > MAXIMUM_EDGE_OVERLAP:
+                    continue
+                replacement[0] = {**replacement[0], 'start': result[-1]['end']}
+            if last + 1 < len(rows) and replacement[-1]['end'] > rows[last + 1]['start'] + .05:
+                if replacement[-1]['end'] - rows[last + 1]['start'] > MAXIMUM_EDGE_OVERLAP:
+                    continue
+                replacement[-1] = {**replacement[-1], 'end': rows[last + 1]['start']}
+            if any(item['end'] - item['start'] < .3 for item in replacement):
                 continue
             chosen = (last, replacement)
             break
@@ -1230,6 +1296,18 @@ def _resegment_block(block, shorter, v2):
     return None
 
 
+def _heard_in_order(keys, cues, others):
+    """True when one of the other readings that overlap `cues` holds the word keys `keys` one after the other."""
+    start, end = cues[0]['start'] - .5, cues[-1]['end'] + .5
+    for other in others:
+        if other.get('end', 0) <= start or other.get('start', 0) >= end:
+            continue
+        heard = [_word_key(token) for token in str(other.get('text', '')).split()]
+        if any(heard[index:index + len(keys)] == keys for index in range(len(heard) - len(keys) + 1)):
+            return True
+    return False
+
+
 def _assemble_resegmented(block_tokens, tokens, collected, operations, v2):
     """Cues made of the long pass's words laid out on the short pass's sentence boundaries (see _resegment_block)."""
     texts = [[] for _ in collected]
@@ -1248,6 +1326,15 @@ def _assemble_resegmented(block_tokens, tokens, collected, operations, v2):
                 continue
             texts[cue].extend(token for token, _ in tokens[b1:b2])
         else:                                                 # delete / replace: the long pass's words stay
+            if tag == 'delete' and 0 < b1 < len(tokens) and tokens[b1 - 1][1] != tokens[b1][1]:
+                # Words only the long pass heard, standing exactly between two of the short pass's sentences, belong to neither: appended to the first
+                # they came out as "He kept digging and digging. and." (WIFE AND DOG, job 154: the long pass wrote "digging, and" before a pause, the short
+                # pass, Whisper large-v2 and Qwen3-ASR heard no "and", and neither did a clean reading of the clip). They are kept, and the run is left
+                # as the long pass wrote it, only when another reading has them between the same two neighbours; otherwise they are dropped.
+                around = [_word_key(tokens[b1 - 1][0]), *(_word_key(token) for token in block_tokens[a1:a2]), _word_key(tokens[b1][0])]
+                if _heard_in_order(around, collected, v2):
+                    return None
+                continue
             if tag == 'replace':
                 cue = tokens[b1][1]
                 if tokens[b2 - 1][1] != cue:                  # the differing words straddle a sentence boundary
@@ -1338,6 +1425,222 @@ def drop_misplaced_duplicate_cues(merged, precision, strict_speech, *, minimum_s
     return kept
 
 
+def drop_unconfirmed_repeated_starts(merged, precision, *, minimum_words=4, maximum_gap=.3):
+    """Remove a cue that only repeats the first words of the cue before it, when the short pass hears them once.
+
+    Whisper's long pass sometimes starts a sentence again where a window ends (Yukon Men 34:15: "the hunting party
+    approaches the area where the caribou herd" and, 0.0 s later, "the hunting party approaches the area"). The extra
+    cue makes the translation one line too long for 18 lines. Only an exact repeat of the opening words of the longer
+    cue before it, in the same breath, with `minimum_words` or more words, and heard once by the short pass is removed;
+    a phrase the speaker really said twice is in the short pass twice and stays. Returns (rows, removed).
+    """
+    def count_in(needle, start, end):
+        around = ' '.join(_normalized(str(row['text'])) for row in precision if row['end'] > start - 1 and row['start'] < end + 1)
+        return len(re.findall(r'(?<!\w)' + re.escape(needle) + r'(?!\w)', around)) if around else 0
+
+    kept, removed = [], []
+    for row in merged:
+        previous = kept[-1] if kept else None
+        if previous is not None:
+            words, before = _normalized(str(row['text'])).split(), _normalized(str(previous['text'])).split()
+            if (len(words) >= minimum_words and len(before) > len(words) and before[:len(words)] == words
+                    and row['start'] - previous['end'] <= maximum_gap
+                    and count_in(' '.join(words), previous['start'], row['end']) < 2):
+                removed.append(row)
+                continue
+        kept.append(row)
+    return kept, removed
+
+
+def remove_adjacent_phrase_overlap(base, v3_rows, v2_rows, *, minimum_words=4, skip_indices=(), corroboration=()):
+    """Remove a copied suffix/prefix only when two timed families locate it ONCE.
+
+    Keep all other words, including a short lead already present in the left cue.
+    The retained left text must itself exist as a whole earlier reader cue. Two
+    distinct timed occurrences, missing words or protected prefixes veto a change.
+    """
+    rows = [dict(row) for row in base]
+    changes = []
+    v3_index, v2_index, extra_index = (_time_index(items) for items in (v3_rows, v2_rows, corroboration))
+
+    def occurrences(profile, needle, begin, finish):
+        found = []
+        for cue in _rows_near(profile, begin, finish):
+            words = _timed_rescue_words(cue)
+            for offset in range(len(words) - len(needle) + 1):
+                span = words[offset:offset + len(needle)]
+                if ([w['token'] for w in span] != needle
+                        or not begin <= span[0]['start'] < span[-1]['end'] <= finish
+                        or any(not math.isfinite(w[k]) for w in span for k in ('start', 'end', 'probability'))
+                        or any(not 0 < w['end'] - w['start'] <= 1.5 for w in span)
+                        or any(a['end'] > b['start'] + .02 for a, b in zip(span, span[1:])
+                               if a['source_word_index'] != b['source_word_index'])
+                        or offset and words[offset - 1]['source_word_index'] == span[0]['source_word_index']):
+                    continue
+                if offset + len(needle) < len(words) and words[offset + len(needle)]['source_word_index'] == span[-1]['source_word_index']:
+                    continue
+                # Repeated windows at the same physical time are one occurrence.
+                if not any(abs(old[1][0]['start'] - span[0]['start']) <= .25
+                           and abs(old[1][-1]['end'] - span[-1]['end']) <= .25 for old in found):
+                    found.append((cue, span))
+        return found
+
+    for index in range(len(rows) - 1):
+        left, right = rows[index:index + 2]
+        if (index in skip_indices or index + 1 in skip_indices
+                or not 0 <= right['start'] - left['end'] <= .3
+                or right.get('confirmed_lead_onset') or right.get('confirmed_prefix')):
+            continue
+        left_raw, right_raw = _raw_tokens(left['text']), _raw_tokens(right['text'])
+        own = [token for _, parts in left_raw for token in parts]
+        following = [token for _, parts in right_raw for token in parts]
+        for size in range(min(len(own) - 2, len(following) - 1), minimum_words - 1, -1):
+            needle = own[-size:]
+            if following[:size] != needle:
+                continue
+            if any(c['start'] < right['end'] and c['end'] > left['start']
+                   and len(re.findall(r'(?<!\w)' + re.escape(' '.join(needle)) + r'(?!\w)', _normalized(c.get('text', '')))) > 1
+                   for c in _rows_near(extra_index, left['start'], right['end'])):
+                continue
+            first = occurrences(v3_index, needle, left['start'], right['end'])
+            second = occurrences(v2_index, needle, left['start'], right['end'])
+            if len(first) != 1 or len(second) != 1:
+                continue
+            cue, span = first[0]
+            other = second[0][1]
+            if (any(min(w['probability'] for w in group) < .5 or sum(w['probability'] >= .75 for w in group) < 4
+                    for group in (span, other))
+                    or abs(span[0]['start'] - other[0]['start']) > .3
+                    or abs(span[-1]['end'] - other[-1]['end']) > .3
+                    or min(span[-1]['end'], other[-1]['end']) <= left['end'] + .25):
+                continue
+            lead_words = cue['words'][:span[0]['source_word_index']]
+            if (len(lead_words) > 2 or any(
+                    not all(math.isfinite(float(word[key])) for key in ('start', 'end', 'probability'))
+                    or not 0 < word['end'] - word['start'] <= 1.5 or word['probability'] < .75 for word in lead_words)):
+                continue
+            lead = ' '.join(word['text'].strip() for word in lead_words)
+            tail = _normalized(lead).split() + needle
+            if own[-len(tail):] != tail:
+                continue
+            cut = len(own) - len(tail)
+            boundary = 0
+            raw_cut = None
+            for slot, (_, parts) in enumerate(left_raw):
+                if boundary == cut:
+                    raw_cut = slot
+                    break
+                boundary += len(parts)
+            if raw_cut is None or raw_cut < 2:
+                continue
+            kept = ' '.join(raw for raw, _ in left_raw[:raw_cut]).rstrip(' ,;:-')
+            start = float(lead_words[0]['start']) if lead_words else min(span[0]['start'], other[0]['start'])
+            start = round(start - .08, 3)
+            if (not left['start'] + .4 < start <= right['start']
+                    or right['end'] - start > 7
+                    or not any(_normalized(c['text']) == _normalized(kept) and c['end'] <= start
+                               for c in _rows_near(v3_index, left['start'], start))
+                    or any(word not in _normalized(kept).split() for word in left.get('confirmed_source_words') or [])):
+                continue
+            rows[index] = {**left, 'text': kept, 'end': start}
+            rows[index + 1] = {**right, 'text': (lead + ' ' if lead else '') + right['text'], 'start': start}
+            rows[index].pop('words', None)
+            rows[index + 1].pop('words', None)
+            changes.append({'rows': [index, index + 1], 'duplicate': ' '.join(needle),
+                            'moved_lead': lead, 'boundary': start,
+                            'families': ['whisper-v3', 'whisper-v2']})
+            break
+    return rows, changes
+
+
+_TITLE_ROWS = frozenset({'mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'mister', 'herr', 'frau', 'fru', 'doktor', 'sir', 'madam'})
+
+
+def join_title_rows(merged, *, maximum_gap=.5, maximum_length=7.0):
+    """A row that holds only a title ("Mr.") is joined to the row that follows it when that starts within `maximum_gap` seconds with a capital letter ("Gunn, I presume?").
+    Every pass put a break after "Mr." in Ray Gunn (48.2-49.0 and 49.0-49.9 s, no pause between them), so the subtitle showed "Herr" alone for a second.
+    Returns (rows, joined)."""
+    rows = [dict(row) for row in merged]
+    result, joined = [], []
+    index = 0
+    while index < len(rows):
+        row = rows[index]
+        following = rows[index + 1] if index + 1 < len(rows) else None
+        tokens = _normalized(str(row.get('text', ''))).split()
+        if (following is not None and len(tokens) == 1 and tokens[0] in _TITLE_ROWS and -.1 <= following['start'] - row['end'] <= maximum_gap
+                and str(following.get('text', '')).lstrip()[:1].isupper() and following['end'] - row['start'] <= maximum_length):
+            combined = dict(following)
+            combined['start'] = row['start']
+            combined['text'] = f"{str(row['text']).strip()} {str(following['text']).strip()}"
+            confidences = [float(item['confidence']) for item in (row, following) if item.get('confidence') is not None and float(item.get('confidence', 0)) > 0]
+            if confidences:
+                combined['confidence'] = min(confidences)
+            joined.append({'start': row['start'], 'from': [row['text'], following['text']], 'to': combined['text']})
+            result.append(combined)
+            index += 2
+        else:
+            result.append(row)
+            index += 1
+    return result, joined
+
+
+def harmonize_names_by_readings(merged, readings, *, minimum_families=2, minimum_elsewhere=2):
+    """A name that only ONE pass wrote, in a row where two other model families both read it the same other way that the file spells the name elsewhere, is written
+    as those readings and the file write it. Ray Gunn, "Be careful, Ray.": context (large-v3) and large-v2 read "Ray", only the rescue pass read "Rey", and the file's
+    other lines say "Ray" twice; the cue took the rescue text, which had no recorded confidence and so was never read again. Everything else in the row must be
+    identical, the new spelling must occur at least `minimum_elsewhere` times in the other rows and the old one nowhere else. Returns (rows, changes)."""
+    rows = [dict(row) for row in merged]
+    indexed = {name: _time_index(found) for name, found in readings.items()}
+    tokens_of = lambda text: re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", str(text))
+    changes = []
+    for position, row in enumerate(rows):
+        words = tokens_of(row.get('text', ''))
+        elsewhere = [word for other in rows[:position] + rows[position + 1:] for word in tokens_of(other.get('text', ''))]
+        for slot, word in enumerate(words):
+            if len(word) < 3 or not word[0].isupper() or not word[1:].islower() or elsewhere.count(word) > 0:
+                continue
+            votes = {}
+            for name, found in indexed.items():
+                for other in _rows_near(found, row['start'], row['end']):
+                    span = max(row['end'] - row['start'], 1e-6)
+                    if _overlap_seconds(row, other) < .7 * span:           # the reading covers the row (a long window around a short row is fine: the words must match exactly)
+                        continue
+                    other_words = tokens_of(other.get('text', ''))
+                    if len(other_words) != len(words) or other_words[slot] == word or other_words[:slot] + other_words[slot + 1:] != words[:slot] + words[slot + 1:]:
+                        continue
+                    replacement = other_words[slot]
+                    if replacement[:1].isupper() and len(replacement) == len(word) and sum(a != b for a, b in zip(replacement, word)) == 1:
+                        votes.setdefault(replacement, set()).add(_family(name))
+            for replacement, families in votes.items():
+                if len(families) >= minimum_families and elsewhere.count(replacement) >= minimum_elsewhere and len(votes) == 1:
+                    row['text'] = re.sub(rf"(?<![^\W\d_]){re.escape(word)}(?![^\W\d_])", replacement, str(row['text']), count=1)
+                    changes.append({'start': row['start'], 'from': word, 'to': replacement, 'families': sorted(families)})
+                    break
+    return rows, changes
+
+
+def drop_credit_rows(merged, *, isolation=2.0, maximum_words=8):
+    """Remove a short closing-credit line Whisper wrote into music or silence ("Teksting av", "Sous-titrage ST'").
+
+    Only a row that matches the credit phrases, has at most `maximum_words` words and stands alone (no other row within `isolation` seconds
+    on either side) is removed, so a line that is really spoken between other lines stays. Returns (rows, removed).
+    """
+    kept, removed = [], []
+    for index, row in enumerate(merged):
+        before = merged[index - 1]['end'] if index else None
+        after = merged[index + 1]['start'] if index + 1 < len(merged) else None
+        alone = ((before is None or row['start'] - before >= isolation) and (after is None or after - row['end'] >= isolation))
+        if _is_boilerplate(row.get('text', '')) and len(_normalized(str(row.get('text', ''))).split()) <= maximum_words and alone:
+            removed.append(row)
+        else:
+            kept.append(row)
+    return kept, removed
+
+
+FAMILY_VOTE_MINIMUM_FAMILIES = 2
+FAMILY_VOTE_MINIMUM_AGREEMENT = .6
+FAMILY_VOTE_INDEPENDENT_FAMILIES = False
+
 _STOCK_PHRASES = {
     'thank you', 'thanks', 'thank you very much', 'merci', 'merci beaucoup',
     'you', 'okay', 'ok', 'bye', 'goodbye', 'subscribe', 'we ll be right back',
@@ -1345,7 +1648,9 @@ _STOCK_PHRASES = {
 # Whisper's closing-credit hallucinations in music and silence ("한글자막 제공 및 광고를 포함하고 있습니다").
 _BOILERPLATE = ('한글자막', '자막 제공', '시청해 주셔서', '시청해주셔서', '구독과 좋아요', 'thanks for watching',
                 'thank you for watching', 'subtitles by', 'subtitled by', 'amara org', 'sous titrage', 'sous titres',
-                'ご視聴', '字幕', 'undertexter från', 'untertitel')
+                'ご視聴', '字幕', 'undertexter från', 'untertitel',
+                # the Nordic credits Whisper writes into music and silence ("Teksting av Nicolai Winther" in job 25, "Teksting av" in job 126)
+                'teksting av', 'tekstet af', 'tekster af', 'textning av', 'undertextning', 'undertekster af')
 
 
 def _is_boilerplate(text):
@@ -1445,11 +1750,16 @@ def span_readings(final, readings):
 # The passes that run Whisper large-v3 in the ordinary way share their mistakes, so they vote as ONE family; the
 # forced-language reading without voice-activity filter, Whisper v2 and Qwen3-ASR each vote as a family of their own.
 _FAMILIES = {'context': 'whisper-v3', 'precision': 'whisper-v3', 'rescue': 'whisper-v3',
-             'whispered_gap': 'whisper-v3', 'v2': 'whisper-v2', 'qwen': 'qwen', 'forced': 'whisper-v3-forced'}
+             'whispered_gap': 'whisper-v3', 'v2': 'whisper-v2', 'qwen': 'qwen', 'forced': 'whisper-v3-forced',
+             'nb': 'nb-whisper'}        # NB-Whisper, the optional Norwegian extra reader (app/norwegian_reader.py)
 
 
 def _family(name):
     return _FAMILIES.get(_base_name(name), _base_name(name))
+
+
+# Models other than Whisper large-v3 itself: what the v3 passes (also the forced re-read) agree on can be their shared mistake.
+_INDEPENDENT_FAMILIES = frozenset({'whisper-v2', 'qwen', 'nb-whisper'})
 
 
 def _mean_agreement(text, cluster, skip=None):
@@ -1485,6 +1795,44 @@ def _chosen_row(cluster, name, chosen):
     return row
 
 
+def _uncovered_restore_row(row, cluster, existing):
+    """Use another complete word-timed reading, never clip words to fit a gap.
+
+    Selection confidence decides wording, not which pass timed the boundary best.
+    Only the existing small-overlap range is eligible. Qwen window bounds and
+    different wordings cannot supply an alternative timing; neighbours stay intact.
+    """
+    conflicts = [other for other in existing if _overlap_seconds(row, other) > .05]
+    if not conflicts:
+        return row
+    text = _normalized(str(row['text']))
+    if any(_overlap_seconds(row, other) > .25 or text in _normalized(str(other['text']))
+           for other in conflicts):
+        return None
+    alternatives = []
+    for name, candidate in cluster:
+        words = candidate.get('words') or []
+        if (_base_name(name) == 'qwen' or not words
+                or _normalized(str(candidate['text'])) != text
+                or _normalized(' '.join(str(word.get('text', '')) for word in words)) != text
+                or any(_overlap_seconds(candidate, other) > .05 for other in existing)
+                or _overlap_seconds(candidate, row) <= .4 * min(candidate['end'] - candidate['start'], row['end'] - row['start'])):
+            continue
+        end = candidate['start']
+        for word in words:
+            if (word.get('probability', 0) < .55 or word['start'] < end
+                    or not candidate['start'] <= word['start'] < word['end'] <= candidate['end']
+                    or word['end'] - word['start'] > 1.5):
+                break
+            end = word['end']
+        else:
+            alternatives.append(candidate)
+    if not alternatives:
+        return None
+    chosen = min(alternatives, key=lambda other: abs(other['start'] - row['start']) + abs(other['end'] - row['end']))
+    return dict(chosen, text=row['text'])
+
+
 def restore_multi_pass_agreed_speech(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),
                                      minimum_agreement=.85):
     """Add speech that several independent passes read alike but that no final cue covers.
@@ -1509,11 +1857,136 @@ def restore_multi_pass_agreed_speech(merged, readings, *, minimum_passes=3, vad_
         words = _normalized(str(row['text'])).split()
         span = max(item['end'] for _, item in cluster) - min(item['start'] for _, item in cluster)
         if (not words or _normalized(str(row['text'])) in _STOCK_PHRASES or span > 12
-                or (len(words) == 1 and max(float(item.get('confidence', 0)) for _, item in cluster) < .55)
-                or any(_overlap_seconds(row, existing) > .05 for existing in rows + additions)):
+                or (len(words) == 1 and max(float(item.get('confidence', 0)) for _, item in cluster) < .55)):
             continue
-        additions.append(row)
+        row = _uncovered_restore_row(row, cluster, rows + additions)
+        if row is not None:
+            additions.append(row)
     return sorted(rows + additions, key=lambda item: (item['start'], item['end']))
+
+
+def restore_family_voted_speech(merged, readings, *, minimum_families=FAMILY_VOTE_MINIMUM_FAMILIES, minimum_agreement=FAMILY_VOTE_MINIMUM_AGREEMENT,
+                                independent_families=FAMILY_VOTE_INDEPENDENT_FAMILIES):
+    """Add speech that no final cue covers when at least two MODEL FAMILIES read it alike, however the others read it.
+
+    `restore_multi_pass_agreed_speech` needs three passes, one of them voice-activity filtered, and a high mean agreement over everything that was
+    read there, so one dissenting family ("국회문" from the Whisper v3 passes against "괴물" from v2 and Qwen) leaves a real line out. On the HOPE trailer
+    (burned-in English subtitles as the witness: 14 spoken lines) the final transcript held 5 of them; the passes had read 9 more. Here every family
+    casts ONE vote (its own best reading), the largest group of families whose readings agree (`minimum_agreement`, mean similarity) wins, and its
+    medoid is the text; the families outside the group are outvoted. No voice-activity pass is required: that rule exists because a no-VAD pass alone
+    hallucinates in music, and a line read alike by two families is not one pass's hallucination. `independent_families` demands that the group
+    contains Whisper v2 or Qwen3-ASR (other models than the v3 passes, which share their mistakes). Stock phrases, a lone unsure word, a span over
+    12 seconds and anything overlapping a cue are left out as in the older rule.
+    """
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    additions = []
+    for cluster in _cluster_readings(readings):
+        by_family = {}
+        for name, row in cluster:
+            by_family.setdefault(_family(name), []).append((name, row))
+        if len(by_family) < minimum_families:
+            continue
+        representatives = {family: (_medoid(members) if len(members) > 1 else members[0]) for family, members in by_family.items()}
+        group = None
+        for size in range(len(representatives), minimum_families - 1, -1):
+            for chosen_families in itertools.combinations(sorted(representatives), size):
+                if independent_families and not set(chosen_families).intersection(_INDEPENDENT_FAMILIES):
+                    continue
+                pairs = [_similarity(representatives[a][1]['text'], representatives[b][1]['text'])
+                         for a, b in itertools.combinations(chosen_families, 2)]
+                agreement = sum(pairs) / len(pairs)
+                if agreement >= minimum_agreement and (group is None or agreement > group[0]):
+                    group = (agreement, chosen_families)
+            if group:
+                break
+        if group is None:
+            continue
+        members = [representatives[family] for family in group[1]]
+        name, best = _medoid(members)
+        name, best = _most_heard_reading(cluster, group[1], best['text']) or (name, best)
+        row = _chosen_row(members, name, best)
+        text = _normalized(str(row['text']))
+        words = text.split()
+        span = max(item['end'] for _, item in members) - min(item['start'] for _, item in members)
+        if (not words or text in _STOCK_PHRASES or span > 12
+                or (len(words) == 1 and max(float(item.get('confidence', 0)) for _, item in members) < .55)):
+            continue
+        timing_members = [(pass_name, item) for pass_name, item in cluster if _family(pass_name) in group[1]]
+        row = _uncovered_restore_row(row, timing_members, rows + additions)
+        if row is not None:
+            additions.append(row)
+    return sorted(rows + additions, key=lambda item: (item['start'], item['end']))
+
+
+def _most_heard_reading(cluster, families, chosen_text, *, minimum_similarity=.5):
+    """(name, reading) with the wording that more of `families` heard exactly than any other wording of the same words as `chosen_text`, or
+    None. A medoid ties between two readings and then takes the more confident one, which can be a clipped reading: Godzilla (dev job 219) "避"
+    (one v3 pass, confidence 1.0) was added where another v3 pass and large-v2 both heard "退避!" ("Evacuate!"). Only wordings close to the
+    chosen text compete (a cluster can hold the next utterance too: Last Samurai "あれは" before "化け物だ"), and a tie in families changes
+    nothing (HOPE "상황실!" from two families against "상황실 상황실" from two)."""
+    heard = {}
+    for name, item in cluster:
+        text = _normalized(str(item.get('text', '')))
+        if text and _family(name) in families and _similarity(item['text'], chosen_text) >= minimum_similarity:
+            heard.setdefault(text, []).append((name, item))
+
+    def support(entries):
+        return len({_family(name) for name, _ in entries})
+    ranked = sorted(heard.values(), key=support, reverse=True)
+    if not ranked or support(ranked[0]) < 2 or (len(ranked) > 1 and support(ranked[0]) == support(ranked[1])):
+        return None
+    return _medoid(ranked[0]) if len(ranked[0]) > 1 else ranked[0][0]
+
+
+def replace_outvoted_single_readings(merged, readings, *, maximum_confidence=.6, minimum_families=3, minimum_independent=2,
+                                     minimum_cover=.3, own_support=.7, different=.4):
+    """(rows, changes): replace a doubtful row that only one reading heard when at least `minimum_families` model families, two of them other
+    than Whisper large-v3 (`_INDEPENDENT_FAMILIES`), heard the same different words at that place.
+
+    Glemselens øy (dev job 216): the long pass alone wrote "Gjent mors" (confidence .43) at 121.6-123.3 s; the no-VAD v3 pass, large-v2 and
+    NB-Whisper all read "Vi skal hjem." at 120.3-122.5 s. prefer_consensus_reading never saw them: their span overlaps the row by only 30 % of
+    the union (it needs 50 %) and the words share nothing. Here a reading counts when it covers at least `minimum_cover` of the row; the row may
+    have no second reading close to its own words (`own_support`), the agreeing readings must say exactly the same words (after normalising),
+    and the replacement takes that reading's own timing only when it does not reach into a neighbouring row. Nothing else changes."""
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    changes = []
+    for index, row in enumerate(rows):
+        own = _normalized(str(row.get('text', '')))
+        duration = row['end'] - row['start']
+        if not own or duration <= 0 or float(row.get('confidence', 0)) >= maximum_confidence:
+            continue
+        covering = [(name, other) for name, items in readings.items() for other in (items or ())
+                    if _normalized(str(other.get('text', ''))) and not _is_boilerplate(other.get('text', ''))
+                    and _overlap_seconds(row, other) >= minimum_cover * duration]
+        if sum(1 for _, other in covering if _similarity(row['text'], other['text']) >= own_support) > 1:
+            continue                                    # a second reading heard the row's own words
+        groups = {}
+        for name, other in covering:
+            if _similarity(row['text'], other['text']) < different:
+                groups.setdefault(_normalized(str(other['text'])), []).append((name, other))
+        best = None
+        for entries in groups.values():
+            families = {_family(name) for name, _ in entries}
+            if len(families) >= minimum_families and len(families & _INDEPENDENT_FAMILIES) >= minimum_independent:
+                if best is None or len(families) > len({_family(name) for name, _ in best}):
+                    best = entries
+        if best is None:
+            continue
+        timed = [other for name, other in best if _base_name(name) != 'qwen'] or [other for _, other in best]
+        chosen = max(timed, key=lambda other: float(other.get('confidence', 0)))
+        start, end = chosen['start'], chosen['end']
+        previous = rows[index - 1] if index else None
+        following = rows[index + 1] if index + 1 < len(rows) else None
+        if (previous and start < previous['end'] - .05) or (following and end > following['start'] + .05):
+            start, end = row['start'], row['end']        # the neighbours stay intact: keep the row's own timing
+        replacement = {'start': start, 'end': end, 'text': str(chosen['text']).strip(),
+                       'confidence': float(chosen.get('confidence', 0))}
+        if chosen.get('words') and (start, end) == (chosen['start'], chosen['end']):
+            replacement['words'] = chosen['words']
+        changes.append({'start': row['start'], 'from': row['text'], 'to': replacement['text'],
+                        'families': sorted({_family(name) for name, _ in best})})
+        rows[index] = replacement
+    return rows, changes
 
 
 def _span_overlap_ratio(a, b):
@@ -1530,6 +2003,204 @@ def _supporting_families(text, members, own_family):
         if family != own_family:
             by_family.setdefault(family, []).append(_similarity(text, other['text']))
     return [family for family, values in by_family.items() if sum(values) / len(values) >= .7]
+
+
+def _raw_tokens(text):
+    """[(raw word, [its normalized tokens])] so that normalized positions can be mapped back to the words as written ("what's" -> what, s)."""
+    return [(raw, _normalized(raw).split()) for raw in str(text).split() if _normalized(raw).split()]
+
+
+_LEAD_SCRIPT = re.compile(r"[A-Za-zÀ-ɏͰ-ϿЀ-ӿ]")    # Latin, Greek, Cyrillic: words with spaces and case
+
+
+def _contains(words, part):
+    return any(words[index:index + len(part)] == part for index in range(len(words) - len(part) + 1))
+
+
+def restore_lead_words(merged, readings, *, skip_indices=(), maximum_lead=2, maximum_gap=1.5, maximum_duration=7.0, minimum_names=2):
+    """(rows, changes): put back one or two opening words that the chosen row lost and that other readings have IMMEDIATELY before the row's own
+    first words. Unlike restore_agreed_prefixes, the rest of the readings' wording does not have to match the row (the passes cut sentences
+    differently): MAN OF WAR (dev jobs 152-170) "is what's left simple people we're trying to live their lives" (short pass) where the long pass
+    has "This is what's left." and the rescue pass "this is what's left simple people" (clean large-v2 and Qwen: "This is what's left."). The
+    same words must come from at least two different readings, and from two model families including large-v2 or Qwen, unless the row itself
+    starts in lower case (visibly cut at its start), when two passes are enough. Nothing the row says is changed; the lead may not repeat the end
+    of the previous row, may not reach back into it, and the row may not grow beyond `maximum_duration`. The start becomes the earliest start of a
+    supporting reading that begins with the lead (or the word time of the lead), never earlier than the previous row's end."""
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    changes = []
+    for index, row in enumerate(rows):
+        own = _normalized(str(row.get('text', ''))).split()
+        text = str(row.get('text', '')).strip()
+        if index in skip_indices or len(own) < 2 or not text or not _LEAD_SCRIPT.match(text):
+            continue                                   # a one-word row ("out!") matches too much; scripts without spaces have no words to count
+        head = own[:2]
+        previous = rows[index - 1] if index else None
+        previous_words = _normalized(str(previous['text'])).split() if previous else []
+        floor = previous['end'] if previous else 0.0
+        found = {}
+        for name, items in readings.items():
+            for other in items or ():
+                if other['end'] < row['start'] - maximum_gap or other['start'] > row['start'] + 1.0 or _is_boilerplate(other.get('text', '')):
+                    continue
+                tokens = _normalized(str(other.get('text', ''))).split()
+                for position in range(1, len(tokens)):
+                    # the reading holds the row's first two words, or ends with its first word (the passes cut the sentence there:
+                    # APOCALYPSE Z rescue "putting european authorities" before the row "authorities in a very difficult situation.")
+                    if tokens[position:position + len(head)] != head and not (position == len(tokens) - 1 and tokens[position] == head[0]):
+                        continue
+                    for size in range(1, min(maximum_lead, position) + 1):
+                        lead = tuple(tokens[position - size:position])
+                        # the same words in the previous row: the reading matched that sentence ("in den Film. Film?"), not this one
+                        if _contains(previous_words, list(lead) + head[:1]) or lead[-1] == head[0]:
+                            continue
+                        found.setdefault(lead, []).append((name, other, position - size))
+                    break
+        supported = []
+        for lead, members in found.items():
+            names = {_base_name(name) for name, _, _ in members}
+            families = {_family(name) for name, _, _ in members}
+            if len(names) < minimum_names:
+                continue
+            if not (text[0].islower() or (len(families) >= 2 and families & _INDEPENDENT_FAMILIES)):
+                continue
+            if any(list(lead[-size:]) == previous_words[-size:] for size in range(1, len(lead) + 1)):
+                continue
+            supported.append((lead, members))
+        if not supported:
+            continue
+        longest = max(len(lead) for lead, _ in supported)
+        supported = [item for item in supported if len(item[0]) == longest]
+        if len(supported) != 1:
+            continue                                   # different opening words: uncertainty, not a choice
+        lead, members = supported[0]
+        starts, raw_lead = [], None
+        for name, other, offset in members:
+            if offset == 0:
+                starts.append(float(other['start']))
+            else:
+                words = other.get('words') or []
+                keys = [_normalized(str(word.get('text', ''))).split() for word in words]
+                flat = [(k, word) for word, ks in zip(words, keys) for k in ks]
+                if len(flat) > offset and [k for k, _ in flat[offset:offset + len(lead)]] == list(lead):
+                    starts.append(float(flat[offset][1]['start']))
+            if raw_lead is None:
+                raw, collected, position = _raw_tokens(other.get('text', '')), [], 0
+                for word, pieces in raw:
+                    if offset <= position < offset + len(lead):
+                        collected.append(word)
+                    position += len(pieces)
+                if _normalized(' '.join(collected)).split() == list(lead):
+                    raw_lead = collected
+        if not starts or raw_lead is None:
+            continue
+        start = min(starts)
+        if start < floor - .1:
+            continue                                   # the words are heard before the previous row ends: they belong to it (Nelly Rapp "vantarna på")
+        start = max(start, floor + .05)
+        if start >= row['start'] or row['end'] - start > maximum_duration:
+            continue
+        lead_text = ' '.join(raw_lead)
+        continues = previous is not None and not _ends_sentence(previous)       # the previous row runs on into this one: no capital
+        lead_text = (lead_text[:1].lower() if continues and lead_text[:2] not in ('I ', "I'") and lead_text != 'I' else lead_text[:1].upper()) + lead_text[1:]
+        rest = text if text[:2] == 'I ' or text[:2] == "I'" else text[:1].lower() + text[1:]
+        changes.append({'row': index, 'start': row['start'], 'new_start': round(start, 3), 'lead': lead_text, 'before': text,
+                        'readings': sorted({_base_name(name) for name, _, _ in members})})
+        row['text'] = f'{lead_text.rstrip()} {rest}' if lead_text.rstrip()[-1:].isalnum() or lead_text.rstrip()[-1:] in ',;' else f'{lead_text} {text}'
+        row['start'] = round(start, 3)
+        row['confirmed_lead_onset'] = {'start': row['start'], 'prefix': list(lead) + head,
+                                       'readings': sorted({_base_name(name) for name, _, _ in members})}
+    return rows, changes
+
+
+def plan_lead_word_probes(merged, readings, duration, *, skip_indices=(), maximum=4):
+    """Places where Qwen3-ASR should listen once more because ONE reading heard opening words a visibly cut row (it starts in lower case) lost.
+
+    FORTITUDE (dev jobs 218 and 221): the row "were arrested" was translated "greps."; only the no-VAD rescue pass heard "you were arrested
+    wearing a woman's skirt", and restore_lead_words rightly needs two readings. Qwen gives that second, independent opinion. Each window
+    starts a second before the lead (`start` is the lead's measured time, `clip_start` where the clip begins) and ends half a second after the
+    row, so Qwen hears the lead and the row's own words."""
+    _, candidates = restore_lead_words(merged, readings, skip_indices=skip_indices, minimum_names=1)
+    windows = []
+    rows = sorted(merged, key=lambda item: item['start'])
+    for change in candidates:
+        if len(change['readings']) != 1 or not change['before'][:1].islower():
+            continue
+        row = rows[change['row']]
+        windows.append({'start': change['new_start'], 'end': row['end'], 'clip_start': max(0.0, change['new_start'] - 1.0),
+                        'clip_end': min(duration, row['end'] + .5), 'row_start': row['start'], 'lead': change['lead']})
+    return windows[:maximum]
+
+
+def restore_agreed_prefixes(merged, readings, *, skip_indices=()):
+    """Add only an exactly agreed, word-timed sentence prefix; keep every existing word.
+
+    A complete sentence may still have lost its opening pronoun. Two model families,
+    including v2 or Qwen, must hear the SAME full wording. A complete measured reading
+    supplies all word times. Neither a clip bound nor a neighbour's words can do so.
+    """
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    indices = {name: _time_index(items or []) for name, items in readings.items()}
+    changes = []
+    for index, row in enumerate(rows):
+        current = str(row.get('text', '')).strip()
+        base = _normalized(current).split()
+        if index in skip_indices or len(base) < 3 or not current or not current[0].isalpha():
+            continue
+        groups = {}
+        for name, time_index in indices.items():
+            for other in _rows_near(time_index, row['start'], row['end']):
+                tokens = _normalized(str(other.get('text', ''))).split()
+                added = len(tokens) - len(base)
+                if (not 1 <= added <= 3 or tokens[added:] != base
+                        or _span_overlap_ratio(row, other) < .5 or _is_boilerplate(other['text'])):
+                    continue
+                groups.setdefault(tuple(tokens), []).append((name, other))
+        supported = [(tokens, members) for tokens, members in groups.items()
+                     if len({_family(name) for name, _ in members}) >= 2
+                     and {_family(name) for name, _ in members}.intersection(_INDEPENDENT_FAMILIES)]
+        if len(supported) != 1:
+            continue  # conflicting prefixes are uncertainty, not a confidence contest
+        tokens, members = supported[0]
+        lead = list(tokens[:-len(base)])
+        previous = _normalized(rows[index - 1]['text']).split() if index else []
+        following = _normalized(rows[index + 1]['text']).split() if index + 1 < len(rows) else []
+        if any(lead[-size:] == previous[-size:] or lead[:size] == following[:size]
+               for size in range(1, len(lead) + 1)):
+            continue
+        options = []
+        for name, other in members:
+            words = other.get('words') or []
+            if (_base_name(name) == 'qwen' or not words
+                    or _normalized(' '.join(str(w.get('text', '')) for w in words)).split() != list(tokens)):
+                continue
+            end = other['start']
+            for word in words:
+                if (word.get('probability', 0) < .55 or word['start'] < end
+                        or not other['start'] <= word['start'] < word['end'] <= other['end']
+                        or word['end'] - word['start'] > 1.5):
+                    break
+                end = word['end']
+            else:
+                prefix = []
+                for word in words:
+                    prefix.append(str(word['text']).strip())
+                    if _normalized(' '.join(prefix)).split() == lead:
+                        break
+                prefix = ' '.join(prefix)
+                if _normalized(prefix).split() != lead or any(c in prefix for c in '.!?…'):
+                    continue
+                start, end = min(row['start'], other['start']), max(row['end'], other['end'])
+                if (end - start > 7 or index and start < rows[index - 1]['end']
+                        or index + 1 < len(rows) and end > rows[index + 1]['start']):
+                    continue
+                options.append((name, other, prefix, start, end))
+        if not options:
+            continue
+        name, timed, prefix, start, end = min(options, key=lambda item: item[4] - item[3])
+        row.update(text=prefix + ' ' + current, start=start, end=end, words=timed['words'])
+        changes.append({'row': index, 'from': current, 'to': row['text'], 'prefix': prefix, 'start': start, 'end': end,
+                        'families': sorted({_family(name) for name, _ in members}), 'timing_pass': name})
+    return rows, changes
 
 
 def prefer_consensus_reading(merged, readings, *, minimum_passes=3, vad_passes=('precision', 'context'),
@@ -1640,7 +2311,21 @@ def prefer_confident_reading(merged, readings, *, maximum_confidence=.4, minimum
     final = [dict(item) for item in sorted(merged, key=lambda item: item['start'])]
     everything = dict(readings)
     everything.update(span_readings(final, readings))
-    for row in final:
+    def holds_neighbour(other, index):
+        # Glemselens øy (dev job 208): "Reisa!" (0.76 s) took a 3 s reading that also held the whole next cue and became "Ryza, du kommer
+        # ikke til å tro det!" right before "Du kommer ikke til å tro det!": a reading that covers most of a neighbouring cue AND holds its
+        # words would put them in two cues.
+        words = _normalized(str(other.get('text', ''))).split()
+        for neighbour in (final[index - 1] if index else None, final[index + 1] if index + 1 < len(final) else None):
+            if neighbour is None or neighbour['end'] <= neighbour['start']:
+                continue
+            theirs = _normalized(str(neighbour.get('text', ''))).split()
+            if (theirs and _overlap_seconds(neighbour, other) >= .5 * (neighbour['end'] - neighbour['start'])
+                    and any(words[start:start + len(theirs)] == theirs for start in range(len(words) - len(theirs) + 1))):
+                return True
+        return False
+
+    for index, row in enumerate(final):
         confidence = float(row.get('confidence', 0))
         if not 0 < confidence < maximum_confidence:
             continue
@@ -1650,7 +2335,8 @@ def prefer_confident_reading(merged, readings, *, maximum_confidence=.4, minimum
                   if _normalized(str(other.get('text', ''))) and not _is_boilerplate(other.get('text', ''))
                   and _overlap_seconds(row, other) >= .7 * (row['end'] - row['start'])
                   and len(_normalized(str(other['text'])).replace(' ', '')) >= needed * size
-                  and float(other.get('confidence', 0)) >= max(minimum_confidence, confidence + minimum_gain)]
+                  and float(other.get('confidence', 0)) >= max(minimum_confidence, confidence + minimum_gain)
+                  and not holds_neighbour(other, index)]
         if better:
             best = max(better, key=lambda other: (float(other.get('confidence', 0)), _span_overlap_ratio(row, other)))
             text = str(best['text']).strip()
@@ -1705,7 +2391,7 @@ def plan_consensus_windows(merged, readings, *, minimum_passes=3, vad_passes=('p
 
 
 def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agreement=.85, maximum_candidates=5,
-                         agreement=.8):
+                         agreement=.8, word_families=None):
     """Per doubtful final cue, the other wordings the passes heard of the same time, for a judge to choose between.
 
     A cue is doubtful when its recorded confidence is below `maximum_confidence` (0 means "not recorded") or when the
@@ -1751,7 +2437,41 @@ def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agre
         if ranked:
             result[index] = [{key: entry[key] for key in ('text', 'support', 'current_support')}
                              for entry in ranked[:maximum_candidates]]
+            own = re.findall(r"[^\W\d_]+", text.casefold())
+            for candidate in result[index]:
+                parts = re.findall(r"[^\W\d_]+", candidate['text'].casefold())
+                position = iter(parts)
+                if 2 <= len(parts) - len(own) <= 5 and all(word in position for word in own):
+                    spans = [other for _, other in members if _normalized(other['text']) == _normalized(candidate['text'])]
+                    candidate['completion_span'] = {'start': min(item['start'] for item in spans),
+                                                    'end': max(item['end'] for item in spans)}
+            if word_families is not None:
+                # How many model families heard each word of the cue (for the judge: a word only one family heard may be dropped, one
+                # that two heard may not; MAN OF WAR "You find me" against "... lights on me this").
+                heard = {}
+                for name, other in members:
+                    for word in set(re.findall(r"[^\W\d_]+", str(other.get('text', '')).casefold())):
+                        heard.setdefault(word, set()).add(_base_name(name))
+                word_families[index] = {word: len(heard.get(word, ())) for word in re.findall(r"[^\W\d_]+", text.casefold())}
     return result
+
+
+def plan_doubtful_row_windows(merged, *, maximum_confidence=.7, maximum_total=400, minimum_length=1.2, maximum_length=12.0):
+    """A window of its own for every final cue the passes left at a recorded confidence below `maximum_confidence` (0.7: "Snow Goat could freeze up" stood at
+    0.618 and "Let's get the out of" at 0.667), the least certain first, at most `maximum_total`. Yukon Men (44 min): 194 cues were below 0.6 and 286 below 0.7,
+    but only about 35 were ever read a second time (windows capped at 6 to 19 per step), so Qwen heard "Snowgo could freeze up" and "snowgos" where the file says
+    "Snow Goat" and nobody asked it, and Whisper large-v2 heard "Let's get the f*** out of here!" where large-v3 left "Let's get the out of"."""
+    doubtful = []
+    for row in merged:
+        confidence = float(row.get('confidence', 0))
+        if not 0 < confidence < maximum_confidence or not _normalized(str(row.get('text', ''))):
+            continue
+        window = {'start': round(max(0.0, row['start'] - .3), 3), 'end': round(max(row['end'] + .3, row['start'] + minimum_length), 3)}
+        if window['end'] - window['start'] > maximum_length:
+            continue
+        doubtful.append((confidence, window))
+    doubtful.sort(key=lambda item: (item[0], item[1]['start']))
+    return [window for _, window in doubtful[:maximum_total]]
 
 
 def plan_v2_fragment_windows(context, precision, duration, *, maximum_total=8):
@@ -1825,10 +2545,9 @@ def plan_v2_second_opinion_windows(base, precision, rescue, duration, *, maximum
                 and float(row.get('confidence', 0)) < .85
                 and not any(abs(other['start'] - row['start']) <= .8
                             and abs(other['end'] - row['end']) <= .8
-                            and SequenceMatcher(None, _normalized(other.get('text', '')),
-                                                _normalized(row['text'])).ratio() >= .75
+                            and _normalized(other.get('text', '')) == _normalized(row['text'])
                             for other in precision)):
-            targets.append((0, float(row['confidence']), row))
+            targets.append((0, float(row.get('confidence', 0)), row))
         if any(_inserted_article(row.get('text', ''), candidate.get('text', ''))
                and abs(candidate['start'] - row['start']) <= .8
                and abs(candidate['end'] - row['end']) <= .8
@@ -1919,6 +2638,56 @@ def plan_v2_word_check_windows(base, duration, *, minimum_confidence=.55,
     return sorted(planned, key=lambda item: item['start'])
 
 
+def confirm_short_word_substitutions(base, precision, v2_rows):
+    """A single changed word in a three-word cue needs two readers and timed anchors.
+
+    Character similarity is not confirmation of a short verb (animo/venimos).
+    Keep the v3 alternative's OTHER words: a weak v2 preposition is not a vote
+    to replace it. Every confident v2 word must agree, and no cue time changes.
+    """
+    result, records = [dict(row) for row in base], []
+    for index, row in enumerate(result):
+        old = _normalized(row.get('text', '')).split()
+        if len(old) != 3 or row['end'] - row['start'] > 2:
+            continue
+        for candidate in precision:
+            new = _normalized(candidate.get('text', '')).split()
+            if (len(new) != 3 or float(candidate.get('confidence', 0)) < .7
+                    or abs(candidate['start'] - row['start']) > .25
+                    or abs(candidate['end'] - row['end']) > .25):
+                continue
+            changed = [i for i, (a, b) in enumerate(zip(old, new)) if a != b]
+            if len(changed) != 1 or len(new[changed[0]]) < 4:
+                continue
+            position = changed[0]
+            witness = None
+            for other in v2_rows:
+                words = [w for w in _raw_rescue_words(other)
+                         if row['start'] <= (w['start'] + w['end']) / 2 <= row['end']]
+                if (len(words) != 3 or words[0]['start'] < row['start'] - .25
+                        or words[-1]['end'] > row['end'] + .25
+                        or any(w['end'] <= w['start'] for w in words)
+                        or words[position]['probability'] < .8
+                        or _normalized(words[position]['text']) != new[position]):
+                    continue
+                confident = [i for i, w in enumerate(words) if w['probability'] >= .6]
+                if (not any(i != position for i in confident)
+                        or any(_normalized(words[i]['text']) != new[i] for i in confident)):
+                    continue
+                witness = words
+                break
+            if witness is None:
+                continue
+            before = row['text']
+            row['text'] = candidate['text']
+            row['confirmed_source_words'] = sorted(set(row.get('confirmed_source_words', [])) | {new[position]})
+            records.append({'row': index, 'start': row['start'], 'end': row['end'],
+                            'before': before, 'after': row['text'], 'word': new[position],
+                            'precision_confidence': candidate['confidence'], 'v2_words': witness})
+            break
+    return result, records
+
+
 def reconcile_v2_word_substitutions(base, v2_rows, *, minimum_v2_word_probability=.6):
     """Swap in one word an independent model heard clearly, when every other
     word in the sentence already matches exactly.
@@ -1960,8 +2729,88 @@ def reconcile_v2_word_substitutions(base, v2_rows, *, minimum_v2_word_probabilit
             row['text'] = ' '.join(
                 (replacement + trailing) if position == index else token
                 for position, token in enumerate(original_tokens))
+            # Remembered so that a later, independent reading can take the swap back (settle_v2_words_with_qwen).
+            row['v2_word'] = {'index': index, 'old': original_tokens[index], 'new': replacement + trailing}
             break
     return result
+
+
+def _same_length_reading(row, readings, size):
+    """The normalized words of each reading that covers most of `row` and has exactly `size` words."""
+    found = []
+    for other in readings or ():
+        if _span_overlap_ratio(row, other) < .5:
+            continue
+        words = _normalized(str(other.get('text', ''))).split()
+        if len(words) == size:
+            found.append((other, words))
+    return found
+
+
+def _single_word_swap(words, heard, *, minimum_letters=3):
+    """(index, word) when `heard` holds the row's `words` with exactly ONE of them changed into another word (of at least `minimum_letters`
+    letters), other words around it unchanged and only extra words at the very start or end, else None. Agnes mot verden (dev job 209): the row
+    "en kilo heroin hjemme der, og så ber du meg om å bare være her." against large-v2's and NB-Whisper's "har seriøst en kilo heroin gjemt der, …"
+    gives (3, 'gjemt'): the readings hold two more words at the start, so the older equal-length comparison never saw them."""
+    if not words or not heard:
+        return None
+    operations = SequenceMatcher(None, words, heard, autojunk=False).get_opcodes()
+    swaps = [operation for operation in operations if operation[0] == 'replace']
+    inner = [operation for operation in operations[1:-1] if operation[0] in ('insert', 'delete')]
+    if (len(swaps) != 1 or inner or any(tag == 'delete' for tag, *_ in (operations[0], operations[-1]))
+            or sum(tag == 'equal' for tag, *_ in operations) == 0):
+        return None
+    _, a1, a2, b1, b2 = swaps[0]
+    if a2 - a1 != 1 or b2 - b1 != 1 or len(heard[b1]) < minimum_letters or any(char.isdigit() for char in words[a1] + heard[b1]):
+        return None                                   # "3 kilometers" / "three kilometers" is spelling, not a misheard word
+    return a1, heard[b1]
+
+
+def settle_v2_words_with_qwen(merged, qwen, v2=(), extra=()):
+    """(rows, changes) once Qwen3-ASR (another model family) has read the doubtful places.
+
+    1. A word reconcile_v2_word_substitutions took from Whisper large-v2 against every large-v3 pass is taken back when Qwen, at the same
+       place of a reading with the same number of words, has the old word or one closer to it: ANOTHER GERMAN TANK STORY (dev jobs 171, 178)
+       "Wir werden jetzt alle reich" (three large-v3 passes and Qwen) had become "Wir wären" (large-v2 alone), "War doch ein Klacksum" (large-v3,
+       Qwen "Klacks") had become "Klagsohn". The swaps Qwen does not contradict stay (they were mostly right: "gun" -> "Gunn", "the" -> "their").
+    2. A word large-v2 and Qwen BOTH hear, in readings with the same words as the row except that one, replaces the row's word: APOCALYPSE Z
+       (dev jobs 166, 179) "Estamos en la plaza de Paros" (large-v3 alone) where large-v2 and Qwen hear "plaza de toros".
+    `extra` are the readings of another independent family that count like Qwen's in both rules (NB-Whisper for Norwegian speech, app/norwegian_reader.py:
+    Agnes mot verden "Finn deg du elsker." from the short pass at 0.18, where large-v2 and NB-Whisper hear "Finn det du elsker.")."""
+    qwen = list(qwen or ()) + list(extra or ())
+    rows, changes = [dict(row) for row in merged], []
+    for row in rows:
+        tokens = str(row.get('text', '')).split()
+        words = _normalized(str(row.get('text', ''))).split()
+        if len(tokens) != len(words) or len(words) < 3:
+            continue
+        swap = row.pop('v2_word', None)
+        if swap and swap['index'] < len(tokens) and tokens[swap['index']] == swap['new']:
+            index = swap['index']
+            old, new = _normalized(swap['old']), _normalized(swap['new'])
+            for other, heard in _same_length_reading(row, qwen, len(words)):
+                if heard[:index] + heard[index + 1:] != words[:index] + words[index + 1:]:
+                    continue
+                if heard[index] == old or (heard[index] != new and SequenceMatcher(None, heard[index], old).ratio()
+                                           > SequenceMatcher(None, heard[index], new).ratio()):
+                    tokens[index] = swap['old']
+                    row['text'] = ' '.join(tokens)
+                    changes.append({'start': row['start'], 'kind': 'v2_word_taken_back', 'from': swap['new'], 'to': swap['old'], 'qwen': other['text']})
+                    break
+            continue
+        swaps_v2 = {swap for other in v2 or () if _span_overlap_ratio(row, other) >= .5
+                    for swap in [_single_word_swap(words, _normalized(str(other.get('text', ''))).split())] if swap}
+        swaps_other = {swap for other in qwen if _span_overlap_ratio(row, other) >= .5
+                       for swap in [_single_word_swap(words, _normalized(str(other.get('text', ''))).split())] if swap}
+        agreed = next(iter(sorted(swaps_v2 & swaps_other)), None)
+        if agreed:
+            index, word = agreed
+            trailing = ''.join(char for char in tokens[index] if char in '.,!?;:')
+            replacement = word[:1].upper() + word[1:] if tokens[index][:1].isupper() else word
+            changes.append({'start': row['start'], 'kind': 'v2_and_qwen_word', 'from': tokens[index], 'to': replacement + trailing})
+            tokens[index] = replacement + trailing
+            row['text'] = ' '.join(tokens)
+    return rows, changes
 
 
 def plan_v2_timing_windows(base, rescue, speech_intervals, duration, *, maximum_total=4):
@@ -2765,6 +3614,62 @@ def correct_rescue_word_onsets(base, rescue, *, minimum_drift=.5,
         if best:
             row['start'] = round(best[1], 3)
     return result
+
+
+def correct_confirmed_word_onsets(base, rescue, v2, *, skip_indices=(), maximum_disagreement=.5):
+    """After all merges and VAD refinement, correct an early start only when rescue AND v2 time every unchanged word.
+
+    A later sentence split can put back the precision pass's early start (FORTITUDE: 8.19 s; the two word-timed readers start at
+    10.62/10.96 s). VAD misses the quiet first word here. Do not move words/end/neighbours, infer a time from a clip bound, or trust one reader.
+    """
+    def timed(items):
+        accepted = []
+        for item in items:
+            words = _timed_rescue_words(item)
+            if not words or any(not all(math.isfinite(word[key]) for key in ('start', 'end', 'probability'))
+                                or word['start'] < 0 or not .6 <= word['probability'] <= 1
+                                or not 0 < word['end'] - word['start'] <= 1.5 for word in words):
+                continue
+            if any(a['source_word_index'] != b['source_word_index'] and b['start'] < a['end'] - .05
+                   for a, b in zip(words, words[1:])):
+                continue
+            accepted.append(item)
+        return accepted
+
+    rows = [dict(row) for row in sorted(base, key=lambda row: (row['start'], row['end']))]
+    rescue, v2 = timed(rescue), timed(v2)
+    first = correct_rescue_word_onsets(rows, rescue)
+    second = correct_rescue_word_onsets(rows, v2)
+
+    def starts(row, items):
+        target = _normalized(row['text']).split()
+        result = []
+        for item in items:
+            words = _timed_rescue_words(item)
+            for offset in range(len(words) - len(target) + 1):
+                phrase = words[offset:offset + len(target)]
+                if ([word['token'] for word in phrase] == target and abs(phrase[-1]['end'] - row['end']) <= .5
+                        and row['start'] - .5 <= phrase[0]['start'] < row['end']):
+                    result.append(phrase[0]['start'])
+        return result
+
+    changes = []
+    for index, (row, a, b) in enumerate(zip(rows, first, second)):
+        if (index in skip_indices or a['start'] == row['start'] or b['start'] == row['start']
+                or abs(a['start'] - b['start']) > maximum_disagreement):
+            continue
+        options = starts(row, rescue) + starts(row, v2)
+        # Do not cherry-pick a later rescue pass when an equally well timed
+        # reading puts the first word earlier (Russian job 93's initial "А").
+        if not options or max(options) - min(options) > maximum_disagreement:
+            continue
+        onset = round(min(options), 3)
+        if onset >= row['end']:
+            continue
+        changes.append({'row': index, 'text': row['text'], 'start': row['start'], 'new_start': onset,
+                        'end': row['end'], 'rescue_start': a['start'], 'v2_start': b['start']})
+        row['start'] = onset
+    return rows, changes
 
 
 def _word_recall(old_words, new_words):
