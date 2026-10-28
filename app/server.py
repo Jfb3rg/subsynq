@@ -33,7 +33,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.334"
+VERSION = "0.8.338"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1866,10 +1866,10 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, sqlite3.Error) as error:
                 self.respond(400, 'text/plain', str(error))
                 return
-            # Back to the page the button was pressed on (overview or queue), where the card is.
+            # Back to the page the button was pressed on (overview, queue or Moln-GPU), where the card is.
             back = urlsplit(self.headers.get('Referer') or '').path
             self.send_response(303)
-            self.send_header('Location', back if back in ('/', '/queue') else '/queue')
+            self.send_header('Location', back if back in ('/', '/queue', '/settings/cloud') else '/queue')
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -2462,7 +2462,9 @@ class Handler(BaseHTTPRequestHandler):
                 saved_event = query.get('saved', [''])[0]
                 notices = {'key': 'API-nyckeln sparades lokalt.', 'removed': 'API-nyckeln togs bort.',
                            'refreshed': 'Listan har uppdaterats.', 'offer': 'Aktuellt pris och serverns land kopierades till din kostnadsplan.'}
-                content = (render_cloud_market(provider, provider in load_keys(CONFIG),
+                # The session card here too (the user, 2026-10-28): start and stop the rented server where it is chosen.
+                content = (cloud_session.render(cloud_session.load(DATABASE), data["hardware_preference"], SCAN_TOKEN)
+                           + render_cloud_market(provider, provider in load_keys(CONFIG),
                                                  catalog(CONFIG, provider, gpu_query=gpu_query,
                                                          vram_bands=vram_bands), SCAN_TOKEN,
                                                  notices.get(saved_event, ''), gpu_query, vram_bands)

@@ -149,7 +149,7 @@ minne på värden, så kontrollera ledigt RAM före körning.
 och per hämtad GB) och skickar ljud och dialogtext till den hyrda servern. Läs
 [CLOUD-GPU.md](CLOUD-GPU.md) före användning. Varje molnjobb hyr annars en egen
 server och laddar ner modellerna (10–20 minuter); med **Starta molnsession** på
-Översikt eller Kö görs det en gång, och jobben använder samma server tills du
+Översikt, Kö eller Inställningar › Moln-GPU görs det en gång, och jobben använder samma server tills du
 trycker **Stoppa molnsession**. Sessionen stängs automatiskt efter en timme utan
 jobb och när workern startas om; kortet visar kostnaden hittills.
 

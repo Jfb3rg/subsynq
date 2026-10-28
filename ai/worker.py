@@ -4386,6 +4386,22 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
 
 
 def repair_flagged_translation(job, rows, flags, *, target_key='sv', target_language='Swedish', record=None):
+    """Repair the flagged rows (repair_flagged_translation_split); a repaired row that now has a verified defect it did not have before
+    (deterministic_flags: script, units, fixed word senses, grammar rules) goes back to its text before the repair. Godzilla (dev job 296): the
+    repair followed a wrong review and wrote "för att döda" for 死ぬために (to die); the verified rule then refused the file."""
+    result = repair_flagged_translation_split(job, rows, flags, target_key=target_key, target_language=target_language, record=record)
+    before = {row['id']: row for row in rows}
+    known = {(flag['id'], flag.get('reason')) for flag in deterministic_flags(rows, target_key)}
+    introduced = sorted({flag['id'] for flag in deterministic_flags(result, target_key) if (flag['id'], flag.get('reason')) not in known})
+    if not introduced:
+        return result
+    if record is not None:
+        record({'stage': 'repair_reverted', 'ids': introduced,
+                'reason': 'rättningen införde ett fel som de fasta kontrollerna hittar; raden behåller texten från före rättningen'})
+    return [dict(before[row['id']]) if row['id'] in introduced and row['id'] in before else row for row in result]
+
+
+def repair_flagged_translation_split(job, rows, flags, *, target_key='sv', target_language='Swedish', record=None):
     """Repair the flagged rows. A model answer that is cut off at its token limit (job 104: 12 rows, 2048 tokens) or that is not valid twice (job 145) is asked
     again for each half of the rows; a single row that cannot be repaired stays as it was, still flagged, and the gate judges it (never a crash, never tolerated)."""
     try:
@@ -4920,6 +4936,12 @@ def reread_language(job, rows):
     policy = job.get('language_policy') or {}
     if policy.get('effective_language'):
         return policy['effective_language']
+    # A language pack was chosen because the file's speech probes heard that language (Glemselens øy, dev job 265: unforced, large-v2 and
+    # Qwen read the Norwegian "Jeg er Joe." as English "Yeah, Joe." and replaced it).
+    if (job.get('norwegian_reader') or {}).get('chosen'):
+        return 'no'
+    if (job.get('swedish_reader') or {}).get('chosen'):
+        return 'sv'
     sources = [row.get('source', '') for row in rows]
     code = forced_whisper_language([{'source': text} for text in sources]) or language_from_text(sources)
     if code:

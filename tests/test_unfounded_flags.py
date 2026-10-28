@@ -245,5 +245,74 @@ class ReviewIgnoresUnfoundedFindingsTests(unittest.TestCase):
         self.assertEqual([entry['id'] for entry in audit[0]['set_aside_flags']], [3])
 
 
+
+class RayGunnSelfContradictionTests(unittest.TestCase):
+    """Ray Gunn (dev job 275): a correct line was flagged with a fix identical to what it already says, and the file was refused."""
+    TARGET = 'Säg mig vem som anlitade dig, annars kastar jag ut dig genom fönstret.'
+
+    def test_should_be_x_not_x_is_a_contradiction(self):
+        flag = {'id': 28, 'category': 'grammar', 'target_quote': self.TARGET,
+                'reason': "Ordföljden är felaktig; det ska vara 'kastar jag ut dig' eller 'kastar jag dig ut', inte 'kastar jag ut dig' i detta sammanhang."}
+        self.assertTrue(is_self_contradiction(flag, self.TARGET))
+
+    def test_a_fix_identical_to_the_flagged_words_is_a_contradiction(self):
+        flag = {'id': 28, 'category': 'grammar', 'target_quote': 'kastar jag ut dig genom fönstret',
+                'reason': "Ordföljden är felaktig; i svenskan ska objektet placeras före partikeln, eller så bör hela frasen vara 'kastar jag ut dig genom fönstret'."}
+        self.assertTrue(is_self_contradiction(flag, self.TARGET))
+
+    def test_a_real_fix_is_kept(self):
+        flag = {'id': 1, 'category': 'grammar', 'target_quote': 'kastar jag dig ut',
+                'reason': "Det ska vara 'kastar jag ut dig', inte 'kastar jag dig ut'."}
+        self.assertFalse(is_self_contradiction(flag, 'Annars kastar jag dig ut genom fönstret.'))
+
+
+
+class VerifiedRuleOverReviewTests(unittest.TestCase):
+    SOURCE = '死ぬためだけに作られた兵器です'
+
+    def test_a_review_asking_dying_to_become_killing_is_set_aside(self):
+        # Godzilla (dev jobs 245 and 296)
+        from translation_qa import asks_dying_to_become_killing
+        flag = {'id': 11, 'category': 'meaning', 'target_quote': 'för att dö',
+                'reason': 'Källtexten beskriver ett vapen skapat för att man ska dö (att döda), men översättningen säger att vapnet ska dö.'}
+        self.assertTrue(asks_dying_to_become_killing(flag, self.SOURCE, 'Det är ett vapen som är skapat enbart för att dö.'))
+        self.assertFalse(asks_dying_to_become_killing(flag, self.SOURCE, 'Det är ett vapen som är skapat enbart för att döda.'))
+        self.assertFalse(asks_dying_to_become_killing(flag, '人を殺すための兵器', 'Det är ett vapen för att dö.'))
+
+    def test_every_proposal_already_in_the_line_is_nothing_to_repair(self):
+        target = 'Säg mig vem som anlitade dig, annars kastar jag ut dig genom fönstret.'
+        flag = {'id': 28, 'category': 'grammar', 'target_quote': 'kastar jag ut dig genom fönstret',
+                'reason': "Ordföljden är felaktig; det ska vara 'kastar jag ut dig' eller 'kastar jag ut dig', men det är tveksamt, "
+                          "det korrekta vore 'kastar jag ut dig genom fönstret'."}
+        self.assertTrue(is_self_contradiction(flag, target))
+
+    def test_real_proposals_are_kept(self):
+        for target, reason in (('attack mot Ukrainas.', "Det svenska målet har lagt till ett genitiv-s; det ska vara 'mot Ukraina'."),
+                               ('måste vi gå ut igen', "Det är en påstående mening, så det ska inte vara 'måste vi' utan 'vi måste'."),
+                               ('slänger jag ut dig genom fönstret', "Det ska vara 'slänger jag ut dig' eller 'slänger jag dig ut', men det första är tveksamt."),
+                               ('90 miles', "Ordet 'miles' har inte översatts; det bör vara 'mil' eller 'engelska mil'.")):
+            flag = {'id': 1, 'category': 'grammar', 'target_quote': target, 'reason': reason}
+            self.assertFalse(is_self_contradiction(flag, target), target)
+
+
+class RepairNeverIntroducesVerifiedDefectsTests(unittest.TestCase):
+    def test_a_repair_that_writes_doda_for_dying_is_reverted(self):
+        row = {'id': 11, 'start': 44.8, 'end': 46.7, 'source': '死ぬためだけに作られた兵器です', 'sv': 'Det är ett vapen som är skapat enbart för att dö.'}
+        flag = {'id': 11, 'category': 'meaning', 'target_quote': 'för att dö', 'reason': 'Ska vara att döda.'}
+        bad = [{**row, 'sv': 'Det är ett vapen som är skapat enbart för att döda.'}]
+        events = []
+        with patch.object(worker, 'repair_flagged_translation_split', return_value=bad):
+            result = worker.repair_flagged_translation({'id': 296}, [dict(row)], [flag], record=events.append)
+        self.assertEqual(result[0]['sv'], row['sv'])
+        self.assertEqual(events[-1]['stage'], 'repair_reverted')
+
+    def test_a_good_repair_is_kept(self):
+        row = {'id': 11, 'start': 44.8, 'end': 46.7, 'source': '死ぬためだけに作られた兵器です', 'sv': 'Det är en vapen som är skapat enbart för att dö.'}
+        good = [{**row, 'sv': 'Det är ett vapen som är skapat enbart för att dö.'}]
+        with patch.object(worker, 'repair_flagged_translation_split', return_value=good):
+            result = worker.repair_flagged_translation({'id': 296}, [dict(row)], [{'id': 11, 'category': 'grammar', 'target_quote': 'en vapen'}])
+        self.assertEqual(result[0]['sv'], good[0]['sv'])
+
+
 if __name__ == '__main__':
     unittest.main()

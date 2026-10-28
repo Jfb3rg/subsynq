@@ -139,6 +139,14 @@ class LanguageTests(unittest.TestCase):
         self.assertEqual(worker.reread_language({'language_policy': policy}, latin), 'fr')
         self.assertIsNone(worker.reread_language({}, latin))
 
+    def test_a_chosen_language_pack_fixes_the_language(self):
+        # Glemselens øy (dev job 265): unforced, large-v2 and Qwen read the Norwegian "Jeg er Joe." as English "Yeah, Joe." and replaced it.
+        rows = [{'source': 'Jeg er Joe.'}, {'source': 'Skal vi bli beste venner?'}]
+        self.assertEqual(worker.reread_language({'norwegian_reader': {'chosen': True}}, rows), 'no')
+        self.assertEqual(worker.reread_language({'swedish_reader': {'chosen': True}}, rows), 'sv')
+        self.assertIsNone(worker.reread_language({'norwegian_reader': {'chosen': False}}, rows))
+        self.assertEqual(worker.reread_language({'language_policy': {'effective_language': 'da'}, 'norwegian_reader': {'chosen': True}}, rows), 'da')
+
 
 class FakeWhisper:
     """Detects Spanish on the short clip of row 2 and French on the others; reads what the language it is given lets it read."""

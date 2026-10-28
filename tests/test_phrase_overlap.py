@@ -22,7 +22,7 @@ class PhraseOverlapTests(unittest.TestCase):
         rows, changes = self.run_case()
         self.assertEqual(len(changes), 1)
         self.assertEqual(rows[0]['text'], "This is what's left simple people")
-        self.assertEqual(rows[1]['text'], "We're Trying to live their lives, trying to survive!")
+        self.assertEqual(rows[1]['text'], "We're trying to live their lives, trying to survive!")   # no capital mid-sentence (dev job 262)
         self.assertEqual((rows[0]['end'], rows[1]['start']), (93.01, 93.01))
         self.assertEqual((rows[0]['start'], rows[1]['end']), (87.93, 96.27))
         self.assertEqual(rows[0]['confirmed_lead_onset'], self.fixture['base'][0]['confirmed_lead_onset'])
@@ -31,6 +31,21 @@ class PhraseOverlapTests(unittest.TestCase):
         self.assertEqual(old - new, Counter('trying to live their lives'.split()))
         self.assertFalse(new - old)
         self.assertEqual(self.fixture, original)
+
+    def test_a_name_after_the_moved_lead_keeps_its_capital(self):
+        fixture = copy.deepcopy(self.fixture)
+        for key in ('base', 'v3', 'v2'):
+            for row in fixture[key]:
+                row['text'] = row['text'].replace('Trying', 'Riley').replace('trying', 'Riley')
+                for word in row.get('words') or ():
+                    word['text'] = word['text'].replace('Trying', 'Riley').replace('trying', 'Riley')
+        fixture['base'].append({'start': 120.0, 'end': 121.0, 'text': 'We need Riley now.'})
+        rows, changes = self.run_case(fixture)
+        if changes:
+            self.assertTrue(rows[1]['text'].split(' ', 1)[1].startswith('Riley'))
+        from asr_windows import _is_name_like
+        self.assertTrue(_is_name_like('Riley', [{'text': 'We need Riley now.'}]))
+        self.assertFalse(_is_name_like('Trying', [{'text': 'Trying to live. We are trying.'}]))
 
     def test_a_second_timed_occurrence_in_either_family_preserves_real_repetition(self):
         for family in ('v3', 'v2'):

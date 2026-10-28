@@ -402,8 +402,10 @@ def doubtful_rows(remaining_flags, rows, target_key='sv'):
 
 
 _QUOTED = re.compile(r"['\"‘“]([^'\"‘’“”]{1,60})['\"’”]")
+_ALTERNATIVES = re.compile(r"(?:\s*,?\s*(?:eller|alternativt)\s+['\"‘“][^'\"‘’“”]{1,60}['\"’”])*", re.IGNORECASE)
+_NOT_QUOTED = re.compile(r"\binte\s+['\"‘“]([^'\"‘’“”]{1,60})['\"’”]", re.IGNORECASE)
 _CORRECTION = re.compile(
-    r"(?:\b(?:korrekta|rätta|riktiga)\s+(?:ordet|stavningen|formen)\s+(?:är|vore|skulle\s+vara)|\b(?:borde|bör|ska|skall)\s+(?:vara|stå)|\brätt\s+stavning\s+är)"
+    r"(?:\b(?:korrekta|rätta|riktiga)\s+(?:(?:ordet|stavningen|formen)\s+)?(?:är|vore|skulle\s+vara)|\b(?:borde|bör|ska|skall)\s+(?:(?!inte\b|ej\b|icke\b)\w+\s+){0,3}?(?:vara|stå)|\brätt\s+stavning\s+är)"
     r"\s+['\"‘“]([^'\"‘’“”]{1,60})['\"’”]", re.IGNORECASE)
 
 
@@ -417,12 +419,28 @@ def is_self_contradiction(flag, target):
     reason = str(flag.get('reason', ''))
     if _ALSO_WORDS.search(reason):
         return False
+    # Ray Gunn (dev job 275): "det ska vara 'kastar jag ut dig' eller 'kastar jag dig ut', inte 'kastar jag ut dig'" about a correct line, and
+    # "… bör hela frasen vara 'kastar jag ut dig genom fönstret'", the flagged words themselves: three repairs kept the line and the file was refused.
+    refused = [quoted.strip(' .,;:') for quoted in _NOT_QUOTED.findall(reason)]
+    quote = str(flag.get('target_quote') or '').strip(' .,;:')
+    fixes = []
     for match in _CORRECTION.finditer(reason):
         fix = match.group(1).strip(' .,;:')
-        wrong = [quoted.strip(' .,;:') for quoted in _QUOTED.findall(reason[:match.start()])]
-        if fix and fix in wrong and fix in str(target):
+        wrong = [quoted.strip(' .,;:') for quoted in _QUOTED.findall(reason[:match.start()])] + refused
+        if fix and _stands_in(fix, target) and (fix in wrong or fix == quote):
             return True
-    return False
+        fixes.append(fix)
+        # "ska vara 'X' eller 'Y'": an alternative the line does not hold is a real proposal (dev job 89: "… eller 'från att släden skulle sjunka'").
+        alternatives = _ALTERNATIVES.match(reason[match.end():]).group(0)
+        fixes.extend(alternative.strip(' .,;:') for alternative in _QUOTED.findall(alternatives))
+    # Every correction the remark proposes already stands in the line word for word (Ray Gunn, dev job 300: "det ska vara 'kastar jag ut dig'
+    # … det korrekta vore 'kastar jag ut dig genom fönstret'" about exactly that line): there is nothing to repair. Whole words only:
+    # "ska vara 'mot Ukraina'" about "mot Ukrainas" is a real finding (dev job 180).
+    return bool(fixes) and all(fix and _stands_in(fix, target) for fix in fixes)
+
+
+def _stands_in(phrase, text):
+    return bool(re.search(r'(?<!\w)' + re.escape(phrase) + r'(?!\w)', str(text)))
 
 
 _GERMAN_PLURAL_YOU = re.compile(r'\b(?:euer|eure|euren|eurem|eurer|eures|euch|ihr)\b', re.IGNORECASE)
@@ -445,6 +463,16 @@ def is_plural_you_misread(flag, source, target):
             and bool(_HE_WORDS.search(str(flag.get('reason', '')))))
 
 
+def asks_dying_to_become_killing(flag, source, target):
+    """A finding that wants "för att dö" turned into "för att döda" where the source says the dying itself (死ぬために, made to die): the verified
+    rule in swedish_context_flags forbids exactly that change. Godzilla (dev job 296): the review asked for "döda", the repair obeyed, the rule then
+    refused "döda", and the right "dö" was among the refused wordings, so the file was refused."""
+    return (flag.get('category') == 'meaning' and bool(_FOR_DYING.search(str(source)))
+            and bool(re.search(r'\bför\s+att\s+(?:(?:bara|enbart|endast)\s+)?dö\b', str(target), re.IGNORECASE))
+            and not _FOR_KILLING_SV.search(str(target))
+            and bool(re.search(r'\bdöda\b|\bdödande\b|\btransitiv', str(flag.get('reason', '')), re.IGNORECASE)))
+
+
 def unfounded_flags(flags, sample, *, target_key='sv'):
     """(kept, removed): the meaning and grammar findings that survive the checks above. `removed` holds
     {'id', 'category', 'why', 'reason'} so the quality report can show what was set aside and why."""
@@ -463,6 +491,8 @@ def unfounded_flags(flags, sample, *, target_key='sv'):
                 why = 'granskaren anger samma ord som fel och som rätt'
             elif is_plural_you_misread(flag, row.get('source', ''), row.get(target_key, '')):
                 why = 'svenskans "er/ert/era" är tyskans "euer/ihr" (ni), inte "er" (han)'
+            elif asks_dying_to_become_killing(flag, row.get('source', ''), row.get(target_key, '')):
+                why = 'källan säger att någon dör; "dö" får inte bli "döda" (fast betydelseregel)'
         if why:
             removed.append({'id': flag['id'], 'category': flag.get('category'), 'why': why,
                             'reason': flag.get('reason', '')})
@@ -542,6 +572,9 @@ SWEDISH_MEANING_RULE = (
     '"Glowland, din är" as if "din" stood alone. '
     'Norwegian "pære/pæra" in "ha det inne i pæra/pærene" is colloquial for the head ("jag har det i huvudet"), never the fruit päron. '
     'Prime Minister is the head of government: premiärminister (Sweden\'s own is statsminister), never just "minister". '
+    'The Allies are "de allierade" with the article, never a bare "Allierade". '
+    'After "efter" a clause needs "att": "efter att jag har blivit …", never "efter jag blir …". '
+    'Norwegian "seriøst" and English "seriously" as an intensifier mean "verkligen" or "på riktigt", not "seriöst". '
     'A military tank (with airplanes, ships, soldiers, an army or a battle) is stridsvagn, plural stridsvagnar; Swedish tank/tankar is only a '
     'container, and English "tanks" is never Swedish. '
     'Norwegian/Danish "kaster rundt seg/sig med" is an idiom for casually throwing out/using words, claims or diagnoses: '
@@ -747,11 +780,27 @@ def deterministic_flags(rows, target_key='sv'):
     return non_latin_flags(rows, target_key) + imperial_unit_flags(rows, target_key) + swedish_context_flags(rows, target_key) + swedish_grammar_flags(rows)
 
 
+# "Okej, jag ringer dig efter jag blir våldtagen." (Agnes, dev job 246): "efter" before a clause needs "att". Only subject pronouns that cannot
+# be the object of the preposition "efter" ("efter de senaste åren", "efter dem", "efter det" are left alone).
+_EFTER_CLAUSE = re.compile(r"\befter\s+(?:jag|du|han|hon|vi|ni|man)\s+\w+", re.IGNORECASE)
+# "The Allies are gonna attack Hitler." -> "Allierade kommer att anfalla Hitler." (FORTITUDE, dev job 248).
+_BARE_ALLIES = re.compile(r"(?<![\w])(?<!de )(?<!De )(?<!DE )(?<!våra )(?<!Våra )(?<!alla )(?<!Alla )allierade\b", re.IGNORECASE)
+
+
 def swedish_grammar_flags(rows):
-    """Unambiguous gender disagreement; no guessed source words or inflection edits."""
+    """Unambiguous gender disagreement, "efter" before a clause without "att" and "the Allies" without its article; no guessed source words or
+    inflection edits."""
     flags = []
     for row in rows:
         target = str(row.get('sv') or '')
+        clause = _EFTER_CLAUSE.search(target)
+        if clause:
+            flags.append({'id': row['id'], 'category': 'grammar', 'source_quote': str(row.get('source', '')), 'target_quote': clause.group(),
+                          'reason': '"efter" före en bisats kräver "att": "efter att jag …". Ändra inte betydelsen.'})
+        allies = _BARE_ALLIES.search(target) if re.search(r'\bthe\s+allies\b', str(row.get('source', '')), re.IGNORECASE) else None
+        if allies:
+            flags.append({'id': row['id'], 'category': 'grammar', 'source_quote': str(row.get('source', '')), 'target_quote': allies.group(),
+                          'reason': '"The Allies" är bestämd form: "de allierade" med artikeln "de".'})
         wrong = re.search(r'\b(?:en|min|din|sin|vår|er)\s+(?:vapen|barn|hus|djur|år|ord|namn|problem|område|arbete)\b', target, re.IGNORECASE)
         if wrong:
             flags.append({'id': row['id'], 'category': 'grammar', 'source_quote': str(row.get('source', '')),

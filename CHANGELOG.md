@@ -10,6 +10,13 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.338
+
+- **Molnsession även på Inställningar › Moln-GPU:** Start och Stopp finns nu också överst på sidan där du väljer server, och knappen leder tillbaka dit.
+- **Taligenkänning:** omläsning av osäkra rader använder filens språk när det norska eller svenska språkpaketet valts (en norsk replik byts inte längre mot engelska); en replik som får ett inledningsord från raden före får ingen stor bokstav mitt i meningen.
+- **Översättning:** "efter" före en bisats får "att" ("efter att jag har blivit …") och "the Allies" blir "de allierade"; båda kontrolleras även när granskaren missar dem.
+- **Granskning:** en anmärkning vars förslag redan står i raden ("ska vara 'X' … inte 'X'") räknas inte och kan inte neka filen; en anmärkning som kräver det en fast betydelseregel förbjuder (att "dö" blir "döda") räknas inte, och en rättning som inför ett fel de fasta kontrollerna hittar tas tillbaka.
+
 ## 0.8.334
 
 Samlad utgåva av utvecklingsversionerna 0.8.267–0.8.334.

@@ -124,7 +124,7 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(cloud_session.pending(self.database), 'stop')
 
     def test_the_answer_returns_to_the_page_the_button_was_on(self):
-        for referer, expected in (('/', '/'), ('/queue', '/queue'), ('/settings', '/queue'), ('', '/queue')):
+        for referer, expected in (('/', '/'), ('/queue', '/queue'), ('/settings/cloud', '/settings/cloud'), ('/settings', '/queue'), ('', '/queue')):
             with self.subTest(referer=referer):
                 body = urllib.parse.urlencode({'token': server.SCAN_TOKEN}).encode()
                 request = urllib.request.Request(f'http://127.0.0.1:{self.httpd.server_port}/cloud/session/stop', body,
@@ -132,6 +132,16 @@ class RouteTests(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as answer:
                     urllib.request.build_opener(NoRedirect).open(request, timeout=10)
                 self.assertEqual((answer.exception.code, answer.exception.headers['Location']), (303, expected))
+
+    def test_the_card_is_on_the_cloud_settings_page(self):
+        with sqlite3.connect(self.database) as db:
+            db.executemany('INSERT OR REPLACE INTO metadata VALUES (?, ?)', [('instance_id', 'test-instance'),
+                                                                             ('created_at', '2026-01-01T00:00:00+00:00')])
+        listing = {'offers': [], 'fetched_at': 'now', 'error': None}
+        with patch.object(server, 'catalog', return_value=listing):
+            page = urllib.request.urlopen(f'http://127.0.0.1:{self.httpd.server_port}/settings/cloud', timeout=10).read().decode()
+        self.assertIn('Molnsession', page)
+        self.assertLess(page.index('Molnsession'), page.index('/cloud-cost'))      # above the market and the cost plan
 
     def test_a_wrong_token_is_refused(self):
         self.assertNotEqual(self.post('/cloud/session/start', 'wrong'), 303)

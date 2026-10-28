@@ -296,5 +296,33 @@ class TitleAndMilitaryWordTests(unittest.TestCase):
         self.assertIn('stridsvagn', SWEDISH_MEANING_RULE)
 
 
+
+class EfterAndAlliesTests(unittest.TestCase):
+    def grammar(self, source, target):
+        from translation_qa import swedish_grammar_flags
+        return [flag['target_quote'] for flag in swedish_grammar_flags([row(source, target)])]
+
+    def test_efter_before_a_clause_needs_att(self):
+        # Agnes mot verden (dev jobs 123 and 246)
+        self.assertEqual(self.grammar('Ok, jeg ringer deg etter jeg blir voldtatt.', 'Okej, jag ringer dig efter jag blir våldtagen.'),
+                         ['efter jag blir'])
+        for fine in ('Okej, jag ringer dig efter att jag har blivit våldtagen.', 'Han kom efter de senaste åren.',
+                     'Kom efter mig!', 'Efter det gick vi hem.', 'Vi letar efter dem.'):
+            self.assertEqual(self.grammar('x', fine), [], fine)
+
+    def test_the_allies_take_the_article(self):
+        # FORTITUDE (dev jobs 218, 221 and 248)
+        source = 'The Allies are gonna attack Hitler.'
+        self.assertEqual(self.grammar(source, 'Allierade kommer att anfalla Hitler.'), ['Allierade'])
+        for fine in ('De allierade kommer att anfalla Hitler.', 'Våra allierade kommer att anfalla Hitler.'):
+            self.assertEqual(self.grammar(source, fine), [], fine)
+        self.assertEqual(self.grammar('Our allied friends.', 'Allierade vänner.'), [])
+
+    def test_the_rules_reach_the_translator(self):
+        from translation_qa import SWEDISH_MEANING_RULE
+        self.assertIn('de allierade', SWEDISH_MEANING_RULE)
+        self.assertIn('efter att', SWEDISH_MEANING_RULE)
+
+
 if __name__ == '__main__':
     unittest.main()

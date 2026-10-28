@@ -1452,6 +1452,17 @@ def drop_unconfirmed_repeated_starts(merged, precision, *, minimum_words=4, maxi
     return kept, removed
 
 
+def _is_name_like(word, rows):
+    """A capitalised word that the file also writes with a capital where it does not start a sentence is a name ("Kiev", "Riley")."""
+    bare = word.strip('.,!?;:"\'')
+    for row in rows:
+        words = str(row.get('text', '')).split()
+        for before, current in zip(words, words[1:]):
+            if current.strip('.,!?;:"\'') == bare and before[-1:] not in '.!?':
+                return True
+    return False
+
+
 def remove_adjacent_phrase_overlap(base, v3_rows, v2_rows, *, minimum_words=4, skip_indices=(), corroboration=()):
     """Remove a copied suffix/prefix only when two timed families locate it ONCE.
 
@@ -1543,7 +1554,13 @@ def remove_adjacent_phrase_overlap(base, v3_rows, v2_rows, *, minimum_words=4, s
                     or any(word not in _normalized(kept).split() for word in left.get('confirmed_source_words') or [])):
                 continue
             rows[index] = {**left, 'text': kept, 'end': start}
-            rows[index + 1] = {**right, 'text': (lead + ' ' if lead else '') + right['text'], 'start': start}
+            # The right row no longer starts the sentence: "We're Trying to live their lives" (MAN OF WAR, dev job 262) keeps no capital after the
+            # moved lead (except "I" and words written in capitals throughout, such as names and acronyms).
+            rest = right['text']
+            first = rest.split(' ', 1)[0]
+            if lead and first[:1].isupper() and first[1:2].islower() and first not in ('I', "I'm", "I'll", "I've", "I'd") and not _is_name_like(first, rows):
+                rest = rest[:1].lower() + rest[1:]
+            rows[index + 1] = {**right, 'text': (lead + ' ' if lead else '') + rest, 'start': start}
             rows[index].pop('words', None)
             rows[index + 1].pop('words', None)
             changes.append({'rows': [index, index + 1], 'duplicate': ' '.join(needle),
