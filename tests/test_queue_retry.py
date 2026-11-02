@@ -137,8 +137,8 @@ class QueueRetryTests(unittest.TestCase):
         with patch.object(server, 'DATABASE', self.db), patch.object(server, 'SCAN_TOKEN', 'safe'):
             handler.do_POST()
         handler.send_response.assert_called_once_with(303)
-        handler.send_header.assert_any_call('Location', '/queue?job=deleting')
-        self.assertEqual(latest_jobs(self.db)[self.item['path']]['status'], 'delete_queued')
+        handler.send_header.assert_any_call('Location', '/queue?job=deleted')
+        self.assertEqual(latest_jobs(self.db)[self.item['path']]['status'], 'deleted')     # removed at once, not queued (0.8.358)
 
     def test_waiting_reruns_and_removals_are_counted_and_shown_like_the_menu_does(self):
         jobs = {f'/extra/{n}.mp4': {'id': n, 'status': status, 'media_path': f'/extra/{n}.mp4', 'media_name': f'{n}.mp4', 'updated_at': f'2026-10-25T18:0{n}'}

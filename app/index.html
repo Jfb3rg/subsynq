@@ -323,6 +323,7 @@ const openSeasonsKey='subsynq-open-seasons';
 const openSeriesKey='subsynq-open-series';
 const openTracksKey='subsynq-open-tracks';
 const scrollKey='subsynq-scroll';
+const anchorKey='subsynq-anchor';
 // <reload-guard>
 // Every automatic reload (job list, scan card, models, hardware) goes through autoReload. A page that reloads itself
 // again and again (seen once: about every 3.7 s for 80 s after a scan) pauses its own reloading instead. Six reloads
@@ -398,7 +399,11 @@ function autoReload(why,before){
   if(state.until>Date.now())showReloadPaused((state.log[state.log.length-1]||{}).why);
 }
 // </reload-guard>
-function rememberOpenSeasons(){
+function rememberOpenSeasons(form){
+  // The file the button belonged to: the page returns to that row, also when its series is loaded only after the page (Z Nation, 2026-11-02:
+  // "Skapa undertext" in a big series list landed at the bottom, because the saved height was restored before the episodes were there).
+  const file=form&&form.elements&&form.elements.media_path;
+  try{if(file&&file.value)sessionStorage.setItem(anchorKey,JSON.stringify({path:location.pathname,file:file.value,t:Date.now()}))}catch(error){}
   const open=[...document.querySelectorAll('.season-group[open]')].map(folder=>folder.dataset.season);
   const openSeries=[...document.querySelectorAll('.series-group[open]')].map(folder=>folder.dataset.series);
   const openTracks=[...document.querySelectorAll('.track-details[open]')].map(details=>details.dataset.trackPath);
@@ -437,7 +442,7 @@ if(sessionStorage.getItem(autoRefreshKey)==='1'){
 }
 // One listener for every such form, including those of series that are loaded later (big libraries).
 document.addEventListener('submit',event=>{
-  if(event.target.matches&&event.target.matches('form.preserve-seasons'))rememberOpenSeasons();
+  if(event.target.matches&&event.target.matches('form.preserve-seasons'))rememberOpenSeasons(event.target);
 },true);
 // Every other button that posts a form: the answer is a new page, which the browser shows from the top (the user, 2026-10-26: "varje gång
 // när jag har tryckt på en knapp hamnar jag högst upp på sidan"). Remember where the page was; it is restored only when the answer is the
@@ -533,8 +538,25 @@ if(queuePanel)setInterval(async()=>{
     }
   }catch(error){/* Try again at the next interval. */}
 },4000);
-let savedScroll=null;
+let savedScroll=null,savedAnchor=null;
 try{savedScroll=sessionStorage.getItem(scrollKey);if(savedScroll!==null)sessionStorage.removeItem(scrollKey)}catch(error){savedScroll=null}
+try{savedAnchor=JSON.parse(sessionStorage.getItem(anchorKey)||'null');sessionStorage.removeItem(anchorKey)}catch(error){savedAnchor=null}
+if(!(savedAnchor&&savedAnchor.path===location.pathname&&Date.now()-Number(savedAnchor.t||0)<60000&&savedAnchor.file))savedAnchor=null;
+function showAnchorRow(){
+  const input=[...document.querySelectorAll("input[name='media_path']")].find(item=>item.value===savedAnchor.file);
+  const row=input&&(input.closest('tr')||input.closest('form'));
+  if(!row)return false;
+  for(let folder=row.closest('details');folder;folder=folder.parentElement&&folder.parentElement.closest('details'))folder.open=true;
+  requestAnimationFrame(()=>row.scrollIntoView({block:'center'}));
+  return true;
+}
+if(savedAnchor&&!showAnchorRow()){
+  // The row arrives with its lazily loaded series: try again when rows are added, for at most 15 seconds.
+  const retry=()=>{if(savedAnchor&&showAnchorRow()){savedAnchor=null;document.removeEventListener('subsynq:rows',retry)}};
+  document.addEventListener('subsynq:rows',retry);
+  setTimeout(()=>{savedAnchor=null;document.removeEventListener('subsynq:rows',retry)},15000);
+  savedScroll=null;
+}else if(savedAnchor){savedScroll=null;savedAnchor=null}
 if(savedScroll!==null){
   let target=null;
   try{
@@ -543,7 +565,13 @@ if(savedScroll!==null){
       ?(saved.path===location.pathname&&Date.now()-Number(saved.t||0)<60000?Number(saved.y):null)
       :Number(saved);
   }catch(error){target=null}
-  if(target!==null&&Number.isFinite(target))requestAnimationFrame(()=>window.scrollTo(0,target));
+  if(target!==null&&Number.isFinite(target)){
+    requestAnimationFrame(()=>window.scrollTo(0,target));
+    // A series reopened above loads its episodes afterwards: scroll to the same height again once they are in (for 10 seconds).
+    const again=()=>window.scrollTo(0,target);
+    document.addEventListener('subsynq:rows',again);
+    setTimeout(()=>document.removeEventListener('subsynq:rows',again),10000);
+  }
 }
 if(location.search.includes('saved=')){
   const url=new URL(location.href);

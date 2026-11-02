@@ -98,7 +98,8 @@ Hör taligenkänningen samma ord fel i fil efter fil kan du lägga en **ordlista
 
 Manuell start är standard. Automatisk skanning och jobbstart kan väljas i
 inställningarna. Befintliga SubSynq-undertexter skrivs inte över automatiskt;
-borttagning via gränssnittet kräver bekräftelse.
+borttagning via gränssnittet kräver bekräftelse och sker direkt, utan att vänta i kön.
+Knappen "Ta bort AI-undertext" finns på varje fil som har en AI-undertext.
 
 Webhooks från Radarr, Sonarr, Jellyfin och Emby köar bara ett jobb när
 **Starta undertextjobb automatiskt** (Inställningar › Allmänt) är på. Är den av

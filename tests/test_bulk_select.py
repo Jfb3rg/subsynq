@@ -109,8 +109,8 @@ class BulkRouteTests(unittest.TestCase):
         self.assertIn("done=1", location)
         jobs = latest_jobs(self.database)
         self.assertEqual(set(jobs), {HAS_AI["path"]})
-        self.assertEqual(jobs[HAS_AI["path"]]["status"], "delete_queued")
-        # A second click must not stack another job on a file that already has one.
+        self.assertEqual(jobs[HAS_AI["path"]]["status"], "deleted")          # removed at once, not queued (0.8.358)
+        # A second click finds nothing left to delete.
         _, location = self.post({"token": server.SCAN_TOKEN, "action": "delete", "return_kind": "movie",
                                  "media_path": [HAS_AI["path"]]})
         self.assertIn("done=0", location)

@@ -1,6 +1,8 @@
 """Persistent subtitle job queue shared by the read-only web UI and AI worker."""
+import json
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 ACTIVE = ("queued", "transcribing", "translating", "verifying", "writing",
           "cancel_requested", "delete_queued", "deleting", "restart_queued", "restarting")
@@ -76,6 +78,43 @@ def enqueue_delete(database, media_path, media_name, subtitle_path):
             return cursor.lastrowid
     except sqlite3.IntegrityError as error:
         raise ValueError("Ett jobb för avsnittet är redan köat eller arbetar.") from error
+
+
+MEDIA_ROOTS = (Path('/tv'), Path('/movies'), Path('/extra'))
+
+
+def delete_subtitle_now(database, media_path, media_name, subtitle_path, roots=MEDIA_ROOTS):
+    """Delete the media's own AI subtitle at once, in the web process, and record it as a finished "deleted" job.
+
+    The user (2026-11-02): removing a subtitle has nothing to do with the GPU, yet the queued delete waited for the worker, which was busy
+    starting a rented server. The checks are the worker's own (remove_existing_subtitle): the video lies in a connected library and is no link,
+    the file is exactly the video's .ai.sv.srt or .sv.ai.srt (never any other subtitle), and it is a regular file, not a link."""
+    media = Path(media_path).resolve()
+    if not any(media.is_relative_to(root) for root in roots) or Path(media_path).is_symlink():
+        raise ValueError('Borttagningen avvisades: videon ligger utanför de anslutna biblioteken.')
+    requested = Path(subtitle_path or '')
+    if requested.resolve() not in {media.with_suffix('.ai.sv.srt'), media.with_suffix('.sv.ai.srt')}:
+        raise ValueError('Borttagningen avvisades: filnamnet är inte en SubSynq-undertext.')
+    if requested.is_symlink():
+        raise ValueError('Borttagningen avvisades: symboliska länkar är inte tillåtna.')
+    if requested.exists():
+        if not requested.is_file():
+            raise ValueError('Borttagningen avvisades: målet är inte en vanlig fil.')
+        requested.unlink()
+    stamp = now()
+    with sqlite3.connect(database, timeout=10) as db:
+        saved = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
+        if saved:
+            library = json.loads(saved[0])
+            for item in library.get('items', []):
+                if item.get('path') == str(media_path):
+                    item['ai_sv_exists'] = False
+                    item['ai_sv_path'] = None
+            db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_scan', ?)", (json.dumps(library, ensure_ascii=False),))
+        cursor = db.execute(
+            "INSERT INTO subtitle_jobs(media_path,media_name,status,progress,message,output_path,created_at,updated_at) "
+            "VALUES (?,?,'deleted',100,'AI-undertexten är borttagen',?,?,?)", (str(media_path), media_name, str(subtitle_path), stamp, stamp))
+        return cursor.lastrowid
 
 
 def enqueue_restart(database, media_path, media_name, subtitle_path):

@@ -877,6 +877,16 @@ class RemoteCloudWhisperModel:
                                          language_probability=result.get('language_probability'))
 
 
+def reread_whisper(model_name):
+    """Whisper for a second reading of a few clips: on the rented server while the job runs there, else on this machine's CPU as before.
+    Unraid job 50 (Z Nation, 2026-11-02): 30 rows were read again with large-v3 and large-v2 loaded on the home CPU although the job ran on a
+    rented GPU, which looked like the job had fallen back to the CPU and took most of the time. The rented server takes the same options."""
+    base = cloud_base_url()
+    if base:
+        return RemoteCloudWhisperModel(base, 'Moln-servern', model_name)
+    return WhisperModel(model_name, device='cpu', compute_type='int8', cpu_threads=6, download_root='/models', local_files_only=True)
+
+
 def make_chain_certificate():
     """One throw-away self-signed certificate (PEM cert, PEM key) per rental.
     The private key leaves this machine only inside the boot script sent to
@@ -5177,7 +5187,7 @@ def read_bounded_reread_windows(job, media, windows, language=None):
                 '-ac','1','-ar','16000','-c:a','pcm_s16le','-y',str(clip)],capture_output=True,timeout=90,check=True)
             clips.append(clip)
         for name,model_name in (('precision','large-v3'),('v2','large-v2')):
-            model=WhisperModel(model_name,device='cpu',compute_type='int8',cpu_threads=6,download_root='/models',local_files_only=True)
+            model=reread_whisper(model_name)
             try:
                 for i,clip in enumerate(clips):
                     check_cancelled(job['id'])
@@ -5291,7 +5301,7 @@ def reread_readings(job, media, rows, ids):
             ], capture_output=True, timeout=90, check=True)
         for name, model_name in (('precision', 'large-v3'), ('v2', 'large-v2')):
             try:
-                model = WhisperModel(model_name, device='cpu', compute_type='int8', cpu_threads=6, download_root='/models', local_files_only=True)
+                model = reread_whisper(model_name)
             except Exception as error:               # a missing model is one family fewer, not a failed job
                 print(f'VARNING: omläsningen saknar {model_name}: {error!r}', flush=True)
                 continue
@@ -5394,8 +5404,7 @@ def reread_foreign_context(job, media, rows, records):
                     capture_output=True, timeout=90, check=True)
                 clips[plan['id'], i] = clip
         for name, model_name in (('precision', 'large-v3'), ('v2', 'large-v2')):
-            model = WhisperModel(model_name, device='cpu', compute_type='int8', cpu_threads=6,
-                                 download_root='/models', local_files_only=True)
+            model = reread_whisper(model_name)
             try:
                 for plan in plans:
                     for i, (start, _) in enumerate(plan['windows']):
@@ -6313,7 +6322,7 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
 
 def name_witness_readings(job, media, rows, ids):
     """Whisper large-v3 (Swedish forced) on a short window around each requested row: the independent second reading of the names."""
-    model = WhisperModel('large-v3', device='cpu', compute_type='int8', cpu_threads=6, download_root='/models', local_files_only=True)
+    model = reread_whisper('large-v3')
     readings = {}
     try:
         with tempfile.TemporaryDirectory(prefix='subsynq-names-') as folder:

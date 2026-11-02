@@ -10,6 +10,13 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.358
+
+- Ta bort AI-undertext sker direkt, utan att vänta i kön (till exempel på att moln-GPU:n blir redo).
+- "Ta bort AI-undertext" syns direkt på varje fil som har en AI-undertext.
+- Efter "Skapa" eller "Ta bort" i en serie kommer man tillbaka till samma avsnitt i listan, inte längst ner.
+- Omläsningar av osäkra rader görs på den hyrda GPU-servern när jobbet körs där, inte på hemdatorns CPU.
+
 ## 0.8.357
 
 - **Nödlösning med OpenSubtitles (avstängd som standard):** en svensk undertext för exakt den här filen – filens kontrollsumma eller hela filnamnet, aldrig bara titel – när AI-undertexten inte går att göra. Knapp på filens rad i biblioteket och vid underkända körningar i kön, eller automatiskt när ett jobb underkänns. Sparas som `namn.opensub.sv.srt` och ersätter aldrig AI-undertexten. Inställningar under Inställningar › Allmänt.

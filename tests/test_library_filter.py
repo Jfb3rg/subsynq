@@ -205,7 +205,7 @@ class FilterRedirectTests(unittest.TestCase):
         self.assertEqual(status, 303)
         self.assertTrue(location.startswith("/library?kind=movie&job=bulk&show=missing&bulk_action=start"), location)
         status, location = self.post("/jobs/delete", {"media_path": HAS_AI["path"], "return_show": "missing"})
-        self.assertEqual((status, location), (303, "/library?kind=movie&job=deleting&show=missing"))
+        self.assertEqual((status, location), (303, "/library?kind=movie&job=deleted&show=missing"))
 
     def test_an_unknown_filter_value_is_ignored(self):
         _, location = self.post("/jobs/start", {"media_path": MISSING["path"], "return_show": "<script>"})

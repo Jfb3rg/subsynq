@@ -527,8 +527,8 @@ STRINGS = {
     "doubtful_back": {"sv": "Tillbaka till kön", "en": "Back to the queue"},
     "doubtful_link": {"sv": "Visa osäkra repliker", "en": "Show doubtful lines"},
     "bulk_notice_deleted": {
-        "sv": "✓ {done} filer köade för borttagning av AI-undertext; {skipped} hoppades över (redan jobb, ingen undertext att ta bort eller inte aktuell).",
-        "en": "✓ {done} files queued for AI subtitle removal; {skipped} skipped (already has a job, nothing to delete or no longer eligible)."},
+        "sv": "✓ AI-undertexten togs bort för {done} filer; {skipped} hoppades över (jobb pågår, ingen undertext att ta bort eller inte aktuell).",
+        "en": "✓ AI subtitle removed for {done} files; {skipped} skipped (a job is running, nothing to delete or no longer eligible)."},
 }
 
 

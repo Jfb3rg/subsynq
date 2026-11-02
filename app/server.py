@@ -24,7 +24,7 @@ import opensubtitles
 from cloud_cost import load_profile, parse_profile, render_cloud_cost, render_cloud_market
 from cloud_market import (PROVIDERS, catalog, load_keys, save_key, remove_key, normalize_gpu_query,
                           normalize_vram_bands)
-from jobs import (ACTIVE, enqueue_delete, enqueue_job, enqueue_restart, initialize_jobs,
+from jobs import (ACTIVE, delete_subtitle_now, enqueue_delete, enqueue_job, enqueue_restart, initialize_jobs,
                   latest_events, latest_jobs, recent_events, request_cancel)
 from i18n import LANGUAGES, t
 import model_manager
@@ -34,7 +34,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.357"
+VERSION = "0.8.358"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -468,8 +468,10 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
             f"<input type='hidden' name='return_kind' value='{escape(item['kind'])}'>{show_input(show)}"
             f"<button type='submit' class='small-button'>{escape(t('action_rerun', lang))}</button></form>"
         )
+    visible_delete = ''
     if item.get('ai_sv_exists') and token and not_active:
-        job_html += (
+        # Visible on the row itself (the user, 2026-11-02: easier to remove a single subtitle); it is removed at once, not queued.
+        visible_delete = (
             "<form action='/jobs/delete' method='post' class='delete-job-form preserve-seasons' "
             f"onsubmit=\"return confirm('{escape(t('confirm_delete', lang), quote=True)}')\">"
             f"<input type='hidden' name='token' value='{escape(token)}'>"
@@ -508,6 +510,7 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
             f"{render_audio_track_choice(item, lang)}"
             f"<button type='submit' class='small-button'>{escape(t('action_create_subtitle', lang))}</button></form>"
         )
+    start_html += visible_delete
     if token and not_active and not item.get('ai_sv_exists') and opensubtitles.enabled(CONFIG):
         # The emergency fallback on the file itself (the user, 2026-11-02: to test it on a real film or series), next to "create".
         start_html += opensubtitles.render_button(item['path'], token, return_kind=item.get('kind', ''),
@@ -2019,7 +2022,7 @@ class Handler(BaseHTTPRequestHandler):
                         if action == 'recreate':
                             enqueue_restart(DATABASE, item['path'], item['name'], item['ai_sv_path'])
                         else:
-                            enqueue_delete(DATABASE, item['path'], item['name'], item['ai_sv_path'])
+                            delete_subtitle_now(DATABASE, item['path'], item['name'], item['ai_sv_path'])
                     done += 1
                 except (ValueError, sqlite3.Error):
                     skipped += 1
@@ -2046,13 +2049,13 @@ class Handler(BaseHTTPRequestHandler):
                                    'restart_queued', 'restarting'}
                 if job and job.get('status') in active_statuses:
                     raise ValueError('Ett aktivt jobb måste avslutas innan AI-undertexten kan tas bort.')
-                enqueue_delete(DATABASE, item['path'], item['name'], item['ai_sv_path'])
+                delete_subtitle_now(DATABASE, item['path'], item['name'], item['ai_sv_path'])
             except (ValueError, sqlite3.Error, OSError) as error:
                 self.respond(400, 'text/plain', str(error))
                 return
             self.send_response(303)
-            self.send_header('Location', '/queue?job=deleting' if form.get('return_kind', [''])[0] == 'queue'
-                             else library_return_path(item['kind'], 'deleting', library_show(form.get('return_show', [''])[0])))
+            self.send_header('Location', '/queue?job=deleted' if form.get('return_kind', [''])[0] == 'queue'
+                             else library_return_path(item['kind'], 'deleted', library_show(form.get('return_show', [''])[0])))
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -2633,6 +2636,8 @@ class Handler(BaseHTTPRequestHandler):
                                for name, info in data["paths"].items())
                 queued_notice = ('<p class="success" role="status">✓ Undertextjobbet är köat. Statusen visas vid avsnittet.</p>'
                                  if query.get('job', [''])[0] == 'queued' else '')
+                if query.get('job', [''])[0] == 'deleted':
+                    queued_notice = '<p class="success" role="status">✓ AI-undertexten är borttagen.</p>'
                 if query.get('job', [''])[0] == 'opensubtitles' and opensubtitles_notice():
                     queued_notice = f'<p class="success" role="status">{escape(opensubtitles_notice())}</p>'
                 if query.get('job', [''])[0] == 'bulk':
