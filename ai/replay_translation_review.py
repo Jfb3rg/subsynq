@@ -20,12 +20,15 @@ def main():
     parser.add_argument('--target-key', choices=('sv', 'en'), default='sv')
     parser.add_argument('--context-flags', action='store_true', help='Repair deterministic source-anchored flags; rereview only repaired IDs with neighbours.')
     parser.add_argument('--candidate-json', help='Diagnostic target replacements by row ID, never source changes or SRT writes.')
+    parser.add_argument('--retranslate-json', help='Diagnostic, acoustically supported source candidates by ID (max four); translate and review only, never save SRT.')
     parser.add_argument('--only-ids', nargs='+', type=int, help='Audit these candidate IDs with neighbours, not a whole-file approval.')
     args = parser.parse_args()
     target_language = 'Swedish' if args.target_key == 'sv' else 'English'
     target_options = {'target_key': args.target_key, 'target_language': target_language}
     if args.repair_only and args.audit_only:
         parser.error('Choose repair-only or audit-only, not both')
+    if args.retranslate_json and (args.repair_only or args.audit_only):
+        parser.error('--retranslate-json is a separate diagnostic mode')
     if args.review_repaired and not args.repair_only:
         parser.error('review-repaired requires repair-only')
     if args.context_flags and not args.repair_only:
@@ -82,7 +85,23 @@ def main():
     worker.QUALITY_REPORTS = args.output
     worker.MODEL_JOB.device = 'cpu'
     try:
-        if args.repair_only:
+        if args.retranslate_json:
+            replacements = json.loads(args.retranslate_json)
+            valid = {str(row['id']) for row in rows}
+            if (not isinstance(replacements, dict) or not 1 <= len(replacements) <= 4
+                    or not set(replacements) <= valid or any(not isinstance(v, str) or not v.strip() for v in replacements.values())):
+                raise ValueError('Source candidates require at most four existing IDs and nonempty strings')
+            selected = [{**row, 'source': replacements[str(row['id'])]} for row in rows if str(row['id']) in replacements]
+            translated = worker.translate({'id': -1}, selected, context_rows=rows, **target_options)
+            by_id = {row['id']: row for row in translated}
+            result = [by_id.get(row['id'], row) for row in rows]
+            report['retranslated'] = result
+            report['reviews'] = []
+            worker.assess_translation_quality(result, audit=report['reviews'], whole_file=True,
+                                              only_ids=set(by_id), **target_options)
+            report['status'] = ('flags_require_repair' if any(r.get('flags') for r in report['reviews'])
+                                else 'targeted_review_passed_not_whole_file_approved')
+        elif args.repair_only:
             quality = original.get('quality_report', original)
             flags = (worker.deterministic_flags(rows, args.target_key) if args.context_flags else
                      [f for r in quality['reviews'] for f in r.get('flags', [])])

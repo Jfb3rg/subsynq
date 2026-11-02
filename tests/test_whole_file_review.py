@@ -269,8 +269,11 @@ class ClusterTests(unittest.TestCase):
         ids, refused = seen['translate'][0]
         self.assertTrue(set(range(10, 13)) <= set(ids) and len(ids) <= 14, ids)
         self.assertEqual(refused[10], ['Rad nummer 10 här.'], 'the refused wording is forbidden')
+        self.assertEqual(set(refused), {10, 11, 12}, 'clean neighbours were never rejected')
+        self.assertGreater(len(ids), len(refused), 'the whole block is still translated, including clean neighbours')
         self.assertEqual(source[11]['sv'], 'Ny rad 11.', 'the file now holds the new translation')
         self.assertEqual(saved['cluster_retranslation'][0]['before']['10'], 'Rad nummer 10 här.')
+        self.assertEqual(saved['cluster_retranslation'][0]['refused_ids'], [10, 11, 12])
         self.assertIn('cluster_review', saved)
         self.assertNotIn('doubtful', saved)
 
@@ -280,6 +283,24 @@ class ClusterTests(unittest.TestCase):
         self.assertIn('3 av 12', str(error))
         self.assertIn('också efter att blocket översatts om', str(error))
         self.assertEqual(saved['status'], 'unusable')
+
+    def test_new_cluster_errors_in_previously_clean_neighbours_are_still_refused(self):
+        error, saved, seen, _ = self.flow([13, 14, 15])
+        self.assertIsNotNone(error)
+        self.assertEqual(set(seen['translate'][0][1]), {10, 11, 12})
+        self.assertEqual(saved['status'], 'unusable')
+
+    def test_sigma_clean_fragment_is_not_falsely_labelled_a_rejected_translation(self):
+        before = {30: 'Jag har skapat det lite i taget.', 31: 'Härifrån får du se efter det...',
+                  32: 'Du, i livet...', 33: 'Man kan inte ta ett enda steg till.',
+                  34: 'Jag hanterar mycket damm.', 35: 'Men det har aldrig slutat vara en mor.',
+                  36: 'En sista rad.'}
+        original = dict(before)
+        refused = worker.cluster_refused_targets(before, {33, 34, 35, 99})
+        self.assertEqual(set(refused), {33, 34, 35})
+        self.assertNotIn(32, refused)
+        self.assertEqual(refused[34], ['Jag hanterar mycket damm.'])
+        self.assertEqual(before, original)
 
     def test_a_cluster_of_damaged_sources_cannot_be_helped_by_a_new_translation(self):
         error, saved, seen, _ = self.flow([], categories={10: 'source_uncertain', 11: 'source_uncertain', 12: 'source_uncertain'},

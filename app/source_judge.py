@@ -197,6 +197,27 @@ def removed_supported_words(current, chosen, candidates):
     return sorted(set(supported_words(current, candidates)) - set(_choice_words(chosen)))
 
 
+def contradictory_rejected_choice(decision):
+    """A refused lexical B–F choice contradicts 'A has no error': request audio, never force B.
+
+    Validate the actual candidate pair, including in older saved decisions. Case,
+    punctuation, pure additions/deletions and all-right spelling alone do not
+    justify rereading. Refusing a tidier fragment is an intentional word guard.
+    """
+    choice, candidates = decision.get('choice'), decision.get('candidates')
+    if (decision.get('a_has_error') is not False or decision.get('applied') is not False
+            or not isinstance(choice, str) or choice not in tuple(LETTERS[1:])
+            or not isinstance(candidates, list)):
+        return False
+    number = LETTERS.index(choice)
+    if (number >= len(candidates) or not isinstance(decision.get('from'), str)
+            or not isinstance(decision.get('to'), str)
+            or candidates[0] != decision['from'] or candidates[number] != decision['to']):
+        return False
+    own, chosen = _choice_words(decision['from']), _choice_words(decision['to'])
+    return bool(own and chosen and set(own) - set(chosen) and set(chosen) - set(own))
+
+
 def acceptable_choice(current, chosen, support=1, current_support=1, previous='', following='', word_families=None):
     """A chosen wording must still be the same utterance (shares most of its words), must keep most of the current
     wording's words (a judge that merely prefers the tidier fragment would silently drop speech), must not repeat
@@ -376,6 +397,10 @@ def choose_readings(rows, call, model, *, batch_size=12, require_error_flag=Fals
                 if timed and completion_end != row['end']:
                     decision.update(end_before=row['end'], end=completion_end)
                     row['end'] = completion_end
+            if number > 0 and chosen != current and not decision['applied']:
+                decision.setdefault('reason', 'wording_guard' if not require_error_flag or flawed else 'error_flag_required')
+                if contradictory_rejected_choice(decision):
+                    decision['contradictory_verdict'] = True
             decisions.append(decision)
     for row in rows:
         row.pop('alternatives', None)

@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.357
+
+- **Nödlösning med OpenSubtitles (avstängd som standard):** en svensk undertext för exakt den här filen – filens kontrollsumma eller hela filnamnet, aldrig bara titel – när AI-undertexten inte går att göra. Knapp på filens rad i biblioteket och vid underkända körningar i kön, eller automatiskt när ett jobb underkänns. Sparas som `namn.opensub.sv.srt` och ersätter aldrig AI-undertexten. Inställningar under Inställningar › Allmänt.
+- **Taligenkänning:** omläsning av osäkra rader blir säkrare – ett saknat ord inne i en replik kan återställas när tre läsare är helt överens, en kort replik i fel skrift läses om med sammanhang, lokala språkbyten (till exempel engelska i en tysk eller norsk film) hålls isär och kallas inte trasig källtext, en radgräns mitt i ett sammandraget ord kan flyttas till ett befintligt komma, och korta japanska slutrepliker och enstaka saknade tecken kan återställas med ljudbelägg. Qwen behåller sitt tamilska modellval vid omläsning.
+- **Översättning och granskning:** "I wish we had time" blir "jag önskar att vi hade tid"; tal med crore/lakh behåller storleken (500 crore = 5 miljarder); tamilskans ord för spel blandas inte ihop med värme; ett "wow" skiljs från en upprepad uppmaning; en klädbeskrivning som fortsätter föregående replik gör inte bärandet till ett plagg. När ett block översätts om låses bara de faktiskt underkända formuleringarna, inte rena grannrader.
+
 ## 0.8.338
 
 - **Molnsession även på Inställningar › Moln-GPU:** Start och Stopp finns nu också överst på sidan där du väljer server, och knappen leder tillbaka dit.

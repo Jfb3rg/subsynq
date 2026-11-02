@@ -20,6 +20,7 @@ from probe import probe_media
 from presentation import LANGUAGES as TRACK_LANGUAGES, format_file_size, render_tracks
 from hardware import allowed_preferences, load_hardware, render_hardware
 import cloud_session
+import opensubtitles
 from cloud_cost import load_profile, parse_profile, render_cloud_cost, render_cloud_market
 from cloud_market import (PROVIDERS, catalog, load_keys, save_key, remove_key, normalize_gpu_query,
                           normalize_vram_bands)
@@ -33,7 +34,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.338"
+VERSION = "0.8.357"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -140,6 +141,20 @@ def subtitle_is_stale(item, job):
         return False
     return (item.get("size_bytes") != fingerprint_size
             or item.get("mtime_ns") != fingerprint_mtime)
+
+
+def remember_opensubtitles_notice(text):
+    with sqlite3.connect(DATABASE) as db:
+        db.execute("INSERT OR REPLACE INTO metadata VALUES ('opensubtitles_notice', ?)", (str(text)[:600],))
+
+
+def opensubtitles_notice():
+    try:
+        with sqlite3.connect(DATABASE) as db:
+            row = db.execute("SELECT value FROM metadata WHERE key='opensubtitles_notice'").fetchone()
+        return row[0] if row else ''
+    except sqlite3.Error:
+        return ''
 
 
 def runnable_library_item(library, media_path):
@@ -493,6 +508,10 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
             f"{render_audio_track_choice(item, lang)}"
             f"<button type='submit' class='small-button'>{escape(t('action_create_subtitle', lang))}</button></form>"
         )
+    if token and not_active and not item.get('ai_sv_exists') and opensubtitles.enabled(CONFIG):
+        # The emergency fallback on the file itself (the user, 2026-11-02: to test it on a real film or series), next to "create".
+        start_html += opensubtitles.render_button(item['path'], token, return_kind=item.get('kind', ''),
+                                                  return_show='missing' if show == 'missing' else '')
     kind_label_keys = {'episode': 'kind_label_episode', 'movie': 'kind_label_movie'}
     kind_label = t(kind_label_keys.get(item.get('kind'), 'kind_label_media'), lang)
     can_delete = bool(item.get('ai_sv_exists')) and not_active
@@ -1016,6 +1035,10 @@ def render_queue_job_row(job, library_by_path, token, *, cancellable, lang="sv")
             f"<input type='hidden' name='replace_existing' value='{int(replace)}'>"
             f"<button type='submit' class='small-button'>{escape(t('action_retry_failed', lang))}</button></form>")
     delete_html = ""
+    if (not cancellable and status in ('quality_failed', 'failed') and token and item and not item.get('ai_sv_exists')
+            and opensubtitles.enabled(CONFIG)):
+        # The user's emergency fallback (2026-11-02): a subtitle for exactly this file from OpenSubtitles, never by title.
+        retry_html += opensubtitles.render_button(job.get('media_path'), token)
     if not cancellable and status in RERUNNABLE_STATUSES and token and item and item.get('ai_sv_exists') and item.get('ai_sv_path'):
         # The user 2026-10-25: delete the subtitle from the queue page too, not only from the library lists.
         delete_html = (
@@ -1535,7 +1558,8 @@ class Handler(BaseHTTPRequestHandler):
                              '/cloud-offer', '/jobs/start', '/jobs/retry', '/jobs/delete', '/jobs/restart', '/jobs/cancel',
                              '/cleanup/trash', '/cleanup/restore', '/cleanup/empty', '/cleanup/retention',
                              '/jobs/bulk', '/models/remove', '/models/update', '/models/pack', '/login', '/settings/security',
-                             '/api/client-timing', '/cloud/session/start', '/cloud/session/stop'):
+                             '/api/client-timing', '/cloud/session/start', '/cloud/session/stop',
+                             '/settings/opensubtitles', '/jobs/opensubtitles'):
             self.respond(404, "text/plain", "Sidan saknas")
             return
         try:
@@ -1870,6 +1894,52 @@ class Handler(BaseHTTPRequestHandler):
             back = urlsplit(self.headers.get('Referer') or '').path
             self.send_response(303)
             self.send_header('Location', back if back in ('/', '/queue', '/settings/cloud') else '/queue')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        if self.path == '/settings/opensubtitles':
+            action = form.get('action', [''])[0]
+            try:
+                if action == 'save':
+                    opensubtitles.save_settings(CONFIG, enabled=form.get('enabled', [''])[0] == '1',
+                                                automatic=form.get('automatic', [''])[0] == '1',
+                                                api_key=form.get('api_key', [''])[0], username=form.get('username', [''])[0],
+                                                password=form.get('password', [''])[0])
+                    notice = 'Inställningarna för OpenSubtitles är sparade.'
+                elif action == 'forget':
+                    opensubtitles.forget_settings(CONFIG)
+                    notice = 'Nyckel, användarnamn och lösenord för OpenSubtitles är borttagna.'
+                elif action == 'test':
+                    notice = opensubtitles.test_login(CONFIG, f'SubSynq v{VERSION}')
+                else:
+                    raise ValueError('Okänt val.')
+            except (ValueError, OSError, opensubtitles.OpenSubtitlesError) as error:
+                notice = f'OpenSubtitles: {error}'
+            remember_opensubtitles_notice(notice)
+            self.send_response(303)
+            self.send_header('Location', '/settings?saved=opensubtitles#opensubtitles')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        if self.path == '/jobs/opensubtitles':
+            media_path = form.get('media_path', [''])[0]
+            try:
+                with sqlite3.connect(DATABASE) as db:
+                    saved = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
+                item = runnable_library_item(json.loads(saved[0]) if saved else {'items': []}, media_path)
+                if item is None:
+                    raise ValueError('Filen finns inte i den aktuella biblioteksskanningen.')
+                result = opensubtitles.fetch(CONFIG, item['path'], f'SubSynq v{VERSION}')
+                notice = (f"{item['name']}: svensk undertext hämtad från OpenSubtitles (matchad på {result['how']}"
+                          + (f", utgåva {result['release']}" if result.get('release') else '') + ')'
+                          + (f" · {result['remaining']} nedladdningar kvar i dag" if result.get('remaining') is not None else '') + '.')
+            except (ValueError, OSError, sqlite3.Error, opensubtitles.OpenSubtitlesError) as error:
+                notice = f'OpenSubtitles: {error}'
+            remember_opensubtitles_notice(notice)
+            return_kind = form.get('return_kind', [''])[0]
+            self.send_response(303)
+            self.send_header('Location', library_return_path(return_kind, 'opensubtitles', library_show(form.get('return_show', [''])[0]))
+                             if return_kind else '/queue?saved=opensubtitles')
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -2419,6 +2489,8 @@ class Handler(BaseHTTPRequestHandler):
                                                    data["ui_language"],
                                                    query.get("saved", [""])[0] == "language",
                                                    cloud_providers)
+                content += opensubtitles.render_card(opensubtitles.load_settings(CONFIG), SCAN_TOKEN,
+                                                     opensubtitles_notice() if query.get("saved", [""])[0] == "opensubtitles" else '')
                 page_title, active_nav = t("page_title_settings_general", data["ui_language"]), "settings:general"
             elif path == "/settings/theme":
                 content = render_theme_content(data["theme"], data["accent"], SCAN_TOKEN,
@@ -2481,6 +2553,9 @@ class Handler(BaseHTTPRequestHandler):
                                                 parse_page("queue_page"), parse_page("page"),
                                                 data["ui_language"])
                 content = cloud_session.render(cloud_session.load(DATABASE), data["hardware_preference"], SCAN_TOKEN) + content
+                if query.get("saved", [""])[0] == "opensubtitles" and opensubtitles_notice():
+                    content = (f"<div class='card'><h2>OpenSubtitles</h2><p role='status'>{escape(opensubtitles_notice())}</p></div>"
+                               + content)
                 page_title, active_nav = t("page_title_queue", data["ui_language"]), "queue"
             elif path == "/cleanup":
                 # A submitted filter form always carries "kind"; a plain visit (menu link,
@@ -2558,6 +2633,8 @@ class Handler(BaseHTTPRequestHandler):
                                for name, info in data["paths"].items())
                 queued_notice = ('<p class="success" role="status">✓ Undertextjobbet är köat. Statusen visas vid avsnittet.</p>'
                                  if query.get('job', [''])[0] == 'queued' else '')
+                if query.get('job', [''])[0] == 'opensubtitles' and opensubtitles_notice():
+                    queued_notice = f'<p class="success" role="status">{escape(opensubtitles_notice())}</p>'
                 if query.get('job', [''])[0] == 'bulk':
                     notice_key = {'start': 'bulk_notice_started', 'recreate': 'bulk_notice_recreated'}.get(
                         query.get('bulk_action', [''])[0], 'bulk_notice_deleted')

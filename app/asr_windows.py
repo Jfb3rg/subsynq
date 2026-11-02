@@ -99,6 +99,30 @@ def _tail_tokens(text):
                    for char in text).split()
 
 
+def _cjk_tail_phrase(text):
+    # A Japanese/Chinese clause is not one Western word. Keep the same
+    # acoustic gates, and require a short wholly CJK/kana phrase rather than
+    # a Latin one-word reply, mixed-script string or single character.
+    normalized = _tail_tokens(text)
+    letters = ''.join(normalized)
+    return (len(str(text).split()) == 1 and len(normalized) == 1 and 2 <= len(letters) <= 12
+            and all(c.isalpha() and unicodedata.name(c, '').startswith(
+                ('CJK', 'HIRAGANA', 'KATAKANA')) for c in letters))
+
+
+def _short_tail_phrase(text):
+    return 2 <= len(str(text).split()) <= 6 or _cjk_tail_phrase(text)
+
+
+def _tail_words_match(text, words):
+    tokens = _tail_tokens(text)
+    timed = [_tail_tokens(word.get('text', '')) for word in words]
+    if [token for group in timed for token in group] == tokens:
+        return True
+    return (_cjk_tail_phrase(text) and all(len(group) == 1 for group in timed)
+            and ''.join(group[0] for group in timed) == tokens[0])
+
+
 def split_corroborated_long_cues(base, probes):
     """Split unchanged text only at a boundary independently heard twice."""
     result = []
@@ -233,8 +257,8 @@ def restore_confirmed_tail(base, probes):
             normalized = _tail_tokens(candidate.get('text', ''))
             words = candidate.get('words', [])
             start, end = float(candidate['start']), float(candidate['end'])
-            if (not 2 <= len(tokens) <= 6 or not normalized or not words
-                    or _tail_tokens(' '.join(word.get('text', '') for word in words)) != normalized
+            if (not _short_tail_phrase(candidate.get('text', '')) or not normalized or not words
+                    or not _tail_words_match(candidate.get('text', ''), words)
                     or not all(start <= float(word.get('start', -1)) <
                                float(word.get('end', -1)) <= end for word in words)
                     or any(float(word['end']) - float(word['start']) > 1.5 for word in words)
@@ -277,6 +301,27 @@ def restore_confirmed_tail(base, probes):
             result.append(dict(candidate))
             return result  # One bounded recovery, never a recursive outro scan.
     return result
+
+
+def restore_tail_after_anchor_recovery(base, probes, previous_edge):
+    """Retry only when selection recovered the originally probed dialogue edge."""
+    unchanged = [dict(row) for row in base]
+    if not base or not math.isfinite(previous_edge):
+        return unchanged, None
+    selected_edge = max(row['end'] for row in base)
+    eligible = []
+    targets = []
+    for probe in probes:
+        target = probe.get('target_start', (probe.get('independent_window') or {}).get('target_start'))
+        if (type(target) in (int, float) and math.isfinite(target)
+                and target > previous_edge + .6 and abs(selected_edge-target) <= .6):
+            eligible.append(probe)
+            targets.append(target)
+    restored = restore_confirmed_tail(base, eligible)
+    if len(restored) <= len(base):
+        return unchanged, None
+    return restored, {'previous_edge': previous_edge, 'selected_edge': selected_edge,
+                      'planned_edges': sorted(set(targets))}
 
 
 def _normalized(text):

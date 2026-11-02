@@ -1,0 +1,139 @@
+{
+  "provenance": "dev-NU6teN: original audio, independent free readings without supplied transcript; Qwen word alignment measured separately below",
+  "row": {
+    "id": 6,
+    "start": 32.552,
+    "end": 36.91,
+    "source": "Eventually, found himself in hell.",
+    "source_unclear": true
+  },
+  "readings": [
+    {
+      "name": "precision",
+      "text": "Eventually, he found himself in hell.",
+      "confidence": 0.9,
+      "words": [
+        {
+          "start": 32.252,
+          "end": 32.712,
+          "word": " Eventually,",
+          "probability": 0.8108272552490234
+        },
+        {
+          "start": 33.152,
+          "end": 35.532000000000004,
+          "word": " he",
+          "probability": 0.9481690526008606
+        },
+        {
+          "start": 35.532000000000004,
+          "end": 35.852000000000004,
+          "word": " found",
+          "probability": 0.9952765703201294
+        },
+        {
+          "start": 35.852000000000004,
+          "end": 36.172000000000004,
+          "word": " himself",
+          "probability": 0.9970453381538391
+        },
+        {
+          "start": 36.172000000000004,
+          "end": 36.552,
+          "word": " in",
+          "probability": 0.9981495141983032
+        },
+        {
+          "start": 36.552,
+          "end": 36.792,
+          "word": " hell.",
+          "probability": 0.5480549335479736
+        }
+      ]
+    },
+    {
+      "name": "v2",
+      "text": "Eventually, he found himself in hell.",
+      "confidence": 0.9,
+      "words": [
+        {
+          "start": 32.252,
+          "end": 33.072,
+          "word": " Eventually,",
+          "probability": 0.45426011085510254
+        },
+        {
+          "start": 33.872,
+          "end": 35.732,
+          "word": " he",
+          "probability": 0.8573135137557983
+        },
+        {
+          "start": 35.732,
+          "end": 35.972,
+          "word": " found",
+          "probability": 0.8755759596824646
+        },
+        {
+          "start": 35.972,
+          "end": 36.412000000000006,
+          "word": " himself",
+          "probability": 0.8582245111465454
+        },
+        {
+          "start": 36.412000000000006,
+          "end": 36.672000000000004,
+          "word": " in",
+          "probability": 0.9096736311912537
+        },
+        {
+          "start": 36.672000000000004,
+          "end": 36.972,
+          "word": " hell.",
+          "probability": 0.5580723285675049
+        }
+      ]
+    },
+    {
+      "name": "qwen",
+      "text": "Eventually, he found himself in hell.",
+      "confidence": 0.9
+    }
+  ],
+  "independent_alignment": {
+    "provenance": "dev-87ythV: same original audio, freely transcribed by Qwen and then aligned by existing Qwen3-ForcedAligner-0.6B; no supplied transcript",
+    "text": "Eventually, he found himself in hell.",
+    "words": [
+      {
+        "word": "Eventually",
+        "start": 32.492000000000004,
+        "end": 33.212
+      },
+      {
+        "word": "he",
+        "start": 35.532000000000004,
+        "end": 35.692
+      },
+      {
+        "word": "found",
+        "start": 35.692,
+        "end": 36.012
+      },
+      {
+        "word": "himself",
+        "start": 36.012,
+        "end": 36.492000000000004
+      },
+      {
+        "word": "in",
+        "start": 36.492000000000004,
+        "end": 36.572
+      },
+      {
+        "word": "hell",
+        "start": 36.652,
+        "end": 37.052
+      }
+    ]
+  }
+}

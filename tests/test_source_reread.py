@@ -14,6 +14,47 @@ def rows(count):
 
 
 class SourceRereadTests(unittest.TestCase):
+    def test_contradictory_choice_still_needs_normal_acoustic_agreement_to_change_source(self):
+        for texts, expected in ((['Highly unlikely.'] * 3, 'Highly unlikely.'),
+                                (["I'm an athlete.", 'I got lucky.', 'Highly unlikely.'], 'I know, likely.')):
+            sample = rows(14)
+            sample[0]['source'] = 'I know, likely.'
+            original = [dict(r) for r in sample]
+            decision = {'id': 0, 'from': sample[0]['source'], 'to': 'Highly unlikely.', 'choice': 'B',
+                        'candidates': [sample[0]['source'], 'Highly unlikely.'],
+                        'a_has_error': False, 'applied': False}
+            with tempfile.TemporaryDirectory() as folder:
+                media = Path(folder) / 'clip.wav'
+                media.touch()
+                job = {'id': 314, 'media_path': str(media), 'source_choices': [decision]}
+                evidence = {0: [{'name': name, 'text': text, 'confidence': .8}
+                                for name, text in zip(('precision', 'v2', 'qwen'), texts)]}
+                with patch.object(worker, '_audit_source_chunk', return_value=([], False, '')), \
+                        patch.object(worker, 'reread_readings', return_value=evidence), \
+                        patch.object(worker, 'REREAD_ENABLED', True), patch.object(worker, 'update_job'):
+                    unclear = worker.assess_source_with_reread(job, sample)
+            self.assertEqual(sample[0]['source'], expected)
+            self.assertEqual(unclear, [] if expected == 'Highly unlikely.' else [0])
+            self.assertEqual(sample[1:], original[1:])
+            self.assertEqual((sample[0]['start'], sample[0]['end']), (original[0]['start'], original[0]['end']))
+
+    def test_contradictory_saved_choice_is_reread_and_not_cleared_by_clean_text_audits(self):
+        sample = rows(14)
+        sample[0]['source'] = 'I know, likely.'
+        decision = {'id': 0, 'from': sample[0]['source'], 'to': 'Highly unlikely.', 'choice': 'B',
+                    'candidates': [sample[0]['source'], 'Highly unlikely.'],
+                    'a_has_error': False, 'applied': False}
+        job = {'id': 314, 'source_choices': [decision]}
+        self.assertEqual(worker.unresolved_source_choice_ids(sample, [decision]), [0])
+        with patch.object(worker, '_audit_source_chunk', return_value=([], False, '')), \
+                patch.object(worker, 'reread_flagged_rows', return_value=[]) as reread, \
+                patch.object(worker, 'update_job'):
+            self.assertEqual(worker.assess_source_with_reread(job, sample), [0])
+        self.assertEqual(reread.call_args.args[2], [0])
+        self.assertEqual(job['source_reread']['unresolved_source_choices'], [0])
+        self.assertEqual(sample[0]['source'], decision['from'])
+        self.assertEqual(worker.unresolved_source_choice_ids([{**sample[0], 'source': 'a newer source'}], [decision]), [])
+
     def test_actual_source_chooser_retains_its_rejected_error_for_the_audit(self):
         sample = [{'id': 0, 'start': 1.15, 'end': 4.31, 'source': 'stjel kjølet!',
                    'alternatives': [{'text': 'Menesthjelpe til kjølre!', 'support': 1, 'current_support': 1}]}]
@@ -190,13 +231,16 @@ class UnclearRowsInReviewTests(unittest.TestCase):
     def test_the_saved_translation_source_keeps_the_actual_reread_and_uncertainty(self):
         sample = [{'id': 0, 'start': 3, 'end': 4, 'source': 'corrected source', 'source_unclear': True},
                   {'id': 1, 'start': 5, 'end': 6, 'source': 'clear source'}]
-        job = {'id': 5, 'source_reread': {'flagged': [0], 'changed': [], 'still_unclear': [0]},
+        job = {'id': 5, 'norwegian_reader': {'chosen': True}, 'code_switch_checks': {'changed': []},
+               'source_reread': {'flagged': [0], 'changed': [], 'still_unclear': [0]},
                'reread_rows': [{'id': 1, 'current': 'old source', 'candidate': 'clear source', 'decision': 'ersatt'}]}
         with tempfile.TemporaryDirectory() as folder, patch.object(worker, 'SOURCE_TRANSCRIPTS', Path(folder)):
             target = worker.save_source_transcript(job, '/extra/clip.mp4', sample, 'CPU', 'Whisper')
             saved = json.loads(target.read_text())
         self.assertEqual(saved['source_reread'], job['source_reread'])
         self.assertEqual(saved['reread_rows'], job['reread_rows'])
+        self.assertEqual(saved['norwegian_reader'], job['norwegian_reader'])
+        self.assertEqual(saved['code_switch_checks'], job['code_switch_checks'])
         self.assertEqual(saved['rows'], sample)
 
     def test_source_uncertain_on_a_known_unclear_row_is_not_counted_but_other_findings_are(self):

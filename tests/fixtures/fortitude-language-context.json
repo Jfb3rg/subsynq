@@ -1,0 +1,835 @@
+{
+  "provenance": "dev-3DPnv7: actual worker path on original audio, all three windows automatically detect language, no language/text/word hints; includes rejected control",
+  "rows": [
+    {
+      "id": 28,
+      "start": 91.976,
+      "end": 94.64,
+      "source": "Question, do we think that wind could be an issue?"
+    },
+    {
+      "id": 29,
+      "start": 95.432,
+      "end": 95.96,
+      "source": "I know, likely."
+    },
+    {
+      "id": 30,
+      "start": 96.1,
+      "end": 97.24,
+      "source": "Well, if you're sure."
+    }
+  ],
+  "record": {
+    "id": 29,
+    "current": "I know, likely.",
+    "readings": [
+      {
+        "name": "precision",
+        "text": "Αλλά ανάγκη.",
+        "confidence": 0.6810521183194586,
+        "words": [
+          {
+            "word": " Αλλά",
+            "start": 95.132,
+            "end": 95.592,
+            "probability": 0.5355065762996674
+          },
+          {
+            "word": " ανάγκη.",
+            "start": 95.592,
+            "end": 96.052,
+            "probability": 0.8334873378276825
+          }
+        ],
+        "language": "el",
+        "language_probability": 0.765290379524231
+      },
+      {
+        "name": "v2",
+        "text": "ΑΛΕΑΝΑΧΗ.",
+        "confidence": 0.6337147891254727,
+        "words": [
+          {
+            "word": " ΑΛΕΑΝΑΧΗ.",
+            "start": 95.132,
+            "end": 96.132,
+            "probability": 0.7758730267484982
+          }
+        ],
+        "language": "el",
+        "language_probability": 0.5478454232215881
+      },
+      {
+        "name": "qwen",
+        "text": "Highly unlikely.",
+        "confidence": 0.5,
+        "language": "English"
+      }
+    ]
+  },
+  "windows": [
+    {
+      "provenance": "dev-3DPnv7 window 0",
+      "offset": 92.432,
+      "readings": [
+        {
+          "name": "precision",
+          "language": "en",
+          "language_probability": 0.988976776599884,
+          "segments": [
+            {
+              "start": 0,
+              "end": 2.12,
+              "text": " Do we think that wind could be an issue?",
+              "words": [
+                {
+                  "start": 0,
+                  "end": 0.26,
+                  "word": " Do",
+                  "probability": 0.4935128390789032
+                },
+                {
+                  "start": 0.26,
+                  "end": 0.38,
+                  "word": " we",
+                  "probability": 0.9946638345718384
+                },
+                {
+                  "start": 0.38,
+                  "end": 0.54,
+                  "word": " think",
+                  "probability": 0.9983059167861938
+                },
+                {
+                  "start": 0.54,
+                  "end": 0.74,
+                  "word": " that",
+                  "probability": 0.8287738561630249
+                },
+                {
+                  "start": 0.74,
+                  "end": 1.08,
+                  "word": " wind",
+                  "probability": 0.9776557683944702
+                },
+                {
+                  "start": 1.08,
+                  "end": 1.46,
+                  "word": " could",
+                  "probability": 0.9946390986442566
+                },
+                {
+                  "start": 1.46,
+                  "end": 1.66,
+                  "word": " be",
+                  "probability": 0.9995331764221191
+                },
+                {
+                  "start": 1.66,
+                  "end": 1.88,
+                  "word": " an",
+                  "probability": 0.9989977478981018
+                },
+                {
+                  "start": 1.88,
+                  "end": 2.12,
+                  "word": " issue?",
+                  "probability": 0.99935382604599
+                }
+              ]
+            },
+            {
+              "start": 2.8200000000000003,
+              "end": 3.42,
+              "text": " Highly unlikely.",
+              "words": [
+                {
+                  "start": 2.8200000000000003,
+                  "end": 3.22,
+                  "word": " Highly",
+                  "probability": 0.7322489768266678
+                },
+                {
+                  "start": 3.22,
+                  "end": 3.42,
+                  "word": " unlikely.",
+                  "probability": 0.9986931681632996
+                }
+              ]
+            },
+            {
+              "start": 3.86,
+              "end": 4.72,
+              "text": " Well, if you're sure.",
+              "words": [
+                {
+                  "start": 3.86,
+                  "end": 4.26,
+                  "word": " Well,",
+                  "probability": 0.9844308495521545
+                },
+                {
+                  "start": 4.32,
+                  "end": 4.44,
+                  "word": " if",
+                  "probability": 0.9991145730018616
+                },
+                {
+                  "start": 4.44,
+                  "end": 4.6,
+                  "word": " you're",
+                  "probability": 0.993228942155838
+                },
+                {
+                  "start": 4.6,
+                  "end": 4.72,
+                  "word": " sure.",
+                  "probability": 0.9995229244232178
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "v2",
+          "language": "en",
+          "language_probability": 0.9968633651733398,
+          "segments": [
+            {
+              "start": 0,
+              "end": 2.3,
+              "text": " Do we think that wind could be an issue?",
+              "words": [
+                {
+                  "start": 0,
+                  "end": 0.32,
+                  "word": " Do",
+                  "probability": 0.4040815532207489
+                },
+                {
+                  "start": 0.32,
+                  "end": 0.44,
+                  "word": " we",
+                  "probability": 0.8928144574165344
+                },
+                {
+                  "start": 0.44,
+                  "end": 0.64,
+                  "word": " think",
+                  "probability": 0.8192509412765503
+                },
+                {
+                  "start": 0.64,
+                  "end": 0.84,
+                  "word": " that",
+                  "probability": 0.7807762026786804
+                },
+                {
+                  "start": 0.84,
+                  "end": 1.3,
+                  "word": " wind",
+                  "probability": 0.8940781950950623
+                },
+                {
+                  "start": 1.3,
+                  "end": 1.58,
+                  "word": " could",
+                  "probability": 0.8044782876968384
+                },
+                {
+                  "start": 1.58,
+                  "end": 1.8,
+                  "word": " be",
+                  "probability": 0.9066030979156494
+                },
+                {
+                  "start": 1.8,
+                  "end": 2,
+                  "word": " an",
+                  "probability": 0.9175218939781189
+                },
+                {
+                  "start": 2,
+                  "end": 2.3,
+                  "word": " issue?",
+                  "probability": 0.8985357284545898
+                }
+              ]
+            },
+            {
+              "start": 3.06,
+              "end": 3.62,
+              "text": " Highly unlikely.",
+              "words": [
+                {
+                  "start": 3.06,
+                  "end": 3.32,
+                  "word": " Highly",
+                  "probability": 0.7804208397865295
+                },
+                {
+                  "start": 3.32,
+                  "end": 3.62,
+                  "word": " unlikely.",
+                  "probability": 0.7641246914863586
+                }
+              ]
+            },
+            {
+              "start": 4.16,
+              "end": 4.82,
+              "text": " Well, if you're sure.",
+              "words": [
+                {
+                  "start": 4.16,
+                  "end": 4.36,
+                  "word": " Well,",
+                  "probability": 0.7338120937347412
+                },
+                {
+                  "start": 4.44,
+                  "end": 4.52,
+                  "word": " if",
+                  "probability": 0.9022191166877747
+                },
+                {
+                  "start": 4.52,
+                  "end": 4.66,
+                  "word": " you're",
+                  "probability": 0.9199071228504181
+                },
+                {
+                  "start": 4.66,
+                  "end": 4.82,
+                  "word": " sure.",
+                  "probability": 0.8278354406356812
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provenance": "dev-3DPnv7 window 1",
+      "offset": 91.432,
+      "readings": [
+        {
+          "name": "precision",
+          "language": "en",
+          "language_probability": 0.9864924550056458,
+          "segments": [
+            {
+              "start": 0,
+              "end": 3.12,
+              "text": " Question. Do we think that wind could be an issue?",
+              "words": [
+                {
+                  "start": 0,
+                  "end": 0.82,
+                  "word": " Question.",
+                  "probability": 0.8275567293167114
+                },
+                {
+                  "start": 1,
+                  "end": 1.26,
+                  "word": " Do",
+                  "probability": 0.8269228339195251
+                },
+                {
+                  "start": 1.26,
+                  "end": 1.38,
+                  "word": " we",
+                  "probability": 0.9943238496780396
+                },
+                {
+                  "start": 1.38,
+                  "end": 1.54,
+                  "word": " think",
+                  "probability": 0.9969406127929688
+                },
+                {
+                  "start": 1.54,
+                  "end": 1.74,
+                  "word": " that",
+                  "probability": 0.8078784942626953
+                },
+                {
+                  "start": 1.74,
+                  "end": 2.08,
+                  "word": " wind",
+                  "probability": 0.966933012008667
+                },
+                {
+                  "start": 2.08,
+                  "end": 2.46,
+                  "word": " could",
+                  "probability": 0.9926716089248657
+                },
+                {
+                  "start": 2.46,
+                  "end": 2.66,
+                  "word": " be",
+                  "probability": 0.9994315505027771
+                },
+                {
+                  "start": 2.66,
+                  "end": 2.88,
+                  "word": " an",
+                  "probability": 0.9985480904579163
+                },
+                {
+                  "start": 2.88,
+                  "end": 3.12,
+                  "word": " issue?",
+                  "probability": 0.9985696077346802
+                }
+              ]
+            },
+            {
+              "start": 3.7800000000000002,
+              "end": 4.44,
+              "text": " Highly unlikely.",
+              "words": [
+                {
+                  "start": 3.7800000000000002,
+                  "end": 4.22,
+                  "word": " Highly",
+                  "probability": 0.6945360749959946
+                },
+                {
+                  "start": 4.22,
+                  "end": 4.44,
+                  "word": " unlikely.",
+                  "probability": 0.9962579011917114
+                }
+              ]
+            },
+            {
+              "start": 4.82,
+              "end": 5.72,
+              "text": " Well, if you're sure.",
+              "words": [
+                {
+                  "start": 4.82,
+                  "end": 5.26,
+                  "word": " Well,",
+                  "probability": 0.9841055274009705
+                },
+                {
+                  "start": 5.32,
+                  "end": 5.44,
+                  "word": " if",
+                  "probability": 0.9980296492576599
+                },
+                {
+                  "start": 5.44,
+                  "end": 5.6,
+                  "word": " you're",
+                  "probability": 0.9855478703975677
+                },
+                {
+                  "start": 5.6,
+                  "end": 5.72,
+                  "word": " sure.",
+                  "probability": 0.9992774128913879
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "v2",
+          "language": "en",
+          "language_probability": 0.9951545000076294,
+          "segments": [
+            {
+              "start": 0.4600000000000005,
+              "end": 3.3,
+              "text": " Question, do we think that wind could be an issue?",
+              "words": [
+                {
+                  "start": 0.4600000000000005,
+                  "end": 0.9,
+                  "word": " Question,",
+                  "probability": 0.6320636868476868
+                },
+                {
+                  "start": 1.24,
+                  "end": 1.32,
+                  "word": " do",
+                  "probability": 0.6600790023803711
+                },
+                {
+                  "start": 1.32,
+                  "end": 1.44,
+                  "word": " we",
+                  "probability": 0.8938621282577515
+                },
+                {
+                  "start": 1.44,
+                  "end": 1.64,
+                  "word": " think",
+                  "probability": 0.812414824962616
+                },
+                {
+                  "start": 1.64,
+                  "end": 1.84,
+                  "word": " that",
+                  "probability": 0.775473952293396
+                },
+                {
+                  "start": 1.84,
+                  "end": 2.3,
+                  "word": " wind",
+                  "probability": 0.8889499306678772
+                },
+                {
+                  "start": 2.3,
+                  "end": 2.58,
+                  "word": " could",
+                  "probability": 0.8158280849456787
+                },
+                {
+                  "start": 2.58,
+                  "end": 2.8,
+                  "word": " be",
+                  "probability": 0.9066681265830994
+                },
+                {
+                  "start": 2.8,
+                  "end": 2.98,
+                  "word": " an",
+                  "probability": 0.9016930460929871
+                },
+                {
+                  "start": 2.98,
+                  "end": 3.3,
+                  "word": " issue?",
+                  "probability": 0.9048631191253662
+                }
+              ]
+            },
+            {
+              "start": 4,
+              "end": 4.62,
+              "text": " Highly unlikely.",
+              "words": [
+                {
+                  "start": 4,
+                  "end": 4.32,
+                  "word": " Highly",
+                  "probability": 0.7910826802253723
+                },
+                {
+                  "start": 4.32,
+                  "end": 4.62,
+                  "word": " unlikely.",
+                  "probability": 0.7792823314666748
+                }
+              ]
+            },
+            {
+              "start": 5.18,
+              "end": 5.84,
+              "text": " Well, if you're sure.",
+              "words": [
+                {
+                  "start": 5.18,
+                  "end": 5.36,
+                  "word": " Well,",
+                  "probability": 0.7383869886398315
+                },
+                {
+                  "start": 5.44,
+                  "end": 5.52,
+                  "word": " if",
+                  "probability": 0.9060709476470947
+                },
+                {
+                  "start": 5.52,
+                  "end": 5.72,
+                  "word": " you're",
+                  "probability": 0.9178663790225983
+                },
+                {
+                  "start": 5.72,
+                  "end": 5.84,
+                  "word": " sure.",
+                  "probability": 0.8112114667892456
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provenance": "dev-3DPnv7 window 2",
+      "offset": 92,
+      "readings": [
+        {
+          "name": "precision",
+          "language": "en",
+          "language_probability": 0.986683189868927,
+          "segments": [
+            {
+              "start": 0,
+              "end": 2.56,
+              "text": " Question, do we think that wind could be an issue?",
+              "words": [
+                {
+                  "start": 0,
+                  "end": 0.26,
+                  "word": " Question,",
+                  "probability": 0.8185125589370728
+                },
+                {
+                  "start": 0.44,
+                  "end": 0.68,
+                  "word": " do",
+                  "probability": 0.8139840364456177
+                },
+                {
+                  "start": 0.68,
+                  "end": 0.82,
+                  "word": " we",
+                  "probability": 0.9948703050613403
+                },
+                {
+                  "start": 0.82,
+                  "end": 0.98,
+                  "word": " think",
+                  "probability": 0.9973378777503967
+                },
+                {
+                  "start": 0.98,
+                  "end": 1.18,
+                  "word": " that",
+                  "probability": 0.8023678064346313
+                },
+                {
+                  "start": 1.18,
+                  "end": 1.5,
+                  "word": " wind",
+                  "probability": 0.9783068895339966
+                },
+                {
+                  "start": 1.5,
+                  "end": 1.88,
+                  "word": " could",
+                  "probability": 0.9925633072853088
+                },
+                {
+                  "start": 1.88,
+                  "end": 2.1,
+                  "word": " be",
+                  "probability": 0.9994924068450928
+                },
+                {
+                  "start": 2.1,
+                  "end": 2.3,
+                  "word": " an",
+                  "probability": 0.9985042810440063
+                },
+                {
+                  "start": 2.3,
+                  "end": 2.56,
+                  "word": " issue?",
+                  "probability": 0.9991025924682617
+                }
+              ]
+            },
+            {
+              "start": 3.12,
+              "end": 3.96,
+              "text": " I don't like it.",
+              "words": [
+                {
+                  "start": 3.12,
+                  "end": 3.52,
+                  "word": " I",
+                  "probability": 0.41719841957092285
+                },
+                {
+                  "start": 3.52,
+                  "end": 3.74,
+                  "word": " don't",
+                  "probability": 0.6377101540565491
+                },
+                {
+                  "start": 3.74,
+                  "end": 3.92,
+                  "word": " like",
+                  "probability": 0.7914667129516602
+                },
+                {
+                  "start": 3.92,
+                  "end": 3.96,
+                  "word": " it.",
+                  "probability": 0.858305811882019
+                }
+              ]
+            },
+            {
+              "start": 4.3,
+              "end": 5.16,
+              "text": " Well, if you're sure.",
+              "words": [
+                {
+                  "start": 4.3,
+                  "end": 4.7,
+                  "word": " Well,",
+                  "probability": 0.9867966175079346
+                },
+                {
+                  "start": 4.76,
+                  "end": 4.86,
+                  "word": " if",
+                  "probability": 0.9982777833938599
+                },
+                {
+                  "start": 4.86,
+                  "end": 5.04,
+                  "word": " you're",
+                  "probability": 0.989221453666687
+                },
+                {
+                  "start": 5.04,
+                  "end": 5.16,
+                  "word": " sure.",
+                  "probability": 0.9994161128997803
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "v2",
+          "language": "en",
+          "language_probability": 0.9975699782371521,
+          "segments": [
+            {
+              "start": 0,
+              "end": 2.7,
+              "text": " Question, do we think that wind could be an issue?",
+              "words": [
+                {
+                  "start": 0,
+                  "end": 0.34,
+                  "word": " Question,",
+                  "probability": 0.6713317632675171
+                },
+                {
+                  "start": 0.66,
+                  "end": 0.76,
+                  "word": " do",
+                  "probability": 0.5288271307945251
+                },
+                {
+                  "start": 0.76,
+                  "end": 0.88,
+                  "word": " we",
+                  "probability": 0.8874494433403015
+                },
+                {
+                  "start": 0.88,
+                  "end": 1.08,
+                  "word": " think",
+                  "probability": 0.8106975555419922
+                },
+                {
+                  "start": 1.08,
+                  "end": 1.28,
+                  "word": " that",
+                  "probability": 0.7970960736274719
+                },
+                {
+                  "start": 1.28,
+                  "end": 1.68,
+                  "word": " wind",
+                  "probability": 0.870737612247467
+                },
+                {
+                  "start": 1.68,
+                  "end": 2,
+                  "word": " could",
+                  "probability": 0.8044165968894958
+                },
+                {
+                  "start": 2,
+                  "end": 2.22,
+                  "word": " be",
+                  "probability": 0.9015606641769409
+                },
+                {
+                  "start": 2.22,
+                  "end": 2.42,
+                  "word": " an",
+                  "probability": 0.9235299229621887
+                },
+                {
+                  "start": 2.42,
+                  "end": 2.7,
+                  "word": " issue?",
+                  "probability": 0.8957555890083313
+                }
+              ]
+            },
+            {
+              "start": 3.5,
+              "end": 4.06,
+              "text": " Highly unlikely.",
+              "words": [
+                {
+                  "start": 3.5,
+                  "end": 3.74,
+                  "word": " Highly",
+                  "probability": 0.7317723333835602
+                },
+                {
+                  "start": 3.74,
+                  "end": 4.06,
+                  "word": " unlikely.",
+                  "probability": 0.7932013273239136
+                }
+              ]
+            },
+            {
+              "start": 4.62,
+              "end": 5.24,
+              "text": " Well, if you're sure.",
+              "words": [
+                {
+                  "start": 4.62,
+                  "end": 4.78,
+                  "word": " Well,",
+                  "probability": 0.7427760362625122
+                },
+                {
+                  "start": 4.86,
+                  "end": 4.96,
+                  "word": " if",
+                  "probability": 0.9099924564361572
+                },
+                {
+                  "start": 4.96,
+                  "end": 5.1,
+                  "word": " you're",
+                  "probability": 0.9154962003231049
+                },
+                {
+                  "start": 5.1,
+                  "end": 5.24,
+                  "word": " sure.",
+                  "probability": 0.8161577582359314
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

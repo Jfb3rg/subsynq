@@ -82,6 +82,26 @@ def choice():
 
 
 class LocalLanguageTests(unittest.TestCase):
+    def test_rereading_a_specialist_language_keeps_its_route_and_other_languages_keep_their_names(self):
+        hints=[]
+        class Whisper:
+            def __init__(self,*a,**kw):pass
+            def transcribe(self,path,language=None,**kw):
+                return iter([SimpleNamespace(text='Confirmed speech.',avg_logprob=-.1)]),SimpleNamespace(language=language or 'en',language_probability=.99)
+        rows=[dict(id=i,start=3.*i,end=3.*i+1.,source='Existing source.') for i in range(4)]
+        def independent(path,language=None):
+            hints.append(language)
+            return {'text':'Confirmed speech.'}
+        with (patch.object(worker,'WhisperModel',Whisper),patch.object(worker.subprocess,'run'),
+              patch.object(worker,'reread_row_language',side_effect=['ta','en','de',None]),
+              patch.object(worker,'check_cancelled'),patch.object(worker,'release_language_model_before_asr'),
+              patch.object(worker,'trim_cpu_allocator'),patch.object(worker,'qwen_health',return_value=True),
+              patch.object(worker,'qwen_identify',side_effect=independent),patch.object(worker,'qwen_unload'),
+              patch.object(worker,'release_cloud_gpu_memory',return_value={})):
+            result=worker.reread_readings({'id':-1},Path('/fake.mp4'),rows,[0,1,2,3])
+        self.assertEqual(hints,['tamil','English','German',None])
+        self.assertTrue(all(any(r['name']=='qwen' for r in result[i]) for i in range(4)))
+
     def test_confident_unhinted_code_switch_is_not_voted_away(self):
         class Whisper:
             def __init__(self,*a,**kw):pass

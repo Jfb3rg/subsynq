@@ -40,6 +40,9 @@ class TargetPhraseChoiceTests(unittest.TestCase):
 
     def test_response_schema_and_prompt_exclude_english_edit_anchors(self):
         def model(request):
+            rows_schema = request['format']['properties']['rows']
+            self.assertEqual((rows_schema['minItems'], rows_schema['maxItems']), (2, 2))
+            self.assertEqual(rows_schema['items']['properties']['id']['enum'], [8, 9])
             allowed = request['format']['properties']['rows']['items']['properties']['edits']['items']['properties']['before']['enum']
             self.assertNotIn('Stay tuned.', allowed)
             self.assertIn('Stanna kvar.', allowed)
@@ -65,3 +68,12 @@ class TargetPhraseChoiceTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 worker.repair_translation_spans({'id': -1}, self.rows, self.flags)
         self.assertEqual(model.call_count, 2)
+
+    def test_missing_duplicate_or_foreign_ids_are_rejected_when_model_ignores_schema(self):
+        for ids in ([8], [8, 8], [8, 99]):
+            answer = {'rows': [{'id': i, 'intended_meaning': 'unchanged', 'edits': []} for i in ids]}
+            with self.subTest(ids=ids), patch.object(worker, 'check_cancelled'), patch.object(
+                    worker, 'call_ollama', return_value={'response': json.dumps(answer)}) as model:
+                with self.assertRaises(RuntimeError):
+                    worker.repair_translation_spans({'id': -1}, self.rows, self.flags)
+                self.assertEqual(model.call_count, 2)

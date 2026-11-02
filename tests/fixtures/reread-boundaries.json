@@ -1,0 +1,1125 @@
+{
+  "german": {
+    "provenance": [
+      "dev-7TGiwh",
+      "dev-zXFUoT"
+    ],
+    "job": {
+      "language_policy": {
+        "filename_hint": "de",
+        "effective_language": "de",
+        "status": "confirmed",
+        "readings": [
+          {
+            "start": 10.47,
+            "end": 25.47,
+            "speech_seconds": 13.72,
+            "whisper_language": "de",
+            "whisper_text": "Guten Morgen, Rosi. Und alles im grünen Bereich? Rutscher. Alles wie immer. Bert ist wieder da. Dein Bert? Bis dann kannst du streichen.",
+            "qwen_language": "German",
+            "qwen_text": "Morgen, Rosie. Und alles im Grünenbereich, Muscha. Alles wie immer. Bert ist wieder da. Dein Bert ist dein Kanzlerstreichen."
+          },
+          {
+            "start": 47.115,
+            "end": 62.115,
+            "speech_seconds": 14.936,
+            "whisper_language": "de",
+            "whisper_text": "Ich will auch in den Film. Film? Das ist eine fette Serie. Was ist denn mit dir passiert? Hollywood ist passiert. Das ist aber nicht Hollywood. Dieser Dreh ist ein Game Changer. Für alle. Was ist denn mit diesem Kaffee?",
+            "qwen_language": "German",
+            "qwen_text": "Ich wollte auch in den Film. Film? Die fette Serie. Was mit dir passiert? Hollywood, es passiert. Das ist aber nicht Hollywood. Dieser Dreh ist ein Game Changer für alle. Was bist du etwa? Diesem Kaffee?"
+          },
+          {
+            "start": 83.759,
+            "end": 98.759,
+            "speech_seconds": 14.936,
+            "whisper_language": "de",
+            "whisper_text": "Du glaubst doch nicht, dass der Panzer hier verschwinden könnte. Du hast geschlafen. Hab ich nicht. Wir suchen noch Leute für den Volkssturm. Nichts, haben wir für dich nichts zu tun, aber... War doch ein Klacks.",
+            "qwen_language": "German",
+            "qwen_text": "Glaubst doch nicht, dass der Panzer hier verschwinden könnte. Du hast geschlafen. Hab ich nicht. Wir suchen noch Leute für den Volkssturm. Nichts, damit wirklich nichts zu tun haben. War doch ein Klacks."
+          }
+        ]
+      }
+    },
+    "rows": [
+      {
+        "id": 10,
+        "start": 36.44,
+        "end": 39.72,
+        "source": "Johnson dreht gerade in Wiesenwalde."
+      },
+      {
+        "id": 11,
+        "start": 40.328,
+        "end": 43.94,
+        "source": "Some people call me a living cardboard figure, but my job",
+        "source_unclear": true
+      },
+      {
+        "id": 12,
+        "start": 43.94,
+        "end": 45.54,
+        "source": "is a lot more complex than that.",
+        "source_unclear": true,
+        "reading_time_source_end": 45.1
+      },
+      {
+        "id": 13,
+        "start": 46.9,
+        "end": 48.06,
+        "source": "Ich will auch in den Film.",
+        "reading_time_source_end": 47.9
+      }
+    ],
+    "readings": [
+      {
+        "name": "precision",
+        "text": "Well, some people call me a living cardboard figure, but my job's a lot more complex than that.",
+        "language": "en",
+        "language_probability": 0.9690395593643188,
+        "confidence": 0.8172584971714539,
+        "words": [
+          {
+            "start": 40.028,
+            "end": 40.467999999999996,
+            "word": " Well,",
+            "probability": 0.6807150840759277
+          },
+          {
+            "start": 40.507999999999996,
+            "end": 40.647999999999996,
+            "word": " some",
+            "probability": 0.9614272117614746
+          },
+          {
+            "start": 40.647999999999996,
+            "end": 40.868,
+            "word": " people",
+            "probability": 0.9992652535438538
+          },
+          {
+            "start": 40.868,
+            "end": 41.068,
+            "word": " call",
+            "probability": 0.9952895641326904
+          },
+          {
+            "start": 41.068,
+            "end": 41.248,
+            "word": " me",
+            "probability": 0.9992870688438416
+          },
+          {
+            "start": 41.248,
+            "end": 41.348,
+            "word": " a",
+            "probability": 0.974917471408844
+          },
+          {
+            "start": 41.348,
+            "end": 41.488,
+            "word": " living",
+            "probability": 0.9856099486351013
+          },
+          {
+            "start": 41.488,
+            "end": 41.827999999999996,
+            "word": " cardboard",
+            "probability": 0.9927210211753845
+          },
+          {
+            "start": 41.827999999999996,
+            "end": 42.168,
+            "word": " figure,",
+            "probability": 0.9943801760673523
+          },
+          {
+            "start": 42.308,
+            "end": 42.507999999999996,
+            "word": " but",
+            "probability": 0.997330904006958
+          },
+          {
+            "start": 42.507999999999996,
+            "end": 43.007999999999996,
+            "word": " my",
+            "probability": 0.6240330338478088
+          },
+          {
+            "start": 43.007999999999996,
+            "end": 44.088,
+            "word": " job's",
+            "probability": 0.7992611229419708
+          },
+          {
+            "start": 44.088,
+            "end": 44.108,
+            "word": " a",
+            "probability": 0.9965027570724487
+          },
+          {
+            "start": 44.108,
+            "end": 44.228,
+            "word": " lot",
+            "probability": 0.9996542930603027
+          },
+          {
+            "start": 44.228,
+            "end": 44.348,
+            "word": " more",
+            "probability": 0.9994805455207825
+          },
+          {
+            "start": 44.348,
+            "end": 44.668,
+            "word": " complex",
+            "probability": 0.9988582134246826
+          },
+          {
+            "start": 44.668,
+            "end": 44.848,
+            "word": " than",
+            "probability": 0.9507942795753479
+          },
+          {
+            "start": 44.848,
+            "end": 44.988,
+            "word": " that.",
+            "probability": 0.9992523789405823
+          }
+        ],
+        "window": 0
+      },
+      {
+        "name": "v2",
+        "text": "Well, some people call me a living cardboard figure, but my job's a lot more complex than that.",
+        "language": "en",
+        "language_probability": 0.9675107002258301,
+        "confidence": 0.7187514922692784,
+        "words": [
+          {
+            "start": 40.028,
+            "end": 40.528,
+            "word": " Well,",
+            "probability": 0.5083454251289368
+          },
+          {
+            "start": 40.608,
+            "end": 40.768,
+            "word": " some",
+            "probability": 0.8029127717018127
+          },
+          {
+            "start": 40.768,
+            "end": 40.967999999999996,
+            "word": " people",
+            "probability": 0.9313777089118958
+          },
+          {
+            "start": 40.967999999999996,
+            "end": 41.187999999999995,
+            "word": " call",
+            "probability": 0.8055750131607056
+          },
+          {
+            "start": 41.187999999999995,
+            "end": 41.327999999999996,
+            "word": " me",
+            "probability": 0.9083585143089294
+          },
+          {
+            "start": 41.327999999999996,
+            "end": 41.428,
+            "word": " a",
+            "probability": 0.9545443058013916
+          },
+          {
+            "start": 41.428,
+            "end": 41.568,
+            "word": " living",
+            "probability": 0.7606102824211121
+          },
+          {
+            "start": 41.568,
+            "end": 42.007999999999996,
+            "word": " cardboard",
+            "probability": 0.740918755531311
+          },
+          {
+            "start": 42.007999999999996,
+            "end": 42.348,
+            "word": " figure,",
+            "probability": 0.9165005683898926
+          },
+          {
+            "start": 42.548,
+            "end": 42.647999999999996,
+            "word": " but",
+            "probability": 0.8939191699028015
+          },
+          {
+            "start": 42.647999999999996,
+            "end": 43.808,
+            "word": " my",
+            "probability": 0.5969327688217163
+          },
+          {
+            "start": 43.808,
+            "end": 44.128,
+            "word": " job's",
+            "probability": 0.7351208329200745
+          },
+          {
+            "start": 44.128,
+            "end": 44.188,
+            "word": " a",
+            "probability": 0.9940244555473328
+          },
+          {
+            "start": 44.188,
+            "end": 44.288,
+            "word": " lot",
+            "probability": 0.9032207131385803
+          },
+          {
+            "start": 44.288,
+            "end": 44.428,
+            "word": " more",
+            "probability": 0.878934383392334
+          },
+          {
+            "start": 44.428,
+            "end": 44.808,
+            "word": " complex",
+            "probability": 0.7344452142715454
+          },
+          {
+            "start": 44.808,
+            "end": 44.948,
+            "word": " than",
+            "probability": 0.8747628331184387
+          },
+          {
+            "start": 44.948,
+            "end": 45.108,
+            "word": " that.",
+            "probability": 0.8835135698318481
+          }
+        ],
+        "window": 0
+      },
+      {
+        "name": "qwen",
+        "text": "Well, some people call me a living cardboard figure, but my job's a lot more complex than that.",
+        "language": "English",
+        "confidence": 0.5,
+        "window": 0
+      },
+      {
+        "name": "precision",
+        "text": "Well, some people call me a living cardboard figure, but my job's a lot more complex than that.",
+        "language": "en",
+        "language_probability": 0.9756758213043213,
+        "confidence": 0.8277775734542576,
+        "words": [
+          {
+            "start": 40.12,
+            "end": 40.46,
+            "word": " Well,",
+            "probability": 0.6425690650939941
+          },
+          {
+            "start": 40.5,
+            "end": 40.64,
+            "word": " some",
+            "probability": 0.9838003516197205
+          },
+          {
+            "start": 40.64,
+            "end": 40.86,
+            "word": " people",
+            "probability": 0.9982012510299683
+          },
+          {
+            "start": 40.86,
+            "end": 41.1,
+            "word": " call",
+            "probability": 0.9914587736129761
+          },
+          {
+            "start": 41.1,
+            "end": 41.26,
+            "word": " me",
+            "probability": 0.9979817867279053
+          },
+          {
+            "start": 41.26,
+            "end": 41.339999999999996,
+            "word": " a",
+            "probability": 0.9811514019966125
+          },
+          {
+            "start": 41.339999999999996,
+            "end": 41.48,
+            "word": " living",
+            "probability": 0.9873054027557373
+          },
+          {
+            "start": 41.48,
+            "end": 41.82,
+            "word": " cardboard",
+            "probability": 0.9884806871414185
+          },
+          {
+            "start": 41.82,
+            "end": 42.199999999999996,
+            "word": " figure,",
+            "probability": 0.9952327609062195
+          },
+          {
+            "start": 42.339999999999996,
+            "end": 42.519999999999996,
+            "word": " but",
+            "probability": 0.9966758489608765
+          },
+          {
+            "start": 42.519999999999996,
+            "end": 42.98,
+            "word": " my",
+            "probability": 0.7388047575950623
+          },
+          {
+            "start": 42.98,
+            "end": 44.099999999999994,
+            "word": " job's",
+            "probability": 0.8934327661991119
+          },
+          {
+            "start": 44.099999999999994,
+            "end": 44.099999999999994,
+            "word": " a",
+            "probability": 0.9978210926055908
+          },
+          {
+            "start": 44.099999999999994,
+            "end": 44.22,
+            "word": " lot",
+            "probability": 0.999548614025116
+          },
+          {
+            "start": 44.22,
+            "end": 44.339999999999996,
+            "word": " more",
+            "probability": 0.9995738863945007
+          },
+          {
+            "start": 44.339999999999996,
+            "end": 44.699999999999996,
+            "word": " complex",
+            "probability": 0.9995473027229309
+          },
+          {
+            "start": 44.699999999999996,
+            "end": 44.839999999999996,
+            "word": " than",
+            "probability": 0.9963638186454773
+          },
+          {
+            "start": 44.839999999999996,
+            "end": 45.019999999999996,
+            "word": " that.",
+            "probability": 0.9994413256645203
+          }
+        ],
+        "window": 1
+      },
+      {
+        "name": "v2",
+        "text": "Well, some people call me a living cardboard figure, but my job's a lot more complex than that.",
+        "language": "en",
+        "language_probability": 0.9646706581115723,
+        "confidence": 0.6960070584173366,
+        "words": [
+          {
+            "start": 40.199999999999996,
+            "end": 40.519999999999996,
+            "word": " Well,",
+            "probability": 0.4594159424304962
+          },
+          {
+            "start": 40.62,
+            "end": 40.76,
+            "word": " some",
+            "probability": 0.8034983277320862
+          },
+          {
+            "start": 40.76,
+            "end": 40.96,
+            "word": " people",
+            "probability": 0.9292358756065369
+          },
+          {
+            "start": 40.96,
+            "end": 41.199999999999996,
+            "word": " call",
+            "probability": 0.7985730171203613
+          },
+          {
+            "start": 41.199999999999996,
+            "end": 41.32,
+            "word": " me",
+            "probability": 0.8983551859855652
+          },
+          {
+            "start": 41.32,
+            "end": 41.419999999999995,
+            "word": " a",
+            "probability": 0.9680371284484863
+          },
+          {
+            "start": 41.419999999999995,
+            "end": 41.58,
+            "word": " living",
+            "probability": 0.7549285888671875
+          },
+          {
+            "start": 41.58,
+            "end": 42,
+            "word": " cardboard",
+            "probability": 0.6992101669311523
+          },
+          {
+            "start": 42,
+            "end": 42.36,
+            "word": " figure,",
+            "probability": 0.9130262732505798
+          },
+          {
+            "start": 42.559999999999995,
+            "end": 42.64,
+            "word": " but",
+            "probability": 0.893250584602356
+          },
+          {
+            "start": 42.64,
+            "end": 43.82,
+            "word": " my",
+            "probability": 0.5925461649894714
+          },
+          {
+            "start": 43.82,
+            "end": 44.12,
+            "word": " job's",
+            "probability": 0.793834924697876
+          },
+          {
+            "start": 44.12,
+            "end": 44.199999999999996,
+            "word": " a",
+            "probability": 0.9913787841796875
+          },
+          {
+            "start": 44.199999999999996,
+            "end": 44.28,
+            "word": " lot",
+            "probability": 0.9078376889228821
+          },
+          {
+            "start": 44.28,
+            "end": 44.44,
+            "word": " more",
+            "probability": 0.8848280310630798
+          },
+          {
+            "start": 44.44,
+            "end": 44.8,
+            "word": " complex",
+            "probability": 0.7299045324325562
+          },
+          {
+            "start": 44.8,
+            "end": 44.94,
+            "word": " than",
+            "probability": 0.8853442072868347
+          },
+          {
+            "start": 44.94,
+            "end": 45.099999999999994,
+            "word": " that.",
+            "probability": 0.8856558203697205
+          }
+        ],
+        "window": 1
+      },
+      {
+        "name": "qwen",
+        "text": "Well, some people call me a living cardboard figure, but my job's a lot more complex than that.",
+        "language": "English",
+        "confidence": 0.5,
+        "window": 1
+      }
+    ],
+    "tight_provenance": "dev-OdRJR2: verified local English but tight row12 repeated neighbouring My job; this replacement must be refused",
+    "tight_readings": {
+      "11": [
+        {
+          "name": "precision",
+          "text": "Well some people call me a living cardboard figure, but my job's a lot",
+          "confidence": 0.7523032297372075,
+          "words": [
+            {
+              "word": " Well",
+              "start": 40.028000000000006,
+              "end": 40.468,
+              "probability": 0.7325847148895264
+            },
+            {
+              "word": " some",
+              "start": 40.468,
+              "end": 40.668000000000006,
+              "probability": 0.4240950345993042
+            },
+            {
+              "word": " people",
+              "start": 40.668000000000006,
+              "end": 40.86800000000001,
+              "probability": 0.9975515007972717
+            },
+            {
+              "word": " call",
+              "start": 40.86800000000001,
+              "end": 41.068000000000005,
+              "probability": 0.9935346841812134
+            },
+            {
+              "word": " me",
+              "start": 41.068000000000005,
+              "end": 41.248000000000005,
+              "probability": 0.99817955493927
+            },
+            {
+              "word": " a",
+              "start": 41.248000000000005,
+              "end": 41.348000000000006,
+              "probability": 0.9790217876434326
+            },
+            {
+              "word": " living",
+              "start": 41.348000000000006,
+              "end": 41.48800000000001,
+              "probability": 0.9826359748840332
+            },
+            {
+              "word": " cardboard",
+              "start": 41.48800000000001,
+              "end": 41.828,
+              "probability": 0.9878261685371399
+            },
+            {
+              "word": " figure,",
+              "start": 41.828,
+              "end": 42.168000000000006,
+              "probability": 0.9928410053253174
+            },
+            {
+              "word": " but",
+              "start": 42.348000000000006,
+              "end": 42.54800000000001,
+              "probability": 0.9968867897987366
+            },
+            {
+              "word": " my",
+              "start": 42.54800000000001,
+              "end": 43.028000000000006,
+              "probability": 0.7642088532447815
+            },
+            {
+              "word": " job's",
+              "start": 43.028000000000006,
+              "end": 44.048,
+              "probability": 0.704256147146225
+            },
+            {
+              "word": " a",
+              "start": 44.048,
+              "end": 44.108000000000004,
+              "probability": 0.6947906613349915
+            },
+            {
+              "word": " lot",
+              "start": 44.108000000000004,
+              "end": 44.168000000000006,
+              "probability": 0.8557882905006409
+            }
+          ],
+          "language": "en",
+          "language_probability": 1
+        },
+        {
+          "name": "v2",
+          "text": "Well, some people call me a living cardboard figure, but, uh, my job's a lot more fun.",
+          "confidence": 0.6193275119739307,
+          "words": [
+            {
+              "word": " Well,",
+              "start": 40.028000000000006,
+              "end": 40.54800000000001,
+              "probability": 0.44154906272888184
+            },
+            {
+              "word": " some",
+              "start": 40.608000000000004,
+              "end": 40.76800000000001,
+              "probability": 0.7925742268562317
+            },
+            {
+              "word": " people",
+              "start": 40.76800000000001,
+              "end": 40.94800000000001,
+              "probability": 0.9311012029647827
+            },
+            {
+              "word": " call",
+              "start": 40.94800000000001,
+              "end": 41.188,
+              "probability": 0.8182482123374939
+            },
+            {
+              "word": " me",
+              "start": 41.188,
+              "end": 41.328,
+              "probability": 0.8886227607727051
+            },
+            {
+              "word": " a",
+              "start": 41.328,
+              "end": 41.428000000000004,
+              "probability": 0.946499228477478
+            },
+            {
+              "word": " living",
+              "start": 41.428000000000004,
+              "end": 41.568000000000005,
+              "probability": 0.7629340887069702
+            },
+            {
+              "word": " cardboard",
+              "start": 41.568000000000005,
+              "end": 42.008,
+              "probability": 0.7647847533226013
+            },
+            {
+              "word": " figure,",
+              "start": 42.008,
+              "end": 42.348000000000006,
+              "probability": 0.9022645354270935
+            },
+            {
+              "word": " but,",
+              "start": 42.54800000000001,
+              "end": 42.648,
+              "probability": 0.8888566493988037
+            },
+            {
+              "word": " uh,",
+              "start": 42.708000000000006,
+              "end": 42.98800000000001,
+              "probability": 0.8563510775566101
+            },
+            {
+              "word": " my",
+              "start": 43.62800000000001,
+              "end": 43.828,
+              "probability": 0.9056432843208313
+            },
+            {
+              "word": " job's",
+              "start": 43.828,
+              "end": 44.12800000000001,
+              "probability": 0.9015199840068817
+            },
+            {
+              "word": " a",
+              "start": 44.12800000000001,
+              "end": 44.208000000000006,
+              "probability": 0.9880849719047546
+            },
+            {
+              "word": " lot",
+              "start": 44.208000000000006,
+              "end": 44.208000000000006,
+              "probability": 0.9124940633773804
+            },
+            {
+              "word": " more",
+              "start": 44.208000000000006,
+              "end": 44.208000000000006,
+              "probability": 0.16979126632213593
+            },
+            {
+              "word": " fun.",
+              "start": 44.208000000000006,
+              "end": 44.208000000000006,
+              "probability": 0.3407544493675232
+            }
+          ],
+          "language": "en",
+          "language_probability": 1
+        },
+        {
+          "name": "qwen",
+          "text": "Well, some people call me a living cardboard figure, but my job's a lot.",
+          "confidence": 0.5,
+          "language": "English"
+        }
+      ],
+      "12": [
+        {
+          "name": "precision",
+          "text": "My job's a lot more complex than that.",
+          "confidence": 0.8668153569523362,
+          "words": [
+            {
+              "word": " My",
+              "start": 43.64,
+              "end": 43.8,
+              "probability": 0.8299463391304016
+            },
+            {
+              "word": " job's",
+              "start": 43.8,
+              "end": 44.1,
+              "probability": 0.866185188293457
+            },
+            {
+              "word": " a",
+              "start": 44.1,
+              "end": 44.1,
+              "probability": 0.9956231713294983
+            },
+            {
+              "word": " lot",
+              "start": 44.1,
+              "end": 44.22,
+              "probability": 0.9991958737373352
+            },
+            {
+              "word": " more",
+              "start": 44.22,
+              "end": 44.34,
+              "probability": 0.9994696974754333
+            },
+            {
+              "word": " complex",
+              "start": 44.34,
+              "end": 44.62,
+              "probability": 0.9986314177513123
+            },
+            {
+              "word": " than",
+              "start": 44.62,
+              "end": 44.84,
+              "probability": 0.9956616759300232
+            },
+            {
+              "word": " that.",
+              "start": 44.84,
+              "end": 45.02,
+              "probability": 0.9993298053741455
+            }
+          ],
+          "language": "en",
+          "language_probability": 1
+        },
+        {
+          "name": "v2",
+          "text": "My job's a lot more complex than that.",
+          "confidence": 0.705442042870848,
+          "words": [
+            {
+              "word": " My",
+              "start": 43.64,
+              "end": 43.84,
+              "probability": 0.785841703414917
+            },
+            {
+              "word": " job's",
+              "start": 43.84,
+              "end": 44.12,
+              "probability": 0.8131736218929291
+            },
+            {
+              "word": " a",
+              "start": 44.12,
+              "end": 44.2,
+              "probability": 0.9919226169586182
+            },
+            {
+              "word": " lot",
+              "start": 44.2,
+              "end": 44.28,
+              "probability": 0.907782256603241
+            },
+            {
+              "word": " more",
+              "start": 44.28,
+              "end": 44.44,
+              "probability": 0.8771360516548157
+            },
+            {
+              "word": " complex",
+              "start": 44.44,
+              "end": 44.8,
+              "probability": 0.7189000248908997
+            },
+            {
+              "word": " than",
+              "start": 44.8,
+              "end": 44.94,
+              "probability": 0.8858808875083923
+            },
+            {
+              "word": " that.",
+              "start": 44.94,
+              "end": 45.1,
+              "probability": 0.8872809410095215
+            }
+          ],
+          "language": "en",
+          "language_probability": 1
+        },
+        {
+          "name": "qwen",
+          "text": "My job's a lot more complex than that.",
+          "confidence": 0.5,
+          "language": "English"
+        }
+      ]
+    }
+  },
+  "japanese": {
+    "provenance": [
+      "dev-eOiyAy",
+      "dev-WCUmoT"
+    ],
+    "row": {
+      "id": 5,
+      "start": 31.07,
+      "end": 32.22,
+      "source": "振切れません",
+      "source_unclear": true,
+      "reading_time_source_end": 32.07
+    },
+    "readings": [
+      {
+        "name": "precision",
+        "text": "- すごい!- 振り切れません!",
+        "language": "ja",
+        "language_probability": 1,
+        "confidence": 0.5426956792237079,
+        "words": [
+          {
+            "start": 30.77,
+            "end": 30.77,
+            "word": "-",
+            "probability": 0.08647574484348297
+          },
+          {
+            "start": 30.77,
+            "end": 30.77,
+            "word": " す",
+            "probability": 0.19189439713954926
+          },
+          {
+            "start": 30.77,
+            "end": 30.87,
+            "word": "ご",
+            "probability": 0.9879412055015564
+          },
+          {
+            "start": 30.87,
+            "end": 31.009999999999998,
+            "word": "い!",
+            "probability": 0.897803008556366
+          },
+          {
+            "start": 31.009999999999998,
+            "end": 31.11,
+            "word": "-",
+            "probability": 0.11305003613233566
+          },
+          {
+            "start": 31.31,
+            "end": 31.53,
+            "word": " 振",
+            "probability": 0.7990279495716095
+          },
+          {
+            "start": 31.53,
+            "end": 31.61,
+            "word": "り",
+            "probability": 0.9973657727241516
+          },
+          {
+            "start": 31.61,
+            "end": 31.69,
+            "word": "切",
+            "probability": 0.9889089465141296
+          },
+          {
+            "start": 31.69,
+            "end": 31.81,
+            "word": "れ",
+            "probability": 0.9918726086616516
+          },
+          {
+            "start": 31.81,
+            "end": 32.03,
+            "word": "ません!",
+            "probability": 0.9621269702911377
+          }
+        ],
+        "window": 0
+      },
+      {
+        "name": "v2",
+        "text": "振り切れません!!",
+        "language": "ja",
+        "language_probability": 1,
+        "confidence": 0.5114527029462553,
+        "words": [
+          {
+            "start": 31.27,
+            "end": 31.59,
+            "word": "振",
+            "probability": 0.5427420698106289
+          },
+          {
+            "start": 31.59,
+            "end": 31.69,
+            "word": "り",
+            "probability": 0.9927817583084106
+          },
+          {
+            "start": 31.69,
+            "end": 31.81,
+            "word": "切",
+            "probability": 0.9698902368545532
+          },
+          {
+            "start": 31.81,
+            "end": 31.91,
+            "word": "れ",
+            "probability": 0.9968225955963135
+          },
+          {
+            "start": 31.91,
+            "end": 32.11,
+            "word": "ません",
+            "probability": 0.8684456944465637
+          },
+          {
+            "start": 32.11,
+            "end": 32.35,
+            "word": "!!",
+            "probability": 0.2806456387042999
+          }
+        ],
+        "window": 0
+      },
+      {
+        "name": "qwen",
+        "text": "振り切れません。",
+        "language": "Japanese",
+        "confidence": 0.5,
+        "window": 0
+      },
+      {
+        "name": "precision",
+        "text": "振り切れません!",
+        "language": "ja",
+        "language_probability": 1,
+        "confidence": 0.5346599124804896,
+        "words": [
+          {
+            "start": 31.07,
+            "end": 31.53,
+            "word": "振",
+            "probability": 0.5672238245606422
+          },
+          {
+            "start": 31.53,
+            "end": 31.59,
+            "word": "り",
+            "probability": 0.9960331320762634
+          },
+          {
+            "start": 31.59,
+            "end": 31.67,
+            "word": "切",
+            "probability": 0.9878639578819275
+          },
+          {
+            "start": 31.67,
+            "end": 31.79,
+            "word": "れ",
+            "probability": 0.9950394034385681
+          },
+          {
+            "start": 31.79,
+            "end": 32.03,
+            "word": "ません!",
+            "probability": 0.9562363028526306
+          }
+        ],
+        "window": 1
+      },
+      {
+        "name": "v2",
+        "text": "振り切れません!",
+        "language": "ja",
+        "language_probability": 1,
+        "confidence": 0.5951729676559272,
+        "words": [
+          {
+            "start": 31.07,
+            "end": 31.59,
+            "word": "振",
+            "probability": 0.7058325111865997
+          },
+          {
+            "start": 31.59,
+            "end": 31.69,
+            "word": "り",
+            "probability": 0.9951609969139099
+          },
+          {
+            "start": 31.69,
+            "end": 31.81,
+            "word": "切",
+            "probability": 0.9786707758903503
+          },
+          {
+            "start": 31.81,
+            "end": 31.91,
+            "word": "れ",
+            "probability": 0.9972022771835327
+          },
+          {
+            "start": 31.91,
+            "end": 32.11,
+            "word": "ません!",
+            "probability": 0.8946534395217896
+          }
+        ],
+        "window": 1
+      },
+      {
+        "name": "qwen",
+        "text": "振り切れません。",
+        "language": "Japanese",
+        "confidence": 0.5,
+        "window": 1
+      }
+    ]
+  }
+}

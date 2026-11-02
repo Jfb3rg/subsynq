@@ -18,6 +18,75 @@ def row(source, target, identity=1):
 
 
 class SwedishWordSenseTests(unittest.TestCase):
+    def test_explicit_wow_does_not_become_a_second_come(self):
+        for source in ('வாடா வாவ்', 'Come, wow!', 'Wow!'):
+            flags = swedish_context_flags([row(source, 'Kom, kom.')])
+            self.assertEqual(len(flags), 1)
+            self.assertIn(flags[0]['source_quote'], source)
+            self.assertEqual(flags[0]['target_quote'], 'Kom, kom.')
+            for target in ('Kom, wow!', 'Oj, kom!', 'Kom, fantastiskt!'):
+                self.assertEqual(swedish_context_flags([row(source, target)]), [])
+        for source in ('வாடா வா', 'வா வா', 'வாவா', 'Come, come!', 'Wowser, come here.'):
+            self.assertEqual(swedish_context_flags([row(source, 'Kom, kom.')]), [])
+        self.assertEqual(len(swedish_context_flags([row('வாடா வாவ்', 'Wow, kom, kom.')])), 1)
+        self.assertEqual(len(swedish_context_flags([row('வாடா வாவ்', 'Kom,kom.')])), 1)
+        self.assertEqual(len(swedish_context_flags([row('வாடா வாவ்', 'Wow!')])), 1)
+        self.assertEqual(swedish_context_flags([row('வாடா வாவ்', 'Wow!')])[0]['source_quote'], 'வாடா வாவ்')
+        self.assertEqual(swedish_context_flags([row('Wow!', 'Wow!')]), [])
+        self.assertEqual(swedish_context_flags([row('Come, come, wow!', 'Kom, kom, wow!')]), [])
+        self.assertEqual(swedish_context_flags([row('வாடா வாடா வாவ்', 'Wow, kom, kom.')]), [])
+
+    def test_tamil_gambling_is_not_heat_and_different_source_words_are_respected(self):
+        source = 'இந்த சூதும் போதையும் ஒரு காயனுடைய இரண்டு பக்கம் மாதிரி.'
+        sample = row(source, 'Den här värmen och berusningen är som två sidor av samma sak.')
+        flags = swedish_context_flags([sample])
+        self.assertEqual(len(flags), 1)
+        self.assertEqual(flags[0]['source_quote'], 'சூதும்')
+        self.assertEqual(flags[0]['target_quote'], sample['sv'])
+        self.assertEqual(swedish_context_flags([row(source, 'Spelet och berusningen är som två sidor av ett mynt.')]), [])
+        for other in ('சூடு.', 'இந்த சூடும் போதையும்.', 'சூதும் சூடும்.', 'சூதாட்டம்.', 'சூது.', 'சூதும் போதையும் வெப்பம் தரும்.'):
+            self.assertEqual(swedish_context_flags([row(other, 'Värmen.')]), [])
+
+    def test_wearing_action_is_not_itself_a_garment(self):
+        source = "Wearing a woman's skirt technically it's a dress."
+        sample = row(source, 'Att bära en kvinnas kjol är tekniskt sett en klänning.')
+        flags = swedish_context_flags([sample])
+        self.assertEqual(len(flags), 1)
+        self.assertEqual(flags[0]['category'], 'meaning')
+        self.assertIn(flags[0]['source_quote'], source)
+        self.assertIn(flags[0]['target_quote'], sample['sv'])
+        for target in ('Du bar en kvinnokjol. Det är tekniskt sett en klänning.',
+                       'Att bära en kjol är skönt.', 'Att bära en kjol är en frihet.',
+                       'Att bära en kjol är att bära en klänning.'):
+            self.assertEqual(swedish_context_flags([row(source, target)]), [])
+        self.assertEqual(swedish_context_flags([row('Wearing a skirt is a political statement.',
+            'Att bära en kjol är ett politiskt ställningstagande.')]), [])
+        previous = row('you were arrested', 'Du blev arresterad.', identity=0)
+        previous.update(start=10.52, end=12.18)
+        candidate = row(source, 'Att bära en kvinnas kjol, tekniskt sett är det en klänning.')
+        candidate.update(start=13.16, end=15.8)
+        self.assertEqual(len(swedish_context_flags([previous, candidate])), 1)
+        candidate['sv'] = 'Iklädd en kvinnas kjol, är det tekniskt sett en klänning.'
+        self.assertEqual(len(swedish_context_flags([previous, candidate])), 1)
+        candidate['sv'] = 'Iklädd en kvinnas kjol. Tekniskt sett är det en klänning.'
+        self.assertEqual(swedish_context_flags([previous, candidate]), [])
+
+    def test_present_wish_does_not_become_past_missed_opportunity(self):
+        item = row('I wish we had time to build more.', 'Jag önskar att vi hade haft tid att bygga mer.')
+        flags = swedish_context_flags([item])
+        self.assertEqual(len(flags), 1)
+        self.assertEqual(flags[0]['category'], 'meaning')
+        self.assertIn(flags[0]['source_quote'], item['source'])
+        self.assertIn(flags[0]['target_quote'], item['sv'])
+        for source, target in [
+            ('I wish we had time to build more.', 'Jag önskar att vi hade tid att bygga mer.'),
+            ('I wish we had had time to build more.', 'Jag önskar att vi hade haft tid att bygga mer.'),
+            ('I wished we had time.', 'Jag önskade att vi hade haft tid.'),
+            ('I wish we had time yesterday.', 'Jag önskar att vi hade haft tid igår.'),
+            ('I wish we had time. She wishes we had had time.', 'Jag önskar att vi hade tid. Hon önskar att vi hade haft tid.'),
+            ('We had time to build more.', 'Vi hade haft tid att bygga mer.')]:
+            self.assertEqual(swedish_context_flags([row(source, target)]), [])
+
     def test_wrong_neuter_agreement_is_not_a_meaning_guess(self):
         for target in ('Det är en vapen som skapades enbart för att dö.', 'Min barn är här.',
                        'Vi såg en hus.', 'Det är din arbete.'):

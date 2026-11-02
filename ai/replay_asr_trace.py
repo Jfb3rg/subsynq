@@ -7,6 +7,63 @@ from pathlib import Path
 sys.path.insert(0, '/app')
 
 
+def tail_stages(path):
+    """Model-free replay of the actual pre-tail selection, preserving every stage."""
+    import copy
+    import hashlib
+    import asr_windows as a
+    trace = json.loads(Path(path).read_text())
+    merged = copy.deepcopy(trace['before_rescue'])
+    context, precision, v2 = (trace.get(k) or [] for k in ('context', 'precision', 'v2'))
+    speech = trace.get('strict_speech') or []
+    duration = max(w.get('end', 0) for windows in trace['used_windows'].values() for w in windows)
+    _, rescue = a.filter_unsupported_hallucinations(merged, trace['rescue'])
+    whispered = a.filter_unconfirmed_stretched_words(trace['whispered_gap'], context+precision+rescue+v2)
+    combined = rescue+whispered
+    stages = []
+    def step(name, function, *args, **kwargs):
+        nonlocal merged
+        merged = function(merged, *args, **kwargs)
+        stages.append({'stage': name, 'rows': copy.deepcopy(merged)})
+    step('fill', a.fill_bounded_rescue_gaps, combined, duration=duration)
+    step('extend', a.extend_rescue_prefix, combined)
+    step('drift', a.correct_rescue_onset_drift, combined)
+    step('onsets', a.correct_rescue_word_onsets, combined)
+    step('sentences', a.restore_precision_sentence_split, precision)
+    step('resegment', a.reconcile_rescue_resegmentation, combined)
+    step('whispered', a.insert_confident_whispered_speech, whispered, duration)
+    step('rephrasing', a.reconcile_corroborated_rephrasings, precision, rescue, speech)
+    step('leads', a.reattach_dangling_leads, minimum_gap=.6, subjects_before_lowercase_only=True)
+    step('short_leads', a.filter_unconfirmed_short_leads, [context, precision, rescue], speech)
+    step('isolated_short', a.filter_isolated_short_hallucinations, corroborating_segments=precision)
+    step('isolated_silent', a.filter_isolated_without_speech, speech)
+    step('leads2', a.reattach_dangling_leads, minimum_gap=.6)
+    if v2:
+        step('v2_fragments', a.reconcile_v2_fragments, precision, v2)
+        step('v2_shift', a.reconcile_v2_shifted_words, precision, rescue, v2, speech)
+        step('v2_opinion', a.reconcile_v2_second_opinions, precision, rescue, v2)
+        step('v2_words', a.reconcile_v2_word_substitutions, v2)
+    step('qwen', a.reconcile_qwen_segments, trace.get('qwen_windows') or [], speech)
+    step('switch', a.reconcile_code_switch_readings, trace.get('qwen_windows') or [], v2, speech)
+    from language_gaps import corroborated_gap_cues
+    merged, _ = corroborated_gap_cues(merged, trace.get('language_gap_readings') or [])
+    previous_edge = max((row['end'] for row in merged), default=0.)
+    step('tail', a.restore_confirmed_tail, trace.get('tail_probes') or [])
+    selected = copy.deepcopy(trace['final'])
+    selected, recovered = a.restore_tail_after_anchor_recovery(selected, trace.get('tail_probes') or [], previous_edge)
+    stages.append({'stage': 'selected_anchor_retry', 'rows': selected, 'recovered_anchor': recovered})
+    result = {'stages': stages, 'source_file': a.__file__,
+              'source_sha256': hashlib.sha256(Path(a.__file__).read_bytes()).hexdigest(),
+              'NOT_a_quality_verdict': True}
+    Path('/results/tail-stages.json').write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    print(json.dumps([{'stage': s['stage'], 'last': s['rows'][-2:]} for s in stages], ensure_ascii=False))
+
+
+if '--tail-stages' in sys.argv:
+    tail_stages(sys.argv[sys.argv.index('--tail-stages') + 1])
+    sys.exit(0)
+
+
 def audit_saved_cues():
     """Read-only check of every saved trace; optional real v2 clip evidence."""
     import argparse
@@ -18,6 +75,7 @@ def audit_saved_cues():
     from worker import unresolved_source_choice_ids
     from source_judge import repeats_neighbour, complete_cut_off_rows
     from asr_windows import reading_alternatives
+    from code_switch import plan_checks as plan_code_switch_checks
     parser = argparse.ArgumentParser()
     parser.add_argument('--audit-saved-cues', action='store_true')
     parser.add_argument('--extra-v2-json', default='{}')
@@ -34,6 +92,10 @@ def audit_saved_cues():
         duration = max([row['end'] for row in rows] + [w['window']['end'] for w in profiles if w.get('window')] + [0])
         fixed, changes = restore_collapsed_words(rows, profiles, trace.get('v2') or [])
         record = dict(file=path.name, planned=plan_collapsed_word_checks(profiles, duration, merged=rows), existing_v2_changes=changes)
+        record['code_switch_plans'] = plan_code_switch_checks(
+            {'language_policy': trace.get('language_policy'), 'norwegian_reader': trace.get('norwegian_reader'),
+             'swedish_reader': trace.get('swedish_reader')}, rows, trace.get('consensus_qwen') or [],
+            (trace.get('v2') or []) + (trace.get('nb') or []) + (trace.get('consensus_forced') or []), duration)
         onsets, _ = correct_confirmed_word_onsets(rows, (trace.get('rescue') or []) + (trace.get('whispered_gap') or []),
                                                 trace.get('v2') or [])
         try:
@@ -85,10 +147,16 @@ def audit_saved_cues():
         reports.append(record)
     sense_findings = []
     grammar_findings = []
+    scale_findings = []
+    from numeral_scale import numeral_scale_flags, repair_standalone_scales
     for path in sorted(Path('/config/translation-quality').glob('job-*.json')):
         report = json.loads(path.read_text())
+        scales = numeral_scale_flags(report.get('rows') or [])
+        if scales:
+            _, changes = repair_standalone_scales(report.get('rows') or [], scales)
+            scale_findings.append({'file': path.name, 'flags': scales, 'repairs': changes})
         fresh = [flag for flag in swedish_context_flags(report.get('rows') or [])
-                 if flag['reason'].startswith(('Norskans/danskans', 'Att dö'))]
+                 if flag['reason'].startswith(('Norskans/danskans', 'Att dö', 'En önskan', 'Källans it is a dress', 'Tamilskans சூது', 'Ett uttryckligt wow'))]
         if fresh:
             sense_findings.append({'file': path.name, 'flags': fresh})
         grammar = swedish_grammar_flags(report.get('rows') or [])
@@ -96,6 +164,7 @@ def audit_saved_cues():
             grammar_findings.append({'file': path.name, 'flags': grammar})
     Path('/results/word-sense-audit.json').write_text(json.dumps(sense_findings, ensure_ascii=False, indent=2))
     Path('/results/grammar-audit.json').write_text(json.dumps(grammar_findings, ensure_ascii=False, indent=2))
+    Path('/results/numeral-scale-audit.json').write_text(json.dumps(scale_findings, ensure_ascii=False, indent=2))
     conflict_findings = []
     choice_findings = []
     fragment_changes = []

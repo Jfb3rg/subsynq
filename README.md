@@ -83,6 +83,15 @@ med tre modeller. Det som fortfarande är oklart behålls med den bästa läsnin
 listas som osäkra repliker; hela filen nekas bara om mer än en tredjedel av
 replikerna är oklara.
 
+**Nödlösning med OpenSubtitles (avstängd som standard):** under **Inställningar →
+Allmänt** kan du ange nyckel, användarnamn och lösenord för OpenSubtitles.com. Knappen
+**Hämta från OpenSubtitles** finns då på filens rad i Filmer, Serier och Extra och vid
+underkända körningar i kön; den kan också köras automatiskt när en AI-undertext underkänns.
+En svensk undertext hämtas bara om den hör till exakt den filen: filens kontrollsumma, eller
+hela filnamnet (utgåvenamnet). Titel, säsong eller avsnitt räcker aldrig, och maskin- eller
+AI-översatta undertexter tas inte. Filen sparas som `namn.opensub.sv.srt` och ersätter
+aldrig AI-undertexten. Nedladdningar räknas mot ditt kontos gräns hos OpenSubtitles.
+
 Hör taligenkänningen samma ord fel i fil efter fil kan du lägga en **ordlista** i
 `/config/glossary.json` (i `data/config/`), till exempel
 `[{"heard": "snow goat", "write": "snowgo"}]`. Hela ord byts innan något översätts.

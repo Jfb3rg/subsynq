@@ -62,6 +62,30 @@ class JudgeItemsTests(unittest.TestCase):
 
 
 class ChooseReadingsTests(unittest.TestCase):
+    def test_rejected_lexical_choice_with_false_error_flag_requests_audio_without_changing_words(self):
+        sample = [row(0, 'I know, likely.', [alt('Highly unlikely.')])]
+        result, decisions = judge.choose_readings(sample, answering((0, False, 'B')), 'm')
+        self.assertEqual(result[0]['source'], sample[0]['source'])
+        self.assertFalse(decisions[0]['applied'])
+        self.assertFalse(decisions[0]['a_has_error'])
+        self.assertTrue(decisions[0]['contradictory_verdict'])
+        self.assertEqual(decisions[0]['reason'], 'wording_guard')
+
+    def test_contradictory_verdict_requires_a_real_lexical_candidate_pair(self):
+        valid = {'from': 'I know, likely.', 'to': 'Highly unlikely.', 'choice': 'B',
+                 'candidates': ['I know, likely.', 'Highly unlikely.'], 'applied': False, 'a_has_error': False}
+        self.assertTrue(judge.contradictory_rejected_choice(valid))
+        for changed in ({'applied': True}, {'choice': 'A'}, {'choice': None}, {'choice': ''},
+                        {'choice': 'F'}, {'choice': 'BC'}, {'candidates': []}, {'candidates': ['other', valid['to']]},
+                        {'to': 'invented phrase'}, {'a_has_error': 'false'}, {'a_has_error': True}):
+            with self.subTest(changed=changed):
+                self.assertFalse(judge.contradictory_rejected_choice({**valid, **changed}))
+        for first, second in (('Hello there.', 'Hello, there!'), ('All right.', 'Alright.'),
+                              ('You find me a tour guide yet?', 'Find me a tour guide yet?'),
+                              ('Not now.', 'I said not now.')):
+            self.assertFalse(judge.contradictory_rejected_choice({**valid, 'from': first, 'to': second,
+                                                                 'candidates': [first, second]}))
+
     def test_a_flawed_current_wording_is_replaced_by_the_better_supported_reading(self):
         # Real cue, Man of War (dev job 49): three passes read "The way you make it your life ..."
         rows = [row(0, 'War is a monster.'),

@@ -208,7 +208,7 @@ def infer(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("prepare", "silence", "qwen", "whisper"))
+    parser.add_argument("phase", choices=("prepare", "silence", "qwen", "whisper", "routing"))
     parser.add_argument("--media", type=Path)
     parser.add_argument("--samples", type=Path, required=True)
     parser.add_argument("--start", type=float, default=0)
@@ -223,6 +223,33 @@ def main():
     args = parser.parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
+    if args.phase == 'routing':
+        import sys
+        sys.path.insert(0, '/ai')
+        import numpy as np
+        from source_audio_probe import channel_filter
+        checks = []
+        for layout, channels in [('5.1', 6), ('5.1(side)', 6), ('7.1', 8), ('7.1(wide)', 8), ('7.1(wide-side)', 8)]:
+            expressions = '|'.join(f'0.1*sin(2*PI*{200 + 100*i}*t)' for i in range(channels))
+            selected = channel_filter('center', {'channels': channels, 'channel_layout': layout})
+            raw = subprocess.check_output(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                f'aevalsrc={expressions}:s=16000:d=0.1:c={layout}', '-af', selected, '-f', 'f32le', '-'])
+            actual = np.frombuffer(raw, dtype='<f4')
+            expected = .1*np.sin(2*np.pi*400*np.arange(len(actual))/16000)
+            error = float(np.max(np.abs(actual-expected)))
+            if len(actual) != 1600 or error > 1e-6:
+                raise ValueError(f'Wrong centre routing for {layout}: {error}')
+            checks.append({'layout': layout, 'samples': len(actual), 'max_error': error})
+        for channels, layout in [(1, 'mono'), (2, 'stereo'), (8, 'unknown'), (6, '')]:
+            try:
+                channel_filter('center', {'channels': channels, 'channel_layout': layout})
+            except ValueError:
+                checks.append({'layout': layout, 'rejected_absent_or_unknown_center': True})
+            else:
+                raise ValueError(f'Unverified centre accepted: {layout}')
+        args.output.write_text(json.dumps({'synthetic_routing_only': True, 'checks': checks}, indent=2))
+        print(json.dumps(checks), flush=True)
+        return
     if args.phase == "prepare" and args.media is None:
         parser.error("prepare requires --media")
     if args.phase in ("qwen", "whisper") and args.model is None:

@@ -6,10 +6,73 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from asr_windows import plan_tail_confirmation, restore_confirmed_tail, split_confirmed_tail_candidate, plan_tail_timing_windows
+sys.path[:0] = ['/app', '/ai']
+from asr_windows import plan_tail_confirmation, restore_confirmed_tail, split_confirmed_tail_candidate, plan_tail_timing_windows, _short_tail_phrase, restore_tail_after_anchor_recovery
 
 
 class ConfirmedTailTests(unittest.TestCase):
+    def anchor_case(self):
+        root = Path('/diagnostic') if str(__file__) == '/test.py' else Path(__file__).parent
+        return json.loads((root/'fixtures/godzilla-tail-335.json').read_text())['selected_anchor_case']
+
+    def test_final_selection_can_recover_the_originally_planned_tail_anchor(self):
+        data = self.anchor_case(); before = copy.deepcopy(data)
+        result, proof = restore_tail_after_anchor_recovery(data['base'],data['probes'],data['previous_edge'])
+        self.assertEqual(result[:-1],data['base'])
+        self.assertEqual(result[-1]['text'],'逃げて')
+        self.assertEqual((result[-1]['start'],result[-1]['end']),(56.25,57.01))
+        self.assertEqual(proof,{'previous_edge':48,'selected_edge':54.08,'planned_edges':[54.05]})
+        self.assertEqual(data,before)
+
+    def test_anchor_retry_has_no_unbounded_recovery_or_new_acoustic_exception(self):
+        for change in ('unchanged_anchor','wrong_final_anchor','nan_anchor','wrong_text','no_speech'):
+            data=self.anchor_case()
+            if change=='unchanged_anchor': data['previous_edge']=54.05
+            elif change=='wrong_final_anchor': data['base'][-1]['end']=55.
+            elif change=='nan_anchor': data['probes'][0]['target_start']=float('nan')
+            elif change=='wrong_text': data['probes'][0]['independent_text']='違う言葉。'
+            else: data['probes'][0]['speech']=[]
+            result,proof=restore_tail_after_anchor_recovery(data['base'],data['probes'],data['previous_edge'])
+            self.assertEqual(result,data['base'],change)
+            self.assertIsNone(proof,change)
+
+    def test_recovered_anchor_never_duplicates_a_tail_already_present(self):
+        data=self.anchor_case()
+        result,_=restore_tail_after_anchor_recovery(data['base'],data['probes'],data['previous_edge'])
+        again,proof=restore_tail_after_anchor_recovery(result,data['probes'],data['previous_edge'])
+        self.assertEqual(again,result)
+        self.assertIsNone(proof)
+
+    def test_real_japanese_tail_is_a_clause_without_western_word_spaces(self):
+        root = Path('/diagnostic') if str(__file__) == '/test.py' else Path(__file__).parent
+        saved = json.loads((root/'fixtures/godzilla-tail-335.json').read_text())
+        before = copy.deepcopy(saved)
+        result = restore_confirmed_tail(saved['base'], saved['probes'])
+        self.assertEqual(result[:-1], saved['base'])
+        self.assertEqual(result[-1]['text'], '逃げて')
+        self.assertEqual((result[-1]['start'], result[-1]['end']), (56.23, 57.03))
+        self.assertEqual(saved, before)
+
+    def test_space_free_tail_does_not_remove_acoustic_requirements(self):
+        root = Path('/diagnostic') if str(__file__) == '/test.py' else Path(__file__).parent
+        saved = json.loads((root/'fixtures/godzilla-tail-335.json').read_text())
+        for change in ('speech', 'confidence', 'words', 'word_text', 'independent', 'time'):
+            probe = copy.deepcopy(saved['probes'][0])
+            cue = probe['segments'][-1]
+            if change == 'speech': probe['speech'] = []
+            elif change == 'confidence': cue['confidence'] = .59
+            elif change == 'words': cue['words'][0]['probability'] = .01
+            elif change == 'word_text': cue['words'][0]['text'] = '逃が'
+            elif change == 'independent': probe['independent_text'] = '逃がす'
+            else: cue['words'][0]['end'] = cue['words'][0]['start']
+            self.assertEqual(restore_confirmed_tail(saved['base'], [probe]), saved['base'], change)
+
+    def test_cjk_clause_count_does_not_admit_other_single_words_or_mixed_scripts(self):
+        for text in ('逃げて', '快走！'):
+            self.assertTrue(_short_tail_phrase(text))
+        for text in ('Coming.', '逃', '逃げてNow', '何？何？', 'あ'*13, ''):
+            self.assertFalse(_short_tail_phrase(text), text)
+
     def test_timing_windows_have_fixed_budget_and_half_second_offset(self):
         self.assertEqual(plan_tail_timing_windows({'start': 8.25}, 60), [
             {'start': 10., 'end': 22.}, {'start': 10.5, 'end': 22.5}])
@@ -200,3 +263,7 @@ class ConfirmedTailTests(unittest.TestCase):
         base, cue, _ = self.merged_example()
         cue['words'][-1]['start'] = 21.9
         self.assertEqual(split_confirmed_tail_candidate(base[-1], cue), cue)
+
+
+if __name__ == '__main__':
+    unittest.main()

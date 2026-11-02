@@ -1,0 +1,542 @@
+{
+  "source_job": 335,
+  "provenance": "Saved production tail probe from original media, 2026-10-31; model outputs, not expected-text prompts",
+  "base": [
+    {
+      "start": 2.024,
+      "end": 3.16,
+      "text": "ゴジラ襲撃の日"
+    },
+    {
+      "start": 4.52,
+      "end": 7.6,
+      "text": "数百人の患者はこの病院を埋め尽くしていた"
+    },
+    {
+      "start": 10.12,
+      "end": 11.06,
+      "text": "断言してもいい"
+    },
+    {
+      "start": 12.008,
+      "end": 16.26,
+      "text": "その患者は本来なら絶対に亡くなっていたはずだ"
+    },
+    {
+      "start": 26.888,
+      "end": 29.37,
+      "text": "大型災害対策事務局は大撃を行います"
+    },
+    {
+      "start": 31.07,
+      "end": 32.07,
+      "text": "振切れません"
+    },
+    {
+      "start": 36.712,
+      "end": 37.4,
+      "text": "怖くてたまらのです"
+    },
+    {
+      "start": 38.472,
+      "end": 39.9,
+      "text": "私があの案を提案したんです"
+    },
+    {
+      "start": 39.9,
+      "end": 40.96,
+      "text": "あんた何よりか"
+    },
+    {
+      "start": 41.25,
+      "end": 42,
+      "text": "退避!"
+    },
+    {
+      "start": 42.9,
+      "end": 44.42,
+      "text": "やっぱりこうなるんだ"
+    },
+    {
+      "start": 44.84,
+      "end": 46.68,
+      "text": "死ぬためだけに作られた兵器です"
+    },
+    {
+      "start": 46.68,
+      "end": 47.98,
+      "text": "全部バレてる"
+    },
+    {
+      "start": 52.345,
+      "end": 54.125,
+      "text": "その答えがこれなの"
+    }
+  ],
+  "probes": [
+    {
+      "start": 48.05,
+      "end": 60.05,
+      "target_start": 54.05,
+      "target_end": 60.05,
+      "segments": [
+        {
+          "start": 52.77,
+          "end": 54.07,
+          "text": "答えがこれなの",
+          "confidence": 0.89453125,
+          "words": [
+            {
+              "start": 52.85,
+              "end": 53.13,
+              "text": "答",
+              "probability": 0.9541015625
+            },
+            {
+              "start": 53.13,
+              "end": 53.39,
+              "text": "え",
+              "probability": 0.99560546875
+            },
+            {
+              "start": 53.39,
+              "end": 53.43,
+              "text": "が",
+              "probability": 0.984375
+            },
+            {
+              "start": 53.43,
+              "end": 53.71,
+              "text": "これ",
+              "probability": 0.89453125
+            },
+            {
+              "start": 53.71,
+              "end": 53.85,
+              "text": "な",
+              "probability": 0.99658203125
+            },
+            {
+              "start": 53.85,
+              "end": 53.99,
+              "text": "の",
+              "probability": 0.9990234375
+            }
+          ]
+        },
+        {
+          "start": 56.23,
+          "end": 57.03,
+          "text": "逃げて",
+          "confidence": 0.6754150390625,
+          "words": [
+            {
+              "start": 56.31,
+              "end": 56.73,
+              "text": "逃",
+              "probability": 0.6754150390625
+            },
+            {
+              "start": 56.73,
+              "end": 56.89,
+              "text": "げ",
+              "probability": 0.99951171875
+            },
+            {
+              "start": 56.89,
+              "end": 56.95,
+              "text": "て",
+              "probability": 0.99853515625
+            }
+          ]
+        }
+      ],
+      "independent_text": "その答えがこれなの。逃げて。",
+      "speech": [
+        {
+          "start": 48.05,
+          "end": 48.918
+        },
+        {
+          "start": 53.32599999999999,
+          "end": 57.141999999999996
+        }
+      ]
+    }
+  ],
+  "clipped_prefix_case": {
+    "row": {
+      "id": 6,
+      "start": 36.712,
+      "end": 37.512,
+      "source": "怖くてたまらのです",
+      "reading_time_source_end": 37.4
+    },
+    "record": {
+      "current": "怖くてたまらのです",
+      "readings": [
+        {
+          "name": "precision",
+          "text": "たまらんのです",
+          "confidence": 0.8479272272102579,
+          "words": [
+            {
+              "word": "た",
+              "start": 36.412000000000006,
+              "end": 36.61200000000001,
+              "probability": 0.5685998201370239
+            },
+            {
+              "word": "ま",
+              "start": 36.61200000000001,
+              "end": 36.812000000000005,
+              "probability": 0.9837779998779297
+            },
+            {
+              "word": "ら",
+              "start": 36.812000000000005,
+              "end": 36.97200000000001,
+              "probability": 0.995455265045166
+            },
+            {
+              "word": "ん",
+              "start": 36.97200000000001,
+              "end": 36.992000000000004,
+              "probability": 0.9316835999488831
+            },
+            {
+              "word": "の",
+              "start": 36.992000000000004,
+              "end": 37.132000000000005,
+              "probability": 0.9867540001869202
+            },
+            {
+              "word": "です",
+              "start": 37.132000000000005,
+              "end": 37.33200000000001,
+              "probability": 0.9988915324211121
+            }
+          ],
+          "language": "ja",
+          "language_probability": 1
+        },
+        {
+          "name": "v2",
+          "text": "たまらんのです",
+          "confidence": 0.5521518655493549,
+          "words": [
+            {
+              "word": "た",
+              "start": 36.412000000000006,
+              "end": 36.75200000000001,
+              "probability": 0.12906484305858612
+            },
+            {
+              "word": "ま",
+              "start": 36.75200000000001,
+              "end": 36.952000000000005,
+              "probability": 0.8493844270706177
+            },
+            {
+              "word": "ら",
+              "start": 36.952000000000005,
+              "end": 37.05200000000001,
+              "probability": 0.9812782406806946
+            },
+            {
+              "word": "ん",
+              "start": 37.05200000000001,
+              "end": 37.11200000000001,
+              "probability": 0.8496254682540894
+            },
+            {
+              "word": "の",
+              "start": 37.11200000000001,
+              "end": 37.212,
+              "probability": 0.785089373588562
+            },
+            {
+              "word": "です",
+              "start": 37.212,
+              "end": 37.43200000000001,
+              "probability": 0.9396532773971558
+            }
+          ],
+          "language": "ja",
+          "language_probability": 1
+        },
+        {
+          "name": "qwen",
+          "text": "絶たまらんのです。",
+          "confidence": 0.5,
+          "language": "Japanese"
+        }
+      ],
+      "families": [
+        "qwen",
+        "whisper-v2",
+        "whisper-v3"
+      ],
+      "agreed_families": [
+        "qwen",
+        "whisper-v2",
+        "whisper-v3"
+      ],
+      "agreement": 0.96,
+      "candidate": "たまらんのです",
+      "current_fit": 0.74,
+      "decision": "ersatt",
+      "id": 6,
+      "start": 36.712,
+      "end": 37.4
+    },
+    "provenance": "Actual Dev reread dev-przr2I: both Whisper first words begin at the tight clip edge; this rejected candidate must not remove the original prefix."
+  },
+  "selected_anchor_case": {
+    "base": [
+      {
+        "start": 2.024,
+        "end": 3.16,
+        "text": "ゴジラ襲撃の日",
+        "confidence": 0.6932459473609924
+      },
+      {
+        "start": 4.52,
+        "end": 7.6,
+        "text": "数百人の患者はこの病院を埋め尽くしていた",
+        "confidence": 0.6100044250488281
+      },
+      {
+        "start": 10.12,
+        "end": 11.06,
+        "text": "断言してもいい",
+        "confidence": 0.9453807175159454
+      },
+      {
+        "start": 12.008,
+        "end": 16.26,
+        "text": "その患者は本来なら絶対に亡くなっていたはずだ",
+        "confidence": 0.48557302355766296
+      },
+      {
+        "start": 19,
+        "end": 19.94,
+        "text": "けてください",
+        "confidence": 0.7602596879005432,
+        "words": [
+          {
+            "start": 19.08,
+            "end": 19.48,
+            "text": "けて",
+            "probability": 0.9761471152305603
+          },
+          {
+            "start": 19.48,
+            "end": 19.86,
+            "text": "ください",
+            "probability": 0.7602596879005432
+          }
+        ],
+        "corroborated": false
+      },
+      {
+        "start": 26.888,
+        "end": 29.37,
+        "text": "災害対策事務局は大に備えます",
+        "confidence": 0.3653869926929474
+      },
+      {
+        "start": 29.51,
+        "end": 33.75,
+        "text": "くて",
+        "confidence": 0.7337613105773926
+      },
+      {
+        "start": 36.712,
+        "end": 37.4,
+        "text": "たまらのです",
+        "confidence": 0.9923760294914246
+      },
+      {
+        "start": 38.472,
+        "end": 39.9,
+        "text": "私があの案を提案したんです",
+        "confidence": 0.654279887676239
+      },
+      {
+        "start": 39.9,
+        "end": 41.04,
+        "text": "っぱりこうなるんだ",
+        "confidence": 0.35201960802078247
+      },
+      {
+        "start": 41.24,
+        "end": 41.94,
+        "text": "避",
+        "confidence": 0.9987748265266418
+      },
+      {
+        "start": 42.9,
+        "end": 44.42,
+        "text": "やっぱりこうなるんだ",
+        "confidence": 0.8285955786705017
+      },
+      {
+        "start": 44.84,
+        "end": 46.68,
+        "text": "死ぬためだけに作られた兵器です",
+        "confidence": 0.5142963528633118
+      },
+      {
+        "start": 46.68,
+        "end": 48,
+        "text": "全部バレてる",
+        "confidence": 0.8046950697898865
+      },
+      {
+        "start": 52.34,
+        "end": 54.08,
+        "text": "その答えがこれなの",
+        "confidence": 0.901703953742981,
+        "words": [
+          {
+            "start": 52.42,
+            "end": 52.78,
+            "text": "その",
+            "probability": 0.901703953742981
+          },
+          {
+            "start": 52.78,
+            "end": 53.12,
+            "text": "答",
+            "probability": 0.9961776733398438
+          },
+          {
+            "start": 53.12,
+            "end": 53.38,
+            "text": "え",
+            "probability": 0.9999603033065796
+          },
+          {
+            "start": 53.38,
+            "end": 53.5,
+            "text": "が",
+            "probability": 0.9987782835960388
+          },
+          {
+            "start": 53.5,
+            "end": 53.7,
+            "text": "これ",
+            "probability": 0.9871597290039062
+          },
+          {
+            "start": 53.7,
+            "end": 53.84,
+            "text": "な",
+            "probability": 0.9971657395362854
+          },
+          {
+            "start": 53.84,
+            "end": 54,
+            "text": "の",
+            "probability": 0.9999455213546753
+          }
+        ],
+        "corroborated": false
+      }
+    ],
+    "probes": [
+      {
+        "start": 48.05,
+        "end": 60.05,
+        "target_start": 54.05,
+        "target_end": 60.05,
+        "segments": [
+          {
+            "start": 52.77,
+            "end": 54.07,
+            "text": "答えがこれなの",
+            "confidence": 0.8635813593864441,
+            "words": [
+              {
+                "start": 52.85,
+                "end": 53.13,
+                "text": "答",
+                "probability": 0.96439129114151
+              },
+              {
+                "start": 53.13,
+                "end": 53.39,
+                "text": "え",
+                "probability": 0.9973498582839966
+              },
+              {
+                "start": 53.39,
+                "end": 53.51,
+                "text": "が",
+                "probability": 0.990441083908081
+              },
+              {
+                "start": 53.51,
+                "end": 53.71,
+                "text": "これ",
+                "probability": 0.8635813593864441
+              },
+              {
+                "start": 53.71,
+                "end": 53.85,
+                "text": "な",
+                "probability": 0.9983413219451904
+              },
+              {
+                "start": 53.85,
+                "end": 53.99,
+                "text": "の",
+                "probability": 0.9992175102233887
+              }
+            ]
+          },
+          {
+            "start": 56.25,
+            "end": 57.01,
+            "text": "逃げて",
+            "confidence": 0.7010855078697205,
+            "words": [
+              {
+                "start": 56.33,
+                "end": 56.71,
+                "text": "逃",
+                "probability": 0.7010855078697205
+              },
+              {
+                "start": 56.71,
+                "end": 56.89,
+                "text": "げ",
+                "probability": 0.9997385144233704
+              },
+              {
+                "start": 56.89,
+                "end": 56.93,
+                "text": "て",
+                "probability": 0.9985450506210327
+              }
+            ]
+          }
+        ],
+        "independent_text": "その答えがこれなの。逃げて。",
+        "speech": [
+          {
+            "start": 48.05,
+            "end": 48.918
+          },
+          {
+            "start": 53.32599999999999,
+            "end": 57.141999999999996
+          }
+        ]
+      }
+    ],
+    "previous_edge": 48,
+    "provenance": "Full original CPU ASR dev-CgncU8 (547.0657 s), pre-tail selection replay dev-Qx038c: the 54.05 s planned anchor was dropped, then recovered at 54.08 s by final selection."
+  }
+}

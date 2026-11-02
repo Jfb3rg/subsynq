@@ -81,6 +81,7 @@ import reader_plan
 import swedish_reader
 import norwegian_reader
 import cloud_session
+import opensubtitles
 from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, CHAIN_GPU_MIN_DISK_GB, CHAIN_GPU_MIN_RELIABILITY,
                           CLOUD_AUTO_MODEL_TIERS, cloud_auto_models, order_offers_for_rental,
                           fetch_cpu_offers, fetch_runpod_chain_offers, fetch_vast_chain_gpu_offers,
@@ -94,11 +95,15 @@ from translation_qa import (might_be_swedish, dominant_non_latin_script, filenam
                             quote_is_only_names, restore_id_order, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
                             swedish_rows_to_keep, whisper_language_label)
 from forced_reading import needs_second_reading, prefer_second_reading, reading_summary
-from source_judge import EngineUnavailable, choose_readings, complete_cut_off_rows
+from source_judge import EngineUnavailable, choose_readings, complete_cut_off_rows, contradictory_rejected_choice, repeats_neighbour
 from collapsed_words import plan_collapsed_word_checks, restore_collapsed_words
 from glossary import apply_glossary, load_glossary
-from reread import agreed_replacement, conflicting_reread_rows, language_from_text
+from reread import agreed_replacement, confirmed_interior_insertion, conflicting_reread_rows, interior_insertion_slot, language_from_text, clipped_prefix_evidence
+from reread import foreign_context_plan, foreign_context_reading, foreign_context_replacement
+from reread_boundaries import (language_group_plans, confirmed_group_language, local_language_override,
+                               kana_slot, confirmed_kana_insertion, confirmed_group_partition)
 from translation_qa import source_grammar_notes
+from code_switch import plan_checks as plan_code_switch_checks, apply_checks as apply_code_switch_checks
 from speech_timing import pad_reading_time
 from asr_windows import remove_adjacent_phrase_overlap
 from verified_source import apply_verified_source_edits
@@ -1577,6 +1582,56 @@ def reset_cloud_session_after_restart():
     cloud_session.take(DATABASE)
 
 
+def read_code_switch_checks(job, media, rows, readings, models, total):
+    """Optional, bounded automatic language checks; retain every existing cue on failure."""
+    job.pop('code_switch_checks', None)
+    plans = plan_code_switch_checks(job, rows, readings.get('qwen') or [],
+        [r for name, items in readings.items() if name not in ('context', 'precision', 'rescue', 'qwen') for r in items], total)
+    if not plans:
+        return rows
+    records = []
+    job['code_switch_checks'] = {'plans': plans, 'readings': records, 'changed': []}
+    try:
+        with tempfile.TemporaryDirectory(prefix='subsynq-code-switch-') as folder:
+            clips = {}
+            for plan in plans:
+                for number, window in enumerate(plan['windows']):
+                    check_cancelled(job['id'])
+                    clip = Path(folder) / f'{plan["row"]}-{number}.wav'
+                    subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
+                        '-t', str(window['end'] - window['start']), '-map', audio_map(job), '-ac', '1', '-ar', '16000',
+                        '-c:a', 'pcm_s16le', '-y', str(clip)], capture_output=True, timeout=90, check=True)
+                    clips[plan['row'], number] = clip
+            for family, name in (('v3', 'large-v3'), ('v2', 'large-v2')):
+                model = models.create_whisper(name, device='cpu', compute_type='int8', cpu_threads=6,
+                                              download_root='/models', local_files_only=True)
+                try:
+                    for plan in plans:
+                        for number, window in enumerate(plan['windows']):
+                            check_cancelled(job['id'])
+                            update_job(job['id'], 'transcribing', 59, 'Kontrollerar ett möjligt engelskt språkbyte')
+                            segments, info = model.transcribe(str(clips[plan['row'], number]), language=None,
+                                multilingual=True, beam_size=5, temperature=0, condition_on_previous_text=False,
+                                word_timestamps=True, vad_filter=False, hallucination_silence_threshold=2)
+                            segments = list(segments)
+                            records.append({'row': plan['row'], 'window': number, 'family': family,
+                                'language': info.language, 'language_probability': float(info.language_probability or 0),
+                                'text': ' '.join(s.text.strip() for s in segments), 'words': [
+                                    {'text': w.word.strip(), 'start': float(window['start'] + w.start),
+                                     'end': float(window['start'] + w.end), 'probability': float(w.probability)}
+                                    for s in segments for w in (s.words or [])]})
+                finally:
+                    models.release_whisper()
+                    del model
+    except JobCancelled:
+        raise
+    except (RuntimeError, OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
+        job['code_switch_checks']['error'] = str(error)[:300]
+    result, changes = apply_code_switch_checks(rows, plans, records)
+    job['code_switch_checks']['changed'] = changes
+    return result
+
+
 def read_lead_word_probes(job, media, merged, readings, models, total, skip_indices, hint=None):
     """Qwen3-ASR's reading of each place where one reading heard opening words a cut row lost (asr_windows.plan_lead_word_probes). The
     readings carry the lead's measured time, never the clip's bounds. An optional opinion: a failure leaves the rule with the readings it had."""
@@ -1606,6 +1661,31 @@ def read_lead_word_probes(job, media, merged, readings, models, total, skip_indi
     finally:
         models.release_qwen()
     return probes
+
+
+def emergency_subtitle(job):
+    """The user's emergency fallback (2026-11-02): when an AI job ends refused and automatic OpenSubtitles is switched on, fetch a Swedish
+    subtitle for exactly this file (app/opensubtitles.py: file hash or the whole file name, never a title) and say so on the job. Never
+    raises and never touches the job's status."""
+    try:
+        settings = opensubtitles.load_settings(CONFIG)
+        if not (settings['enabled'] and settings['automatic']):
+            return
+        with sqlite3.connect(DATABASE, timeout=10) as db:
+            row = db.execute('SELECT status, message FROM subtitle_jobs WHERE id=?', (job['id'],)).fetchone()
+        if not row or row[0] != 'quality_failed':
+            return
+        try:
+            result = opensubtitles.fetch(CONFIG, job['media_path'], 'SubSynq worker')
+            note = (f" · Nödlösning: svensk undertext hämtad från OpenSubtitles (matchad på {result['how']}) som "
+                    f"{Path(result['path']).name}")
+        except opensubtitles.OpenSubtitlesError as error:
+            note = f' · Nödlösning: ingen undertext från OpenSubtitles ({error})'
+        with sqlite3.connect(DATABASE, timeout=10) as db:
+            db.execute('UPDATE subtitle_jobs SET message=? WHERE id=?', ((row[1] or '') + note[:400], job['id']))
+        print(f'OpenSubtitles (jobb {job["id"]}):{note}', flush=True)
+    except Exception as error:
+        print(f'VARNING: nödlösningen med OpenSubtitles misslyckades: {error!r}', flush=True)
 
 
 def run_cloud_session():
@@ -2842,6 +2922,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     if qwen_skipped:
         job['qwen_skipped_windows'] = [window['target_start'] for window in qwen_skipped]
     before_tail_count = len(merged)
+    before_tail_edge = max((row['end'] for row in merged), default=0.)
     merged = restore_confirmed_tail(merged, tail_probes)
     from asr_windows import split_corroborated_long_cues
     tail_restored = len(merged) > before_tail_count
@@ -3050,6 +3131,8 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         merged = drop_dub_bed_rows(job, media, merged, total, readings=consensus_readings)
     if repeated_starts:
         job['repeated_starts_dropped'] = [{'start': row['start'], 'text': row['text']} for row in repeated_starts]
+    if focus_intervals is None:
+        merged = read_code_switch_checks(job, media, merged, consensus_readings, models, total)
     before_reader_plan = [dict(cue) for cue in merged]
     plan_replaced = set()
     if focus_intervals is None:
@@ -3079,8 +3162,15 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged, phrase_overlaps = remove_adjacent_phrase_overlap(merged, onset_rescue_profile, v2_profile,
         skip_indices=plan_replaced | {item['row'] for item in consensus_prefixes}, corroboration=qwen_reading)
     job['phrase_overlaps_removed'] = phrase_overlaps
+    # Selection can restore the last dialogue cue AFTER the early tail check.
+    # Reuse its already collected audio evidence only at that recovered edge.
+    if not tail_restored:
+        from asr_windows import restore_tail_after_anchor_recovery
+        merged, recovered_anchor = restore_tail_after_anchor_recovery(merged, tail_probes, before_tail_edge)
+        if recovered_anchor:
+            job['tail_confirmation'].update(restored=True, recovered_anchor=recovered_anchor)
     trace_payload.update(timing_refinement=job.get('timing_refinement'), lead_word_probes=job.get('lead_word_probes'), confirmed_word_onsets=job.get('confirmed_word_onsets'), nb=nb_profile, norwegian_reader=job.get('norwegian_reader'), collapsed_words_restored=job.get('collapsed_words_restored'), collapsed_word_windows=collapsed_windows, qwen_word_changes=job.get('qwen_word_changes'), dub_bed=job.get('dub_bed'), lead_words_restored=job.get('lead_words_restored'), source_word_confirmations=short_word_checks, profile_evidence=profile_evidence, consensus_windows=consensus_windows,
-                         phrase_overlaps_removed=phrase_overlaps, consensus_qwen=consensus_readings.get("qwen", []),
+                         code_switch_checks=job.get('code_switch_checks'), phrase_overlaps_removed=phrase_overlaps, consensus_qwen=consensus_readings.get("qwen", []),
                          consensus_forced=consensus_readings.get("forced", []),
                          intervening_windows=intervening_windows, intervening_languages=intervening_languages,
                          intervening_first=intervening_first, intervening_second=intervening_second,
@@ -3101,6 +3191,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     confirmed_prefixes = {item['row']: item['prefix'] for item in consensus_prefixes}
     job['reading_context'] = {'duration': total, 'spans': strict_speech}
     return [{'id': index, 'start': row['start'], 'end': row['end'], 'source': row['text'],
+             **({'confirmed_language': row['confirmed_language']} if row.get('confirmed_language') else {}),
              **({'confirmed_prefix': confirmed_prefixes[index]} if index in confirmed_prefixes else {}),
              **({'confirmed_source_words': row['confirmed_source_words']} if row.get('confirmed_source_words') else {}),
              **({'confirmed_lead_onset': row['confirmed_lead_onset']} if row.get('confirmed_lead_onset') else {}),
@@ -3144,6 +3235,8 @@ def save_source_transcript(job, media, rows, hardware, model, *, raw=False, sour
         'language_policy': job.get('language_policy'),
         'audio_track': job.get('audio_choice'),
         'swedish_reader': job.get('swedish_reader'),
+        'norwegian_reader': job.get('norwegian_reader'),
+        'code_switch_checks': job.get('code_switch_checks'),
         'reader_plan': job.get('reader_plan'),
         'name_harmony': job.get('name_harmony'),
         'forced_reading_choice': job.get('forced_reading_choice'),
@@ -3151,12 +3244,16 @@ def save_source_transcript(job, media, rows, hardware, model, *, raw=False, sour
         'fallback_reason': job.get('fallback_reason'),
         'source_reread': job.get('source_reread'),
         'reread_rows': job.get('reread_rows', []),
+        'reread_language_evidence': job.get('reread_language_evidence', []),
+        'reread_group_partitions': job.get('reread_group_partitions', []),
         'confirmed_word_onsets': job.get('confirmed_word_onsets', []),
         'lead_word_probes': job.get('lead_word_probes', []),
         'reading_time': job.get('reading_time', {}),
         'phrase_overlaps_removed': job.get('phrase_overlaps_removed', []),
         'rows': [{'id': row['id'], 'start': row['start'], 'end': row['end'],
                   'source': row['source'], **({'source_unclear': True} if row.get('source_unclear') else {}),
+                  **({'confirmed_language': row['confirmed_language'], 'confirmed_source_words': row.get('confirmed_source_words', [])}
+                     if row.get('confirmed_language') else {}),
                   **({'confirmed_lead_onset': row['confirmed_lead_onset']} if row.get('confirmed_lead_onset') else {}),
                   **({'reading_time_source_end': row['reading_time_source_end']} if 'reading_time_source_end' in row else {})}
                  for row in rows],
@@ -3305,7 +3402,46 @@ def prompt_media_name(media_name):
     return '' if device.startswith('cloud-') else str(media_name)
 
 
-def _audit_source_chunk(chunk, media_name, *, use_filename_hint=True):
+def source_audit_language_context(job, rows):
+    """Language evidence for the exact current text/times, never word approval."""
+    local = {str(row['id']): language for row in rows
+             if (language := local_language_override(job, row))}
+    return ({'base_language': job['language_policy']['effective_language'],
+             'verified_local_languages': local, 'source_words_approved': False}
+            if local else None)
+
+
+def add_source_language_context(request, rows, context):
+    if not context:
+        return
+    ids = {str(row['id']) for row in rows}
+    prompt = json.loads(request['prompt'])
+    prompt['acoustic_language_context'] = {
+        **context, 'verified_local_languages': {
+            key: language for key, language in context['verified_local_languages'].items() if key in ids}}
+    request['prompt'] = json.dumps(prompt, ensure_ascii=False)
+    request['system'] += (
+        ' Acoustic language context identifies a confirmed base language and local language switches. '
+        'A local language applies only to the listed cue IDs; other cues may return to the base language. '
+        'Do not call that return incoherent merely because the preceding cues used another language. '
+        'This evidence confirms LANGUAGE ONLY, not words or grammar: audit every cue for actual recognition errors.')
+
+
+def source_audit_chunks(rows, context=None, size=150):
+    """Keep true adjacency; split only at acoustically proven local language edges."""
+    local = (context or {}).get('verified_local_languages', {})
+    base = (context or {}).get('base_language')
+    chunks = []
+    for row in rows:
+        language = local.get(str(row['id']), base)
+        if (not chunks or len(chunks[-1]) == size
+                or local.get(str(chunks[-1][-1]['id']), base) != language):
+            chunks.append([])
+        chunks[-1].append(row)
+    return chunks
+
+
+def _audit_source_chunk(chunk, media_name, *, use_filename_hint=True, language_context=None):
     """One chronologically contiguous audit call; see assess_source_quality()."""
     # A block-sized cap on the array (not just a token budget) stops the model
     # from spiralling into a runaway incrementing bad_ids list when a chunk is
@@ -3341,6 +3477,12 @@ def _audit_source_chunk(chunk, media_name, *, use_filename_hint=True):
             'those are usable. '
             'Hindi, Tamil, Japanese and other non-Latin writing systems are normal source text, '
             'not recognition errors merely because they are not English. '
+            'Speakers may switch languages between or within cues and then switch back. '
+            'Judge whether each cue is intelligible in its own language, using neighbors for '
+            'sentence continuation; a coherent cue in a different language is NOT a bad cue. '
+            'A language switch alone is not evidence of malformed recognition, even under a '
+            'filename language hint. Still flag genuinely malformed words, hallucinated '
+            'repetition or incoherent grammar in any language, including mixed-language text. '
             'Set language_mismatch to true only if the media filename explicitly names a language '
             '(German, French, etc.) and most cues are clearly in an unrelated language or '
             'pseudo-language; never set it from the filename alone without unrelated-language '
@@ -3357,6 +3499,7 @@ def _audit_source_chunk(chunk, media_name, *, use_filename_hint=True):
         'options': {'temperature': 0, 'num_ctx': 12288, 'num_predict': 512, 'num_thread': 6,
                     'seed': 43},
     }
+    add_source_language_context(request, chunk, language_context)
     try:
         verdict = json.loads(call_ollama(request)['response'])
         bad_ids = verdict['bad_ids']
@@ -3396,7 +3539,8 @@ def credible_language_mismatch(rows, hinted_language, acoustic_language):
     return script != expected if expected else script is not None
 
 
-def assess_source_quality(rows, media_name='', *, use_filename_hint=True, acoustic_language=None, lenient=False, broken=None):
+def assess_source_quality(rows, media_name='', *, use_filename_hint=True, acoustic_language=None, lenient=False, broken=None,
+                          language_context=None):
     """Use a conservative per-row ASR error audit before translating or writing an SRT.
 
     A single holistic "usable/unusable" verdict on a whole sampled transcript
@@ -3424,14 +3568,14 @@ def assess_source_quality(rows, media_name='', *, use_filename_hint=True, acoust
     # All scripts receive the same source audit; the schema above prevents
     # the reviewer inventing an expected language for unlabelled filenames.
     hinted_language = filename_language_hint(media_name) if use_filename_hint else None
-    chunk_size = 150
     bad_total = 0
     bad_rows = []
     reasons = []
-    for start in range(0, len(rows), chunk_size):
-        chunk = rows[start:start + chunk_size]
+    for chunk in source_audit_chunks(rows, language_context):
+        local_chunk = language_context and all(str(row['id']) in language_context['verified_local_languages'] for row in chunk)
         bad_ids, language_mismatch, reason = _audit_source_chunk(
-            chunk, media_name, use_filename_hint=use_filename_hint)
+            chunk, media_name, use_filename_hint=bool(use_filename_hint and not local_chunk),
+            **({'language_context': language_context} if language_context else {}))
         if language_mismatch and credible_language_mismatch(rows, hinted_language, acoustic_language):
             raise SourceQualityError(
                 'Källtranskriberingen underkändes innan någon SRT skrevs: '
@@ -3455,7 +3599,8 @@ def assess_source_quality(rows, media_name='', *, use_filename_hint=True, acoust
     # explicitly language-labelled Latin-script trailer, audit each cue with
     # its neighbors before trusting a positive whole-trailer verdict.
     if hinted_language in {'de', 'en', 'fr', 'es', 'it', 'pt'} and 3 <= len(rows) <= 12:
-        audit_short_source_quality(rows, hinted_language, lenient=lenient, broken=broken)
+        audit_short_source_quality(rows, hinted_language, lenient=lenient, broken=broken,
+                                   **({'language_context': language_context} if language_context else {}))
     return True
 
 
@@ -3475,10 +3620,12 @@ def assess_source_with_reread(job, rows, media_name='', **options):
     SOURCE_DOUBTFUL_SHARE of the rows are unclear: then the file is refused as before. A wrong language is refused at once."""
     job.pop('source_reread', None)  # a fallback source must not inherit the previous source's audit
     choice_findings = unresolved_source_choice_ids(rows, job.get('source_choices') or [])
-    flagged = list(choice_findings)
+    kana_candidates = kana_review_ids(job, rows)
+    flagged = sorted(set(choice_findings) | set(kana_candidates))
     first_reason = ''
     try:
-        assess_source_quality(rows, media_name, broken=flagged, **options)
+        assess_source_quality(rows, media_name, broken=flagged, **options,
+                              language_context=source_audit_language_context(job, rows))
     except BrokenSourceRows as error:
         flagged.extend(error.ids)
         first_reason = str(error)
@@ -3489,8 +3636,10 @@ def assess_source_with_reread(job, rows, media_name='', **options):
                model='Omläsning med Whisper large-v3, large-v2 och Qwen3-ASR')
     changed = reread_flagged_rows(job, rows, flagged)
     job['source_reread'] = {'flagged': flagged, 'changed': changed, 'first_verdict': first_reason, 'readings': job.get('reread_rows') or []}
+    job['source_reread']['kana_review_candidates'] = kana_candidates
     still = []
-    assess_source_quality(rows, media_name, lenient=True, broken=still, **options)
+    assess_source_quality(rows, media_name, lenient=True, broken=still, **options,
+                          language_context=source_audit_language_context(job, rows))
     conflicts = conflicting_reread_rows(rows, job['source_reread']['readings'], flagged)
     # A rejected text substitution never clears its own error finding. Only
     # an acoustic replacement or independent confirmation of the kept words does.
@@ -3500,7 +3649,7 @@ def assess_source_with_reread(job, rows, media_name='', **options):
         row_id = record.get('id')
         if row_id in choice_unclear and record.get('current') == current.get(row_id):
             _, confirmed = agreed_replacement(current[row_id], record.get('readings') or [])
-            if confirmed['decision'] == 'läsningen stämmer med nuvarande text':
+            if confirmed['decision'] == 'läsningen stämmer med nuvarande text' and confirmed.get('same_words'):
                 choice_unclear.discard(row_id)
     still = sorted(set(still) | {item['id'] for item in conflicts} | choice_unclear)
     job['source_reread']['source_choice_findings'] = choice_findings
@@ -3513,18 +3662,35 @@ def assess_source_with_reread(job, rows, media_name='', **options):
     return sorted(set(still))
 
 
+def kana_review_ids(job, rows):
+    """Plan acoustic checks for a saved one-kana alternative, never approve it."""
+    if not REREAD_ENABLED:
+        return []
+    by_id = {row['id']: row for row in rows}
+    planned = set()
+    for decision in job.get('source_choices') or []:
+        row = by_id.get(decision.get('id'))
+        if (row is None or row.get('confirmed_source_words') or decision.get('applied') is not False
+                or decision.get('from') != row['source'] or not isinstance(decision.get('candidates'), list)):
+            continue
+        if any(isinstance(text, str) and kana_slot(row['source'], text) for text in decision['candidates']):
+            planned.add(row['id'])
+    return [row['id'] for row in rows if row['id'] in planned][:4]
+
+
 def unresolved_source_choice_ids(rows, decisions):
-    """Rejected alternatives with an explicit error verdict on the unchanged source."""
+    """Unchanged rejected errors or contradictory lexical choices require acoustic verification."""
     current = {row['id']: row['source'] for row in rows}
     return sorted({item['id'] for item in decisions
                    if type(item.get('id')) is int and item['id'] in current
-                   and item.get('a_has_error') is True and item.get('applied') is False
+                   and (item.get('a_has_error') is True or contradictory_rejected_choice(item))
+                   and item.get('applied') is False
                    and item.get('from') == current[item['id']]
                    and isinstance(item.get('to'), str) and item['to'] != item['from']
                    and item.get('choice') in ('B', 'C', 'D', 'E', 'F')})
 
 
-def audit_short_source_quality(rows, language_code, *, lenient=False, broken=None):
+def _audit_short_source_chunk(rows, language_code, language_context=None):
     labels = {'de': 'German', 'en': 'English', 'fr': 'French',
               'es': 'Spanish', 'it': 'Italian', 'pt': 'Portuguese'}
     schema = {
@@ -3538,13 +3704,16 @@ def audit_short_source_quality(rows, language_code, *, lenient=False, broken=Non
     request = {
         'model': MODEL_NAME, 'stream': False, 'format': schema, 'keep_alive': '5m',
         'system': (
-            f'You are an independent {labels[language_code]} ASR error auditor. '
+            f'You are an independent {labels.get(language_code, "multilingual")} ASR error auditor. '
             'Examine each numbered source subtitle cue in chronological context. '
             'Return bad_ids only for cues with clear evidence of severely malformed '
             'or semantically incoherent speech recognition: repeated function words, '
             'impossible grammar, or nonsense phrases. Do NOT flag names, dialect, '
             'short fragments, missing punctuation, informal speech, or a sentence '
             'continued by a neighboring cue. Do not translate or fact-check. '
+            'Speakers may switch languages and switch back: judge each cue in its own language. '
+            'A coherent cue in another language is not an error merely for changing language; '
+            'genuinely malformed mixed-language speech recognition still must be flagged. '
             'Return JSON only, with a brief Swedish reason.'),
         'prompt': json.dumps({'rows': [
             {key: row.get(key) for key in ('id', 'start', 'end', 'source')}
@@ -3552,6 +3721,7 @@ def audit_short_source_quality(rows, language_code, *, lenient=False, broken=Non
         'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': 350,
                     'num_thread': 6, 'seed': 109},
     }
+    add_source_language_context(request, rows, language_context)
     try:
         verdict = json.loads(call_ollama(request)['response'])
         bad_ids = verdict['bad_ids']
@@ -3563,8 +3733,20 @@ def audit_short_source_quality(rows, language_code, *, lenient=False, broken=Non
             raise ValueError('Ogiltig radgranskning.')
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise RuntimeError('Källtextens radgranskning gav inget giltigt svar.') from error
+    return bad_ids, reason
+
+
+def audit_short_source_quality(rows, language_code, *, lenient=False, broken=None, language_context=None):
+    bad_ids, reasons = [], []
+    for chunk in source_audit_chunks(rows, language_context):
+        language = (language_context or {}).get('verified_local_languages', {}).get(str(chunk[0]['id']), language_code)
+        ids, reason = _audit_short_source_chunk(chunk, language, language_context)
+        bad_ids.extend(ids)
+        if ids:
+            reasons.append(reason)
     if broken is not None:
         broken.extend(bad_ids)
+    reason = ' '.join(reasons)
     if (len(bad_ids) > SOURCE_DOUBTFUL_SHARE * len(rows)) if lenient else (len(bad_ids) >= max(2, (len(rows) + 3) // 4)):
         raise BrokenSourceRows(
             'Källtranskriberingen underkändes innan någon SRT skrevs: '
@@ -4313,8 +4495,9 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
         'before': {'type': 'string', 'enum': sorted({phrase for phrases in quoted_choices.values() for phrase in phrases})},
         'after': {'type': 'string'}},
             'required': ['before', 'after'], 'additionalProperties': False}
-    schema = {'type': 'object', 'properties': {'rows': {'type': 'array', 'items': {
-        'type': 'object', 'properties': {'id': {'type': 'integer'},
+    schema = {'type': 'object', 'properties': {'rows': {'type': 'array',
+        'minItems': len(targets), 'maxItems': len(targets), 'items': {
+        'type': 'object', 'properties': {'id': {'type': 'integer', 'enum': sorted(ids)},
                                        'intended_meaning': {'type': 'string'},
                                        'edits': {'type': 'array', 'items': edit}},
         'required': ['id', 'intended_meaning', 'edits'], 'additionalProperties': False}}},
@@ -4389,7 +4572,14 @@ def repair_flagged_translation(job, rows, flags, *, target_key='sv', target_lang
     """Repair the flagged rows (repair_flagged_translation_split); a repaired row that now has a verified defect it did not have before
     (deterministic_flags: script, units, fixed word senses, grammar rules) goes back to its text before the repair. Godzilla (dev job 296): the
     repair followed a wrong review and wrote "för att döda" for 死ぬために (to die); the verified rule then refused the file."""
-    result = repair_flagged_translation_split(job, rows, flags, target_key=target_key, target_language=target_language, record=record)
+    from numeral_scale import repair_standalone_scales
+    rows, scales = repair_standalone_scales(rows, flags, target_key)
+    corrected = {(f['id'], f['category'], f['source_quote'], f['target_quote']) for f in scales}
+    flags = [f for f in flags if (f.get('id'), f.get('category'), f.get('source_quote'), f.get('target_quote')) not in corrected]
+    if record is not None and scales:
+        record({'stage': 'exact_scale', 'changes': scales})
+    result = (repair_flagged_translation_split(job, rows, flags, target_key=target_key, target_language=target_language, record=record)
+              if flags else [dict(row) for row in rows])
     before = {row['id']: row for row in rows}
     known = {(flag['id'], flag.get('reason')) for flag in deterministic_flags(rows, target_key)}
     introduced = sorted({flag['id'] for flag in deterministic_flags(result, target_key) if (flag['id'], flag.get('reason')) not in known})
@@ -4590,6 +4780,11 @@ def cluster_windows(flags, rows, size=12):
 EXTRA_REPAIR_ROUNDS = 3
 
 
+def cluster_refused_targets(before, flagged_ids):
+    """Only actually flagged wordings were rejected; clean neighbours may be reused."""
+    return {row_id: [text] for row_id, text in before.items() if row_id in flagged_ids}
+
+
 def review_and_save_translation(job, rows, *, target_key='sv', target_language='Swedish', final=False):
     """Keep the exact candidate and decision, including rejected translations.
 
@@ -4651,15 +4846,17 @@ def review_and_save_translation(job, rows, *, target_key='sv', target_language='
             block_ids = {row_id for window in windows for row_id in window['ids']}
             subset = [row for row in rows if row['id'] in block_ids]
             before = {row['id']: row[target_key] for row in candidate if row['id'] in block_ids}
+            refused = cluster_refused_targets(before, in_clusters)
             fresh = translate(job, [{key: value for key, value in row.items() if key != target_key} for row in subset], target_key=target_key,
-                              target_language=target_language, refused={row_id: [text] for row_id, text in before.items()},
+                              target_language=target_language, refused=refused,
                               context_rows=[dict(row) for row in candidate])
             replaced = {row['id']: row[target_key] for row in fresh}
             for row in candidate:
                 if row['id'] in replaced:
                     row[target_key] = replaced[row['id']]
             check = []
-            payload.setdefault('cluster_retranslation', []).append({'ids': sorted(block_ids), 'before': before})
+            payload.setdefault('cluster_retranslation', []).append({'ids': sorted(block_ids), 'before': before,
+                                                                   'refused_ids': sorted(refused)})
             assess_translation_quality(candidate, audit=check, target_key=target_key, target_language=target_language, whole_file=True, only_ids=block_ids)
             payload.setdefault('cluster_review', []).extend(check)
             save()
@@ -4950,14 +5147,134 @@ def reread_language(job, rows):
     return heard.most_common(1)[0][0] if heard else None
 
 
+def reread_row_language(job, rows, row):
+    # A filename-derived default can have an independently verified local
+    # exception. The boundary helper rejects explicit/manual language policies.
+    verified = local_language_override(job, row)
+    if verified:
+        return verified
+    language = reread_language(job, rows)
+    local = window_language(job.get('audio_choice'), max(0., float(row['start']) - .3), float(row['end']) + .3)
+    if (job.get('language_policy') or {}).get('effective_language'):
+        return local or language
+    if (row.get('confirmed_language') and row.get('confirmed_source_words')
+            == normalized(row.get('source', '')).split()):
+        return row['confirmed_language']
+    return local or language
+
+
+def read_bounded_reread_windows(job, media, windows, language=None):
+    """Existing models, two bounded windows, no candidate words in any request."""
+    release_language_model_before_asr()
+    result=[]
+    with tempfile.TemporaryDirectory(prefix='subsynq-reread-boundaries-') as folder:
+        clips=[]
+        for i,(a,b) in enumerate(windows):
+            if not 0<=a<b or b-a>12:
+                raise ValueError('Ogiltigt begränsat omläsningsfönster')
+            clip=Path(folder)/f'{i}.wav'
+            subprocess.run(['ffmpeg','-v','error','-ss',str(a),'-i',str(media),'-t',str(b-a),'-map',audio_map(job),
+                '-ac','1','-ar','16000','-c:a','pcm_s16le','-y',str(clip)],capture_output=True,timeout=90,check=True)
+            clips.append(clip)
+        for name,model_name in (('precision','large-v3'),('v2','large-v2')):
+            model=WhisperModel(model_name,device='cpu',compute_type='int8',cpu_threads=6,download_root='/models',local_files_only=True)
+            try:
+                for i,clip in enumerate(clips):
+                    check_cancelled(job['id'])
+                    segments,info=model.transcribe(str(clip),language=language,multilingual=language is None,beam_size=5,
+                        temperature=0,condition_on_previous_text=False,word_timestamps=True,vad_filter=False,hallucination_silence_threshold=2)
+                    segments=list(segments);offset=windows[i][0]
+                    result.append(dict(name=name,window=i,text=' '.join(s.text.strip() for s in segments),
+                        language=info.language,language_probability=float(info.language_probability or 0),
+                        confidence=sum(math.exp(s.avg_logprob) for s in segments)/len(segments) if segments else 0,
+                        words=[dict(word=w.word,start=offset+float(w.start),end=offset+float(w.end),probability=float(w.probability))
+                               for s in segments for w in s.words or []]))
+            finally:
+                del model;gc.collect();trim_cpu_allocator()
+        if qwen_health():
+            try:
+                hint=next((n.title() for n,c in QWEN_TO_WHISPER.items() if c==language),None) if language else None
+                for i,clip in enumerate(clips):
+                    check_cancelled(job['id'])
+                    heard=qwen_identify(clip,hint,attempts=1)
+                    result.append(dict(name='qwen',window=i,text=heard['text'],language=heard.get('language'),confidence=.5))
+            finally:
+                if release_cloud_gpu_memory() is None:
+                    qwen_unload()
+    return result
+
+
+def probe_local_reread_languages(job, media, rows, ids):
+    evidence=job.setdefault('reread_language_evidence',[])
+    attempted=job.setdefault('reread_language_attempted',[])
+    for plan in language_group_plans(job,rows,ids):
+        key=[r['id'] for r in plan['rows']]
+        if key in attempted or len(attempted)>=2:
+            continue
+        attempted.append(key)
+        readings=read_bounded_reread_windows(job,media,plan['windows'])
+        code=confirmed_group_language(plan,readings)
+        evidence.append(dict(plan=plan,readings=readings,language=code,source_words_approved=False))
+
+
+def reread_kana_rows(job, media, rows, records):
+    attempted=job.setdefault('kana_reread_attempted',[])
+    for record in records:
+        row=next(r for r in rows if r['id']==record['id'])
+        qwen=next((r for r in record['readings'] if r['name']=='qwen'),None)
+        if (not qwen or not kana_slot(row['source'],qwen['text']) or row.get('confirmed_source_words')
+                or row['id'] in attempted or len(attempted)>=4):
+            continue
+        attempted.append(row['id'])
+        a=float(row['start']);b=float(row.get('reading_time_source_end',row['end']))
+        # The original padded reading stays in the proof. Only the second
+        # window starts at the cue itself, after the possible preceding speech.
+        index=rows.index(row)
+        neighbours=rows[max(0,index-1):index]+rows[index+1:index+2]
+        end=min([b+.3]+[n['start']-.04 for n in neighbours if n['start']>=b])
+        cropped=read_bounded_reread_windows(job,media,[(a,end)],reread_row_language(job,rows,row))
+        readings=[dict(r,window=0) for r in record['readings']]+[dict(r,window=1) for r in cropped]
+        text,proof=confirmed_kana_insertion(row,readings,neighbours)
+        record['kana_insertion']=dict(applied=bool(text),readings=readings,proof=proof)
+        if text:
+            record.update(decision='ersatt',candidate=text)
+            row.update(source=text,confirmed_source_words=normalized(text).split(),confirmed_language='ja')
+            row.pop('source_unclear',None)
+
+
+def redistribute_reread_groups(job, rows):
+    """Redistribute existing text only, after all ordinary word choices finish."""
+    changed=[]
+    by_id={r['id']:r for r in rows}
+    for evidence in job.get('reread_language_evidence') or []:
+        plan=evidence['plan']
+        if any(r['id'] not in by_id or any(by_id[r['id']].get(k)!=r[k] for k in ('source','start','end')) for r in plan['rows']):
+            continue
+        partition=confirmed_group_partition(plan,evidence['readings'])
+        if not partition or any(local_language_override(job,by_id[r['id']])!=partition['language'] for r in plan['rows']):
+            continue
+        old=[dict(by_id[r['id']]) for r in plan['rows']]
+        for i,replacement in enumerate(partition['rows']):
+            row=by_id[replacement['id']]
+            row.update({k:replacement[k] for k in ('source','start','end')})
+            if i==0:
+                row.pop('reading_time_source_end',None)
+            record=next((r for r in job['reread_rows'] if r['id']==row['id']),None)
+            if record is not None:
+                record.update(initial_decision=record['decision'],decision='omfördelad efter bekräftad ordgräns',
+                              candidate=row['source'],previous_start=old[i]['start'],previous_end=old[i]['end'],
+                              start=row['start'],end=row['end'],group_partition=partition)
+            changed.append(row['id'])
+        job.setdefault('reread_group_partitions',[]).append(dict(before=old,proof=partition))
+    return changed
+
+
 def reread_readings(job, media, rows, ids):
     """Read the audio behind each row once more, tightly (the row's time ± 0.3 s), with Whisper large-v3, Whisper large-v2 and Qwen3-ASR:
     {row id: [{'name', 'text', 'confidence'}]} with the pass names the transcript's family vote uses ('precision', 'v2', 'qwen'). A reader that
     is missing or fails gives no reading; the clips are tight because a longer window brings in the neighbouring lines (measured, STATUS natt 40)."""
-    language = reread_language(job, rows)
     by_id = {row['id']: row for row in rows}
-    languages = {row_id: window_language(job.get('audio_choice'), max(0.0, float(by_id[row_id]['start']) - .3),
-                                         float(by_id[row_id]['end']) + .3) or language for row_id in ids}
+    languages = {row_id: reread_row_language(job, rows, by_id[row_id]) for row_id in ids}
     readings = {row_id: [] for row_id in ids}
     # The previous translator/reviewer also occupies the rented GPU. Require
     # its unload acknowledgement BEFORE either rereader can load (jobs 160/164:
@@ -4980,10 +5297,14 @@ def reread_readings(job, media, rows, ids):
                 continue
             try:
                 def read(row_id, forced):
-                    segments, info = model.transcribe(str(clips[row_id]), language=forced, beam_size=5, condition_on_previous_text=False, temperature=0)
+                    segments, info = model.transcribe(str(clips[row_id]), language=forced, beam_size=5, condition_on_previous_text=False, temperature=0,
+                                                      word_timestamps=True)
                     segments = list(segments)
+                    start = max(0., float(by_id[row_id]['start']) - .3)
+                    words = [{'word': w.word, 'start': start + w.start, 'end': start + w.end, 'probability': w.probability}
+                             for s in segments for w in (getattr(s, 'words', None) or [])]
                     return (' '.join(segment.text.strip() for segment in segments).strip(),
-                            sum(math.exp(segment.avg_logprob) for segment in segments) / len(segments) if segments else 0.0, info)
+                            sum(math.exp(segment.avg_logprob) for segment in segments) / len(segments) if segments else 0.0, info, words)
                 heard = {}
                 for row_id in clips:
                     check_cancelled(job['id'])
@@ -4991,16 +5312,17 @@ def reread_readings(job, media, rows, ids):
                 # Retain the old rescue of a WEAK language guess only when at
                 # least two strong, unhinted clips agree and none contradicts.
                 # A heard local language or a confident code switch never votes away.
-                strong = [info.language for row_id, (_, _, info) in heard.items()
+                strong = [info.language for row_id, (_, _, info, _) in heard.items()
                           if languages[row_id] is None and getattr(info, 'language_probability', 0) >= .8]
                 if len(strong) >= 2 and len(set(strong)) == 1:
-                    for row_id, (_, _, info) in list(heard.items()):
+                    for row_id, (_, _, info, _) in list(heard.items()):
                         if (languages[row_id] is None and getattr(info, 'language_probability', 0) < .5
                                 and info.language != strong[0]):
                             heard[row_id] = read(row_id, strong[0])
-                for row_id, (text, confidence, _) in heard.items():
+                for row_id, (text, confidence, info, words) in heard.items():
                     if text:
-                        readings[row_id].append({'name': name, 'text': text, 'confidence': confidence})
+                        readings[row_id].append({'name': name, 'text': text, 'confidence': confidence, 'words': words,
+                            'language': info.language, 'language_probability': getattr(info, 'language_probability', 0)})
             finally:
                 del model
                 gc.collect()
@@ -5009,14 +5331,30 @@ def reread_readings(job, media, rows, ids):
             try:
                 for row_id, clip in clips.items():
                     check_cancelled(job['id'])
-                    hint = next((name.title() for name, code in QWEN_TO_WHISPER.items() if code == languages[row_id]), None)
+                    # Specialist checkpoints (currently Tamil) are deliberately
+                    # absent from the official model's language table. Keep the
+                    # same routing as the first reading instead of asking the
+                    # base model to guess an unsupported language on a short clip.
+                    hint = QWEN_LANGUAGE_HINTS.get(languages[row_id]) or next(
+                        (name.title() for name, code in QWEN_TO_WHISPER.items() if code == languages[row_id]), None)
                     try:
-                        text = qwen_identify(clip, hint)['text']
+                        identified = qwen_identify(clip, hint)
+                        text = identified['text']
                     except (RuntimeError, OSError, ValueError, KeyError, http.client.HTTPException) as error:
                         print(f'VARNING: Qwen läste inte om rad {row_id}: {error!r}', flush=True)
                         continue
                     if text:
-                        readings[row_id].append({'name': 'qwen', 'text': text, 'confidence': .5})
+                        readings[row_id].append({'name': 'qwen', 'text': text, 'confidence': .5, 'language': identified.get('language')})
+                        if interior_insertion_slot(by_id[row_id]['source'], readings[row_id]) is not None:
+                            try:
+                                aligned = qwen_transcribe(clip, hint, attempts=1)
+                                if normalized(aligned.get('text', '')) == normalized(text):
+                                    offset = max(0., float(by_id[row_id]['start']) - .3)
+                                    readings[row_id][-1]['words'] = [
+                                        {'word': w['text'], 'start': offset + w['start'], 'end': offset + w['end']}
+                                        for w in aligned.get('items', [])]
+                            except (RuntimeError, OSError, ValueError, KeyError, http.client.HTTPException) as error:
+                                print(f'VARNING: inget tidsbelägg för ordtillägg på rad {row_id}: {error!r}', flush=True)
             except (RuntimeError, OSError, ValueError, KeyError, http.client.HTTPException) as error:
                 print(f'VARNING: Qwen läste inte om: {error!r}', flush=True)
             finally:
@@ -5026,6 +5364,61 @@ def reread_readings(job, media, rows, ids):
                 except Exception:
                     pass
     return readings
+
+
+def reread_foreign_context(job, media, rows, records):
+    """At most four short wrong-script cases; no text or forced language in ASR input."""
+    by_id = {r['id']: r for r in rows}
+    used = job.setdefault('foreign_context_attempted', [])
+    plans = []
+    for record in records:
+        row = by_id[record['id']]
+        if record['id'] in used or len(used) >= 4 or reread_row_language(job, rows, row):
+            continue
+        qwen = next((r for r in record['readings'] if r['name']=='qwen'), {})
+        plan = foreign_context_plan(rows, record, whisper_language(qwen.get('language')))
+        if plan:
+            used.append(record['id'])
+            plans.append(plan)
+    if not plans:
+        return {}
+    release_language_model_before_asr()
+    results = {p['id']: [] for p in plans}
+    with tempfile.TemporaryDirectory(prefix='subsynq-language-context-') as folder:
+        clips = {}
+        for plan in plans:
+            for i, (start, end) in enumerate(plan['windows']):
+                clip = Path(folder)/f"{plan['id']}-{i}.wav"
+                subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(start), '-i', str(media), '-t', str(end-start),
+                    '-map', audio_map(job), '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip)],
+                    capture_output=True, timeout=90, check=True)
+                clips[plan['id'], i] = clip
+        for name, model_name in (('precision', 'large-v3'), ('v2', 'large-v2')):
+            model = WhisperModel(model_name, device='cpu', compute_type='int8', cpu_threads=6,
+                                 download_root='/models', local_files_only=True)
+            try:
+                for plan in plans:
+                    for i, (start, _) in enumerate(plan['windows']):
+                        check_cancelled(job['id'])
+                        segments, info = model.transcribe(str(clips[plan['id'], i]), language=None, multilingual=True,
+                            beam_size=5, temperature=0, condition_on_previous_text=False, word_timestamps=True,
+                            vad_filter=False, hallucination_silence_threshold=2)
+                        decoded = [dict(start=float(s.start), end=float(s.end), text=s.text, words=[
+                            dict(start=float(w.start), end=float(w.end), word=w.word, probability=float(w.probability))
+                            for w in s.words or []]) for s in segments]
+                        results[plan['id']].append(dict(name=name, window=i, **foreign_context_reading(
+                            plan, decoded, start, info.language, float(info.language_probability or 0))))
+            finally:
+                del model
+                gc.collect()
+                trim_cpu_allocator()
+    replacements = {}
+    for plan in plans:
+        result = foreign_context_replacement(by_id[plan['id']]['source'], plan, results[plan['id']])
+        job.setdefault('foreign_context_readings', []).append(dict(plan=plan, readings=results[plan['id']], applied=bool(result)))
+        if result:
+            replacements[plan['id']] = (result, plan)
+    return replacements
 
 
 def reread_flagged_rows(job, rows, ids, *, reader=None):
@@ -5040,6 +5433,13 @@ def reread_flagged_rows(job, rows, ids, *, reader=None):
     media = job.get('media_path')
     if not media or not Path(media).exists():
         return []
+    if reader is None:
+        try:
+            probe_local_reread_languages(job,Path(media),rows,ids)
+        except JobCancelled:
+            raise
+        except (RuntimeError,OSError,ValueError,TypeError,KeyError,subprocess.SubprocessError) as error:
+            job['reread_language_error']=str(error)[:300]
     try:
         readings = (reader or reread_readings)(job, Path(media), rows, ids)
     except JobCancelled:
@@ -5053,12 +5453,63 @@ def reread_flagged_rows(job, rows, ids, *, reader=None):
         if row['id'] not in readings:
             continue
         text, record = agreed_replacement(row['source'], [{**reading, 'name': reading['name']} for reading in readings[row['id']]])
+        if text is None and record['decision'] in ('liknande text med olika ord', 'nuvarande text passar läsningarna nästan lika bra'):
+            index = rows.index(row)
+            neighbours = rows[max(0, index-1):index] + rows[index+1:index+2]
+            text, insertion = confirmed_interior_insertion(row, readings[row['id']], neighbours)
+            if text:
+                record.update(decision='ersatt', candidate=text, interior_insertion=insertion)
+        if text:
+            clipped = clipped_prefix_evidence(row, text, readings[row['id']])
+            if clipped:
+                record.update(decision='omläsningen tappar prefix vid klippstart', candidate=text, clipped_prefix=clipped)
+                text=None
+        if text:
+            index=rows.index(row)
+            previous=rows[index-1]['source'] if index else ''
+            following=rows[index+1]['source'] if index+1<len(rows) else ''
+            if repeats_neighbour(text,row['source'],previous,following):
+                record.update(decision='omläsningen innehåller redan skrivna grannord',candidate=text)
+                text=None
         record.update(id=row['id'], start=row['start'], end=row['end'])
+        if local_language_override(job,row):
+            record['local_language']=local_language_override(job,row)
         job['reread_rows'].append(record)
         if text:
+            if record.get('interior_insertion'):
+                row['confirmed_source_words'] = sorted(set(row.get('confirmed_source_words') or []) | {record['interior_insertion']['word']})
             row['source'] = text
             row.pop('source_unclear', None)
             changed.append(row['id'])
+    if reader is None:
+        try:
+            records=[r for r in job['reread_rows'] if r['id'] not in changed]
+            reread_kana_rows(job,Path(media),rows,records)
+            changed.extend(r['id'] for r in records if r['decision']=='ersatt')
+        except JobCancelled:
+            raise
+        except (RuntimeError,OSError,ValueError,TypeError,KeyError,subprocess.SubprocessError) as error:
+            job['kana_reread_error']=str(error)[:300]
+        try:
+            replacements = reread_foreign_context(job, Path(media), rows, [r for r in job['reread_rows'] if r['id'] not in changed])
+        except JobCancelled:
+            raise
+        except (RuntimeError, OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
+            job['foreign_context_error'] = str(error)[:300]
+            replacements = {}
+        for row in rows:
+            if row['id'] not in replacements:
+                continue
+            (text, evidence, start, end), plan = replacements[row['id']]
+            record = next(r for r in job['reread_rows'] if r['id']==row['id'])
+            context = next(r for r in job['foreign_context_readings'] if r['plan']['id']==row['id'])
+            record.update(decision='ersatt', candidate=text, foreign_context={**context, 'agreement': evidence},
+                          previous_start=row['start'], previous_end=row['end'], start=start, end=end)
+            row.update(source=text, start=start, end=end, confirmed_source_words=normalized(text).split(), confirmed_language=plan['language'])
+            row.pop('reading_time_source_end', None)
+            row.pop('source_unclear', None)
+            changed.append(row['id'])
+        changed.extend(redistribute_reread_groups(job,rows))
     print(f'Omläsning: {len(job["reread_rows"])} rad(er) lästa om, {len(changed)} ändrade: {changed}', flush=True)
     return changed
 
@@ -5811,6 +6262,8 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
         note += f' · {job["timing_refinement"]["changed"]} starttider flyttades fram till talets början'
     if (job.get('reading_time') or {}).get('sv'):
         note += f' · {len(job["reading_time"]["sv"])} rader fick längre lästid'
+    if (job.get('code_switch_checks') or {}).get('changed'):
+        note += f' · {len(job["code_switch_checks"]["changed"])} repliker rättades efter kontroll av språkbyte'
     if (job.get('dub_bed') or {}).get('removed'):
         count = len(job['dub_bed']['removed'])
         note += f' · {count} bakgrundsrad{"" if count == 1 else "er"} (finns oförändrad i det dubbade spåret) togs bort'
@@ -6194,6 +6647,7 @@ def main():
             set_hardware(False, message, health=gpu_health())
         finally:
             finish_model_job(job['id'])
+            emergency_subtitle(job)
 
 
 if __name__ == '__main__':

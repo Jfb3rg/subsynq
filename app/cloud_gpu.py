@@ -475,7 +475,7 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
             info = tarfile.TarInfo(name=path.rsplit("/", 1)[1])
             info.size, info.mode, info.mtime = len(data), 0o600, 0
             bundle.addfile(info, io.BytesIO(data))
-    encoded = base64.encodebytes(archive.getvalue()).decode("ascii")
+    encoded = base64.b64encode(archive.getvalue()).decode("ascii") + "\n"
     parts = ["mkdir -p /root\numask 077\n",
              f"base64 -d > /root/bundle.tgz <<'SUBSYNQ_BUNDLE_EOF'\n{encoded}SUBSYNQ_BUNDLE_EOF\n",
              "tar -xzf /root/bundle.tgz -C /root && rm -f /root/bundle.tgz\n"]

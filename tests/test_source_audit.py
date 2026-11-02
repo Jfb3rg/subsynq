@@ -8,6 +8,41 @@ import worker
 
 
 class SourceAuditTests(unittest.TestCase):
+    def test_saved_kana_alternative_reaches_audio_check_even_when_text_auditor_says_clear(self):
+        rows=[{'id':5,'start':31.07,'end':32.07,'source':'振切れません'}]
+        job={'id':-1,'source_choices':[{'id':5,'from':rows[0]['source'],'applied':False,
+                                      'choice':'A','a_has_error':False,'candidates':['振切れません','振り切れません!']}]}
+        def reread(job, rows, ids):
+            self.assertEqual(ids,[5])
+            rows[0]['source']='振り切れません'
+            job['reread_rows']=[]
+            return [5]
+        with patch.object(worker,'REREAD_ENABLED',True), \
+                patch.object(worker,'_audit_source_chunk',return_value=([],False,'')), \
+                patch.object(worker,'reread_flagged_rows',side_effect=reread) as check, \
+                patch.object(worker,'update_job'):
+            self.assertEqual(worker.assess_source_with_reread(job,rows),[])
+        check.assert_called_once()
+        self.assertEqual(job['source_reread']['kana_review_candidates'],[5])
+
+    def test_kana_planner_never_approves_words_and_rejects_stale_protected_or_non_kana_candidates(self):
+        rows=[{'id':5,'source':'振切れません'}]
+        decision={'id':5,'from':'振切れません','applied':False,'candidates':['振り切れません!']}
+        with patch.object(worker,'REREAD_ENABLED',True):
+            self.assertEqual(worker.kana_review_ids({'source_choices':[decision]},rows),[5])
+            for changes in ({'from':'changed'},{'applied':True},{'candidates':['振切れます']}, {'candidates':None}):
+                self.assertEqual(worker.kana_review_ids({'source_choices':[{**decision,**changes}]},rows),[])
+            self.assertEqual(worker.kana_review_ids({'source_choices':[decision]},[{**rows[0],'confirmed_source_words':['protected']}]),[])
+        with patch.object(worker,'REREAD_ENABLED',False):
+            self.assertEqual(worker.kana_review_ids({'source_choices':[decision]},rows),[])
+
+    def test_kana_plan_has_four_row_budget_without_changing_source(self):
+        rows=[{'id':i,'source':'振切れません'} for i in range(8)]
+        choices=[{'id':r['id'],'from':r['source'],'applied':False,'candidates':['振り切れません']} for r in rows]
+        with patch.object(worker,'REREAD_ENABLED',True):
+            self.assertEqual(worker.kana_review_ids({'source_choices':choices},rows),[0,1,2,3])
+        self.assertTrue(all(r['source']=='振切れません' for r in rows))
+
     def setUp(self):
         self.rows = [{'id': index, 'source': text} for index, text in enumerate(
             ['मैं घर जा रहा हूँ।', 'वह कल आएगा।', 'यह मेरी कहानी है।'])]
@@ -59,6 +94,80 @@ class SourceAuditTests(unittest.TestCase):
         request = model.call_args.args[0]
         self.assertIsNone(json.loads(request['prompt'])['filename_language_hint'])
         self.assertEqual(request['format']['properties']['language_mismatch']['enum'], [False])
+
+    def test_mixed_language_findings_are_never_filtered_or_approved_by_language(self):
+        rows = [{'id': i, 'source': text} for i, text in enumerate(
+            ['Wir drehen einen Film.', 'I the the the the the.', 'Ich der die das Film.'])]
+        with patch.object(worker, 'call_ollama', return_value=self.answer([1, 2])):
+            broken = []
+            with self.assertRaises(worker.BrokenSourceRows):
+                worker.assess_source_quality(rows, broken=broken)
+            self.assertEqual(broken, [1, 2])
+
+    def test_small_mixed_language_finding_still_reaches_acoustic_rereading(self):
+        rows = [{'id': i, 'source': text} for i, text in enumerate(
+            ['Wir drehen einen Film.', 'I want to join you.', 'Ich will auch in den Film.', 'Film?'])]
+        with patch.object(worker, 'call_ollama', return_value=self.answer([2])), \
+                patch.object(worker, 'reread_flagged_rows', return_value=[]) as reread, \
+                patch.object(worker, 'update_job'):
+            self.assertEqual(worker.assess_source_with_reread({'id': -1}, rows), [2])
+        reread.assert_called_once_with(unittest.mock.ANY, rows, [2])
+
+    def test_verified_language_context_never_filters_word_findings_or_changes_source(self):
+        context = {'base_language':'de', 'verified_local_languages':{'1':'en','99':'fr'},
+                   'source_words_approved':False}
+        with patch.object(worker,'call_ollama',return_value=self.answer([1])) as model:
+            bad, mismatch, reason = worker._audit_source_chunk(self.rows,'',language_context=context)
+        self.assertEqual(bad,[1])
+        prompt=json.loads(model.call_args.args[0]['prompt'])
+        self.assertEqual(prompt['rows'],self.rows)
+        self.assertEqual(prompt['acoustic_language_context']['verified_local_languages'],{'1':'en'})
+        self.assertFalse(prompt['acoustic_language_context']['source_words_approved'])
+        self.assertEqual(context['verified_local_languages'],{'1':'en','99':'fr'})
+
+    def test_verified_context_is_forwarded_to_both_source_reviewers_without_threshold_changes(self):
+        context={'base_language':'de','verified_local_languages':{'1':'en'},'source_words_approved':False}
+        rows=[{'id':i,'source':'A source sentence.'} for i in range(6)]
+        broken=[]
+        with patch.object(worker,'_audit_source_chunk',side_effect=lambda chunk,*a,**kw: ([1] if any(r['id']==1 for r in chunk) else [],False,'bad')), \
+                patch.object(worker,'audit_short_source_quality') as short:
+            self.assertTrue(worker.assess_source_quality(rows,'German.mp4',broken=broken,language_context=context))
+        self.assertEqual(broken,[1])
+        self.assertEqual(short.call_args.kwargs['language_context'],context)
+        with patch.object(worker,'_audit_source_chunk',side_effect=lambda chunk,*a,**kw: ([r['id'] for r in chunk if r['id'] in (1,2,3)],False,'bad')):
+            with self.assertRaises(worker.BrokenSourceRows):
+                worker.assess_source_quality(rows,language_context=context)
+
+    def test_only_verified_language_edges_split_and_all_rows_keep_their_order(self):
+        rows=[{'id':i,'source':str(i)} for i in range(8)]
+        context={'base_language':'de','verified_local_languages':{'2':'en','3':'en'}}
+        chunks=worker.source_audit_chunks(rows,context,size=3)
+        self.assertEqual([[r['id'] for r in chunk] for chunk in chunks],[[0,1],[2,3],[4,5,6],[7]])
+        self.assertEqual([r for chunk in chunks for r in chunk],rows)
+        self.assertEqual(worker.source_audit_chunks(rows),[rows])
+
+    def test_local_switch_chunk_drops_only_global_hint_and_keeps_all_findings(self):
+        rows=[{'id':i,'source':'A source sentence.'} for i in range(8)]
+        context={'base_language':'de','verified_local_languages':{'2':'en','3':'en'}}
+        def audit(chunk,*args,**options):
+            return ([2] if chunk[0]['id']==2 else []),False,'bad'
+        with patch.object(worker,'_audit_source_chunk',side_effect=audit) as model, \
+                patch.object(worker,'audit_short_source_quality'):
+            broken=[]
+            self.assertTrue(worker.assess_source_quality(rows,'German.mp4',broken=broken,language_context=context))
+        self.assertEqual(broken,[2])
+        self.assertEqual([c.kwargs['use_filename_hint'] for c in model.call_args_list],[True,False,True])
+
+    def test_short_audit_counts_findings_over_the_whole_input_not_each_language_group(self):
+        rows=[{'id':i,'source':'A source sentence.'} for i in range(12)]
+        context={'base_language':'de','verified_local_languages':{'2':'en','3':'en'}}
+        def audit(chunk,*args):
+            return [r['id'] for r in chunk if r['id'] in (2,3)],'Two broken cues.'
+        with patch.object(worker,'_audit_short_source_chunk',side_effect=audit) as model:
+            broken=[]
+            self.assertTrue(worker.audit_short_source_quality(rows,'de',broken=broken,language_context=context))
+        self.assertEqual(broken,[2,3])
+        self.assertEqual([c.args[1] for c in model.call_args_list],['de','en','de'])
 
 
 class LanguageMismatchEvidenceTests(unittest.TestCase):

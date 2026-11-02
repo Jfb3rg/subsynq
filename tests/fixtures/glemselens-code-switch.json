@@ -1,0 +1,178 @@
+{
+  "rows": [
+    {
+      "start": 120.355,
+      "end": 122.375,
+      "text": "Vi skal hjem.",
+      "confidence": 0.95703125,
+      "words": [
+        {
+          "start": 120.435,
+          "end": 120.955,
+          "text": "Vi",
+          "probability": 0.95703125
+        },
+        {
+          "start": 120.955,
+          "end": 121.475,
+          "text": "skal",
+          "probability": 0.9990234375
+        },
+        {
+          "start": 121.475,
+          "end": 122.295,
+          "text": "hjem.",
+          "probability": 0.997314453125
+        }
+      ]
+    },
+    {
+      "start": 124.96,
+      "end": 126.16,
+      "text": "grønn og vann",
+      "confidence": 0.4867350260416667
+    },
+    {
+      "start": 127.16,
+      "end": 128.52,
+      "text": "Å nei!",
+      "confidence": 0.560546875,
+      "words": [
+        {
+          "start": 127.24,
+          "end": 127.84,
+          "text": "Å",
+          "probability": 0.560546875
+        },
+        {
+          "start": 127.84,
+          "end": 128.44,
+          "text": "nei!",
+          "probability": 0.6484375
+        }
+      ]
+    }
+  ],
+  "qwen": [
+    {
+      "start": 124.66,
+      "end": 126.46,
+      "text": "Forget about me.",
+      "confidence": 0.5
+    }
+  ],
+  "records": [
+    {
+      "row": 1,
+      "window": 0,
+      "family": "v3",
+      "language": "en",
+      "language_probability": 0.9677427411079407,
+      "text": "Forget about me",
+      "words": [
+        {
+          "text": "Forget",
+          "start": 124.46,
+          "end": 125.22,
+          "probability": 0.7603242993354797
+        },
+        {
+          "text": "about",
+          "start": 125.22,
+          "end": 125.8,
+          "probability": 0.9931033849716187
+        },
+        {
+          "text": "me",
+          "start": 125.8,
+          "end": 126.1,
+          "probability": 0.998027503490448
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "window": 1,
+      "family": "v3",
+      "language": "en",
+      "language_probability": 0.9408458471298218,
+      "text": "Forget about me",
+      "words": [
+        {
+          "text": "Forget",
+          "start": 124.26,
+          "end": 125.24000000000001,
+          "probability": 0.7241999506950378
+        },
+        {
+          "text": "about",
+          "start": 125.24000000000001,
+          "end": 125.80000000000001,
+          "probability": 0.9920879006385803
+        },
+        {
+          "text": "me",
+          "start": 125.80000000000001,
+          "end": 126.12,
+          "probability": 0.9976323843002319
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "window": 0,
+      "family": "v2",
+      "language": "en",
+      "language_probability": 0.9112677574157715,
+      "text": "Forget about me",
+      "words": [
+        {
+          "text": "Forget",
+          "start": 124.46,
+          "end": 125.52,
+          "probability": 0.6607420444488525
+        },
+        {
+          "text": "about",
+          "start": 125.52,
+          "end": 125.97999999999999,
+          "probability": 0.8228448629379272
+        },
+        {
+          "text": "me",
+          "start": 125.97999999999999,
+          "end": 126.36,
+          "probability": 0.9002370834350586
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "window": 1,
+      "family": "v2",
+      "language": "en",
+      "language_probability": 0.8744367361068726,
+      "text": "Forget about me",
+      "words": [
+        {
+          "text": "Forget",
+          "start": 124.26,
+          "end": 125.5,
+          "probability": 0.6257812976837158
+        },
+        {
+          "text": "about",
+          "start": 125.5,
+          "end": 125.94000000000001,
+          "probability": 0.8253371715545654
+        },
+        {
+          "text": "me",
+          "start": 125.94000000000001,
+          "end": 126.34,
+          "probability": 0.913702130317688
+        }
+      ]
+    }
+  ]
+}

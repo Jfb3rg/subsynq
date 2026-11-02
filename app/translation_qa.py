@@ -3,6 +3,7 @@
 import math
 import re
 import unicodedata
+from numeral_scale import numeral_scale_flags
 
 
 UNTRANSLATED_MARKERS = {
@@ -554,6 +555,28 @@ IMPERIAL_UNITS = {
 _NUMBER = r'(\d+(?:[.,]\d+)?|' + '|'.join(_NUMBER_WORDS) + r')'
 
 SWEDISH_MEANING_RULE = (
+    'Preserve numeric scales without exchanging currencies: one crore (கோடி, करोड़) is ten million; '
+    'one lakh (लाख) is one hundred thousand. Convert the count to Swedish miljoner/miljarder '
+    'with the same value, e.g. 500 crore = 5 miljarder, never 500 miljarder. '
+    'Present counterfactual wishes keep their time reference: "I wish we had time" is '
+    '"jag önskar att vi hade tid", not "hade haft tid" (a past missed opportunity). '
+    '"I wish we had had time" can correctly use "hade haft tid". '
+    'A participial phrase can continue the preceding cue: after "you were arrested", '
+    '"wearing ..." describes the person, not a new abstract subject. An independent '
+    'correction "technically it is a dress" identifies the garment, not the action '
+    'of wearing it. Continue the person description with wording such as "iklädd ...", '
+    'not a nominalized "att bära ...". Separate the corrective statement into its own '
+    'sentence: "Iklädd en kjol. Tekniskt sett är det en klänning." Do not attach '
+    '"iklädd" to "det är en klänning": the person is dressed, not the garment. '
+    'Never make the wearing itself a garment. '
+    'In the Tamil pairing சூதும் போதையும், சூது means gambling, not heat: Swedish spel/hasardspel. '
+    'Do not confuse it with the different word சூடு (heat), or infer magic from this pairing. '
+    'An explicit exclamation "wow" (also Tamil வாவ்) expresses surprise or admiration. '
+    'Do not turn it into a second command to come. Preserve an adjacent call to come '
+    'as well as the exclamation; these are distinct words, not a repeated imperative. '
+    'For a single call plus wow, use one call and one exclamation, e.g. "Kom, wow!"; '
+    'neither "Wow!" alone nor a repeated command preserves both. Do not keep both '
+    'old occurrences of "kom" and merely add "wow" to the faulty repetition. '
     'Resolve word senses from the source and its neighbors before translating or converting units. '
     'Caribou as an animal is ren in Swedish (plural renar, herd renhjord, hunting renjakt, '
     'tracks renspår); do not leave karibu/caribou or confuse tracks with droppings. '
@@ -645,10 +668,48 @@ def swedish_context_flags(rows, target_key='sv'):
     if target_key != 'sv':
         return []
     flags = []
-    for row in rows:
+    for index, row in enumerate(rows):
         source, target = str(row.get('source', '')), str(row.get('sv') or '')
         s, t = source.casefold(), target.casefold()
         findings = []
+        wow = re.search(r'(?<![\w\u0B80-\u0BFF])(?:wow|வாவ்)(?![\w\u0B80-\u0BFF])', source, re.I)
+        come_repeat = r'\bkom(?:\s+igen)?(?:\s*[,!.…-]+\s*|\s+)kom(?:\s+igen)?\b'
+        repeated_come = re.fullmatch(r'\s*' + come_repeat + r'\s*[!.…]*\s*', target, re.I)
+        single_call_wow = re.fullmatch(r'\s*(?:வாடா[\s,!.-]+வாவ்|come[\s,!.-]+wow|wow[\s,!.-]+come)[\s.!?…]*', source, re.I)
+        added_wow_to_repeat = single_call_wow and re.search(come_repeat, target, re.I)
+        lost_call = single_call_wow and re.fullmatch(r'\s*(?:wow|oj|åh|ah|aha)[\s.!?…]*', target, re.I)
+        if wow and (repeated_come or added_wow_to_repeat or lost_call):
+            findings.append((single_call_wow.group() if single_call_wow else wow.group(), target,
+                'Ett uttryckligt wow är ett utrop av förvåning eller beundran, inte en andra uppmaning att komma. '
+                'Bevara både utropet och eventuell separat uppmaning i källan.'))
+        garment_correction = re.search(r"\bwearing\b[^.!?]{0,100}\b(?:technically|actually)\s+it(?:['’]s|\s+is)\s+(?:a|an)\s+(?:dress|skirt|coat|shirt|hat)\b", source, re.I)
+        action_as_garment = re.search(r'\batt\s+(?:bära|ha\s+på\s+sig)\b[^.!?]{0,100}\bär\s+(?:(?:tekniskt\s+sett|faktiskt|egentligen)\s+)?(?:en|ett)\s+(?:klänning|kjol|kappa|skjorta|hatt|plagg)\b', target, re.I)
+        previous = rows[index - 1] if index else None
+        continues_person = (previous is not None and 0 <= row.get('start', 0) - previous.get('end', 0) <= 1.5
+            and re.search(r'\b(?:were|was|been)\s+(?:arrested|caught|seen|found)[.!?]*\s*$', previous.get('source', ''), re.I)
+            and re.match(r'\s*wearing\b', source, re.I)
+            and re.match(r'\s*att\s+(?:bära|ha\s+på\s+sig)\b', target, re.I))
+        garment_as_person = re.search(r'^\s*iklädd\b[^.!?]{0,100},\s*(?:(?:tekniskt\s+sett|faktiskt|egentligen)\s+)?(?:är\s+det|det\s+är)\s+(?:(?:tekniskt\s+sett|faktiskt|egentligen)\s+)?(?:en|ett)\b', target, re.I)
+        if garment_correction and (action_as_garment or continues_person or garment_as_person):
+            findings.append((garment_correction.group(), target,
+                'Källans it is a dress identifierar klädesplagget, inte handlingen att bära det. '
+                'Håll isär beskrivningen av personen och rättelsen om plagget; gör inte bärandet till en klänning.'))
+        gambling = re.search(r'(?<![\u0B80-\u0BFF])சூது(?:ம்)?(?![\u0B80-\u0BFF])', source)
+        intoxication = re.search(r'(?<![\u0B80-\u0BFF])போதை', source)
+        heat_source = re.search(r'சூட|வெப்ப', source)
+        heat_target = re.search(r'\b(?:värme[n]?|hettan?)\b', target, re.I)
+        if gambling and intoxication and not heat_source and heat_target:
+            findings.append((gambling.group(), target,
+                'Tamilskans சூது anger spel eller bedrägeri, inte värme. Välj ord efter källans sammanhang; '
+                'det är ett annat ord än சூடு. Bevara även den övriga meningen.'))
+        wish = re.search(r'\b(?:i|we|they|you|he|she)\s+wish(?:es)?\s+(?:that\s+)?(?:i|we|they|you|he|she)\s+had\s+(?:the\s+)?time\b', source, re.I)
+        past_wish = re.search(r'\bönskar\b[^.!?;:]{0,45}\bhade\s+haft\s+tid\b', target, re.I)
+        if (wish and past_wish and len(re.findall(r'\bwish(?:es)?\b', source, re.I)) == 1
+                and len(re.findall(r'\bönskar\b', target, re.I)) == 1
+                and not re.search(r'\b(?:yesterday|last|ago|earlier|before|then)\b', source, re.I)):
+            findings.append((wish.group(), past_wish.group(),
+                'En önskan om tid nu får inte bli en redan förlorad möjlighet i dåtid: '
+                'wish ... had time betyder önskar ... hade tid; hade haft tid motsvarar had had time.'))
         # A name alone is not an animal. Require an explicit animal/hunting context.
         caribou = re.search(r'\bcaribous?\b', s)
         animal = caribou and (s.strip(' .!?') == 'caribou' or bool(re.search(
@@ -777,7 +838,7 @@ def deterministic_flags(rows, target_key='sv'):
     """Language, grammar and source-anchored meaning defects, including on a cut-off source row."""
     if target_key != 'sv':
         return []
-    return non_latin_flags(rows, target_key) + imperial_unit_flags(rows, target_key) + swedish_context_flags(rows, target_key) + swedish_grammar_flags(rows)
+    return non_latin_flags(rows, target_key) + imperial_unit_flags(rows, target_key) + numeral_scale_flags(rows, target_key) + swedish_context_flags(rows, target_key) + swedish_grammar_flags(rows)
 
 
 # "Okej, jag ringer dig efter jag blir våldtagen." (Agnes, dev job 246): "efter" before a clause needs "att". Only subject pronouns that cannot

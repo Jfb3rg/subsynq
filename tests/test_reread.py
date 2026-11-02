@@ -77,7 +77,7 @@ class ReplacedRowsTests(unittest.TestCase):
         self.assertIsNone(agreed_replacement(KOKUHO_DEAL[0], dissent)[0])
 
     def test_a_text_the_readers_confirm_is_left_alone(self):
-        self.assertEqual(replaced(FRANCE_FAMOUS), (None, 'läsningen stämmer med nuvarande text'))
+        self.assertEqual(replaced(FRANCE_FAMOUS), (None, 'liknande text med olika ord'))
         self.assertEqual(replaced(KOKUHO_RIGHT)[0], None)
 
     def test_a_reading_that_fits_the_current_text_nearly_as_well_is_not_a_reason_to_change(self):
