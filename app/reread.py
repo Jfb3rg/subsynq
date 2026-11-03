@@ -357,3 +357,39 @@ def clipped_prefix_evidence(row, candidate, readings):
             return None
         witnesses.append(dict(name=name, start=a, end=b, probability=p))
     return dict(removed_prefix=old[:ops[0][2]], clip_start=edge, witnesses=witnesses)
+
+
+CONTEXT_WINDOWS = ((2.0, 1.0), (6.0, 3.0))   # seconds before/after the row: Unraid job 64 row 411, large-v3 heard "On three" only with >= 2 s before
+
+
+def words_inside(words, start, end, *, margin=.15):
+    """The words of a wider reading whose middle lies inside the row's time (the neighbours' words in the window are left out)."""
+    inside = [word for word in words if start - margin <= (float(word['start']) + float(word['end'])) / 2 <= end + margin]
+    return ''.join(str(word['word']) for word in inside).strip(), (min(float(word.get('probability', 0)) for word in inside) if inside else 0.)
+
+
+def wording_support(current, readings, *, first_family='whisper-v3', similar=.85):
+    """Candidate wordings for a row whose readers disagree, each with the model families that heard something close to it (similarity
+    >= `similar`). The current text counts the family of the first transcription too (it was heard once already). Returns
+    [(text, families)], the current text first."""
+    from asr_windows import _family, _similarity
+    usable = [(reading['name'], str(reading.get('text', '')).strip()) for reading in readings if str(reading.get('text', '')).strip()]
+    def families(text):
+        return {_family(name) for name, other in usable if _similarity(text, other) >= similar}
+    result = [(current, families(current) | {first_family})]
+    for _, text in usable:
+        if all(_similarity(text, seen) < similar for seen, _ in result):
+            result.append((text, families(text)))
+    return result
+
+
+def orthography_shift(current, candidate):
+    """A reading that turns Danish/Norwegian spelling into Swedish (or back) is a misheard language, not a better reading: TRANSFERVINDUE
+    (Danish, file language unconfirmed), row 11 "sikkert fremlæge. Et sted mellem liv og død." was replaced by the readers' Swedish
+    "för att säkert framlega ett stöd mellan liv och död." (replay 2026-11-03, also with 0.8.360)."""
+    import re
+    def letters(text, pattern):
+        return bool(re.search(pattern, str(text)))
+    dano, swedish = '[æøÆØ]', '[äöÄÖ]'
+    return ((letters(current, dano) and not letters(current, swedish) and letters(candidate, swedish))
+            or (letters(current, swedish) and not letters(current, dano) and letters(candidate, dano)))

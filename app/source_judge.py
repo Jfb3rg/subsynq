@@ -40,7 +40,7 @@ def _row_text(row):
     return str(row.get('source', row.get('text', ''))).strip()
 
 
-def judge_items(rows, *, maximum=24):
+def judge_items(rows, *, maximum=24, earlier=0):
     """The rows that have competing readings, with their neighbours' current wording, at most `maximum`.
 
     `supports` runs parallel to `candidates`: how many model families the audio passes themselves have behind each
@@ -62,7 +62,8 @@ def judge_items(rows, *, maximum=24):
             'supports': [support[text] for text in candidates],
             'confirmed_words': [word for word in row.get('confirmed_source_words', []) if word in _choice_words(current)],
             'previous': _row_text(rows[index - 1]) if index > 0 else '',
-            'next': _row_text(rows[index + 1]) if index + 1 < len(rows) else ''})
+            'next': _row_text(rows[index + 1]) if index + 1 < len(rows) else '',
+            **({'earlier': ' '.join(_row_text(r) for r in rows[max(0, index - 1 - earlier):max(0, index - 1)])} if earlier else {})})
         if len(items) >= maximum:
             break
     return items
@@ -71,7 +72,8 @@ def judge_items(rows, *, maximum=24):
 def build_request(model, items, *, seed=211):
     ids = [item['id'] for item in items]
     prompt = json.dumps({'rows': [
-        {'id': item['id'], 'previous_line': item['previous'], 'next_line': item['next'],
+        {'id': item['id'], **({'earlier_lines': item['earlier']} if item.get('earlier') else {}),
+         'previous_line': item['previous'], 'next_line': item['next'],
          'preserve_words': sorted(set(supported_words(item['candidates'][0], item['candidates']) + item.get('confirmed_words', []))),
          'candidates': {LETTERS[number]: text for number, text in enumerate(item['candidates'])}}
         for item in items]}, ensure_ascii=False)
@@ -80,7 +82,9 @@ def build_request(model, items, *, seed=211):
     # Latin script (a real Tamil batch overflowed 4096 and the engine answered HTTP 500).
     context = min(16384, max(4096, -(-(len(JUDGE_SYSTEM) + len(prompt) + predict + 512) // 1024) * 1024))
     return {
-        'model': model, 'stream': False, 'keep_alive': '5m', 'system': JUDGE_SYSTEM,
+        'model': model, 'stream': False, 'keep_alive': '5m',
+        'system': JUDGE_SYSTEM + (' earlier_lines, when given, are the lines spoken before previous_line, for context only.'
+                                  if any(item.get('earlier') for item in items) else ''),
         'format': {'type': 'object', 'properties': {'rows': {
             'type': 'array', 'minItems': len(ids), 'maxItems': len(ids),
             'items': {'type': 'object', 'properties': {
@@ -338,7 +342,7 @@ def complete_cut_off_rows(rows, *, minimum_added=2, maximum_added=5):
     return rows, completions
 
 
-def choose_readings(rows, call, model, *, batch_size=12, require_error_flag=False, maximum=24):
+def choose_readings(rows, call, model, *, batch_size=12, require_error_flag=False, maximum=24, earlier=0):
     """(rows with the judged wording, decisions). `call(request)` is the language-model call returning a dict with the
     model's JSON text under 'response'. A row the model does not answer validly keeps its own wording. When the
     engine itself fails (`EngineUnavailable`) no further batch is asked and what was chosen so far is kept; nothing
@@ -352,7 +356,7 @@ def choose_readings(rows, call, model, *, batch_size=12, require_error_flag=Fals
     stutter, a rewrite only one engine heard) and let through only fixes."""
     rows = [dict(row) for row in rows]
     decisions = []
-    items = judge_items(rows, maximum=maximum)
+    items = judge_items(rows, maximum=maximum, earlier=earlier)
     for batch in batches_of(items, batch_size=batch_size):
         try:
             answered = json.loads(call(build_request(model, batch))['response'])['rows']

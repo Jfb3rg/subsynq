@@ -99,7 +99,7 @@ from source_judge import EngineUnavailable, choose_readings, complete_cut_off_ro
 from collapsed_words import plan_collapsed_word_checks, restore_collapsed_words
 from glossary import apply_glossary, load_glossary
 from reread import agreed_replacement, confirmed_interior_insertion, conflicting_reread_rows, interior_insertion_slot, language_from_text, clipped_prefix_evidence
-from reread import foreign_context_plan, foreign_context_reading, foreign_context_replacement
+from reread import foreign_context_plan, foreign_context_reading, foreign_context_replacement, CONTEXT_WINDOWS, words_inside, wording_support, orthography_shift
 from reread_boundaries import (language_group_plans, confirmed_group_language, local_language_override,
                                kana_slot, confirmed_kana_insertion, confirmed_group_partition)
 from translation_qa import source_grammar_notes
@@ -5486,7 +5486,99 @@ def reread_foreign_context(job, media, rows, records):
     return replacements
 
 
-def reread_flagged_rows(job, rows, ids, *, reader=None):
+def context_readings(job, media, rows, ids):
+    """Unraid job 64 (Z Nation 4x02, row 411 "Yes, sir, I'm three."): read tightly, the readers disagreed (large-v3 "Yes, sir", large-v2
+    "I'm three", Qwen "On three"); with 2 s or more of the audio before it large-v3 heard "Yes, sir. On three?" every time (word probability
+    0.70-0.97). Each row is read again in CONTEXT_WINDOWS with large-v3 and large-v2, keeping only the words timed inside the row.
+    {row id: [{'name': 'context' | 'v2', 'text', 'confidence', 'window'}]}"""
+    by_id = {row['id']: row for row in rows}
+    languages = {row_id: reread_row_language(job, rows, by_id[row_id]) for row_id in ids}
+    readings = {row_id: [] for row_id in ids}
+    release_language_model_before_asr()
+    with tempfile.TemporaryDirectory(prefix='subsynq-context-') as folder:
+        clips = []
+        for row_id in ids:
+            row = by_id[row_id]
+            for before, after in CONTEXT_WINDOWS:
+                start = max(0.0, float(row['start']) - before)
+                clip = Path(folder) / f'row-{row_id}-{int(before)}.wav'
+                subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(start), '-i', str(media), '-t', str(float(row['end']) + after - start),
+                                '-map', audio_map(job), '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip)],
+                               capture_output=True, timeout=90, check=True)
+                clips.append((row_id, start, (before, after), clip))
+        for name, model_name in (('context', 'large-v3'), ('v2', 'large-v2')):
+            try:
+                model = reread_whisper(model_name)
+            except Exception as error:
+                print(f'VARNING: sammanhangsläsningen saknar {model_name}: {error!r}', flush=True)
+                continue
+            try:
+                for row_id, start, window, clip in clips:
+                    check_cancelled(job['id'])
+                    segments, _ = model.transcribe(str(clip), language=languages[row_id], beam_size=5, condition_on_previous_text=False,
+                                                   temperature=0, word_timestamps=True)
+                    words = [{'word': w.word, 'start': start + w.start, 'end': start + w.end, 'probability': w.probability}
+                             for segment in segments for w in (getattr(segment, 'words', None) or [])]
+                    text, confidence = words_inside(words, float(by_id[row_id]['start']), float(by_id[row_id]['end']))
+                    if text:
+                        readings[row_id].append({'name': name, 'text': text, 'confidence': confidence, 'window': list(window)})
+            finally:
+                del model
+                gc.collect()
+                trim_cpu_allocator()
+    return readings
+
+
+def judge_conflicting_rows(job, rows, records, readings, *, call=None):
+    """Rows whose readers heard different words: the language model chooses among the wordings the readers heard (never its own text) and
+    the source judge's guards apply (app/source_judge.py). A choice is applied only when the judge says the current wording has an error,
+    EVERY model family that read the place heard the chosen wording at least once (at least two families) and more families stand behind it
+    than behind the current one. Replay over 40 disputed rows of 18 saved files: with two families of three allowed, Agnes "Jeg må bli
+    lyktig." became the equally invented "liktet"; only all-family wordings remain (Z Nation row 411 "Yes, sir. On three."). Returns the changed ids."""
+    from asr_windows import _family
+    by_id = {row['id']: row for row in rows}
+    judged = [dict(row) for row in rows]
+    candidates = {}
+    for record in records:
+        row = by_id[record['id']]
+        support = wording_support(row['source'], readings.get(record['id']) or [])
+        present = {_family(reading['name']) for reading in readings.get(record['id']) or [] if str(reading.get('text', '')).strip()}
+        others = [(text, families) for text, families in support[1:]
+                  if len(families) >= 2 and families >= present and len(families) > len(support[0][1])
+                  and not orthography_shift(row['source'], text)]
+        if not others:
+            record['context_choice'] = {'decision': 'ingen hörd läsning har fler modellfamiljer än nuvarande text',
+                                        'support': [[text, sorted(families)] for text, families in support]}
+            continue
+        candidates[record['id']] = support
+        item = next(r for r in judged if r['id'] == record['id'])
+        item['alternatives'] = [{'text': text, 'support': len(families), 'current_support': len(support[0][1])} for text, families in others]
+    if not candidates:
+        return []
+    if call is None:
+        def call(request):
+            try:
+                return call_ollama(request)
+            except JobCancelled:
+                raise
+            except (RuntimeError, OSError) as error:
+                raise EngineUnavailable(str(error)) from error
+    # The judge sees two more lines before the row: in job 64 "On three, everyone lays down fire." came two lines before "Yes, sir, I'm three."
+    chosen, decisions = choose_readings(judged, call, MODEL_NAME, require_error_flag=True, earlier=2)
+    changed = []
+    for decision in decisions:
+        record = next(r for r in records if r['id'] == decision['id'])
+        record['context_choice'] = {**decision, 'support': [[text, sorted(families)] for text, families in candidates[decision['id']]]}
+        if decision['applied']:
+            row = by_id[decision['id']]
+            row['source'] = next(r for r in chosen if r['id'] == decision['id'])['source']
+            row.pop('source_unclear', None)
+            record.update(decision='ersatt', candidate=row['source'])
+            changed.append(row['id'])
+    return changed
+
+
+def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, judge_call=None):
     """Read the audio behind rows the review still doubts again and replace a row's SOURCE text where at least two model families agree on
     another text that fits their readings clearly better (app/reread.py). Returns the ids of the changed rows, which are changed in place;
     `job['reread_rows']` records every row that was read (the readings and why it was or was not replaced). The measured case: a source cut
@@ -5529,6 +5621,9 @@ def reread_flagged_rows(job, rows, ids, *, reader=None):
             if clipped:
                 record.update(decision='omläsningen tappar prefix vid klippstart', candidate=text, clipped_prefix=clipped)
                 text=None
+        if text and orthography_shift(row['source'], text):
+            record.update(decision='omläsningen byter skriftspråk (dansk/norsk mot svensk)', candidate=text)
+            text = None
         if text:
             index=rows.index(row)
             previous=rows[index-1]['source'] if index else ''
@@ -5546,6 +5641,18 @@ def reread_flagged_rows(job, rows, ids, *, reader=None):
             row['source'] = text
             row.pop('source_unclear', None)
             changed.append(row['id'])
+    conflicting = [record for record in job['reread_rows'] if record['id'] not in changed and record.get('decision') == 'modellfamiljerna läste olika ord']
+    if conflicting and (reader is None or context_reader is not None):
+        try:
+            extra = (context_reader or context_readings)(job, Path(media), rows, [record['id'] for record in conflicting])
+            heard = {record['id']: list(readings.get(record['id']) or []) + list(extra.get(record['id']) or []) for record in conflicting}
+            for record in conflicting:
+                record['context_readings'] = extra.get(record['id']) or []
+            changed.extend(judge_conflicting_rows(job, rows, conflicting, heard, call=judge_call))
+        except JobCancelled:
+            raise
+        except (RuntimeError, OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
+            job['context_reread_error'] = str(error)[:300]
     if reader is None:
         try:
             records=[r for r in job['reread_rows'] if r['id'] not in changed]

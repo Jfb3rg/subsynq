@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.361
+
+- När ljudläsarna hör olika ord läses repliken om med mer ljud runt omkring; bara en läsning som varje modell har hört kan väljas, och bara om den nuvarande texten är fel.
+- En omläsning får inte byta danska/norska mot svenska (eller tvärtom).
+
 ## 0.8.360
 
 - Ett engelskt ord kvar i ett svenskt sammansatt ord ("kvantentanglementgrej") godtas som anmärkning; jobbet faller inte längre på det.
