@@ -603,7 +603,10 @@ SWEDISH_MEANING_RULE = (
     'Norwegian/Danish "kaster rundt seg/sig med" is an idiom for casually throwing out/using words, claims or diagnoses: '
     'Swedish "kastar ur sig" or "slänger sig med", not "kastar runt sig med" (throwing oneself). '
     'Dying is not killing: Japanese 死ぬ (die, intransitive) and English "to die" must not become Swedish "döda" (kill, transitive). '
-    'Preserve who dies and who causes death; never infer killing from a weapon mentioned in the sentence. ')
+    'Preserve who dies and who causes death; never infer killing from a weapon mentioned in the sentence. '
+    'Write what a Swedish speaker says, not English copied word by word: "How about X?" is "Vad sägs om X?" (never "Hur vore X?"), '
+    'a volatile person is "oberäknelig" (volatil is chemistry/finance), "I keep thinking" is "jag tänker hela tiden" '
+    '(not "jag fortsätter att tänka"), "this business" as a trade is "den här branschen". ')
 
 
 # Norwegian/Danish "må ikke" forbids ("must not"); Swedish "måste inte" means "need not" (Agnes mot verden, dev jobs 123 and 202:

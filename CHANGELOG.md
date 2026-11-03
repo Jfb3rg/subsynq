@@ -10,6 +10,13 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.359
+
+- Rättningen stoppar inte längre en riktig rättning bara för att granskaren föreslog samma ord, om rättningen hittade dem själv.
+- Rättningen får veta alla formuleringar som redan nekats för en replik, så den inte växlar fram och tillbaka.
+- När en engelsk replik utelämnar ett ord som föregående replik nämner ("Wouldn't be my first." efter "That's a mistake.") får det skrivas ut på svenska.
+- Granskningen räknar ordagranna direktöversättningar ("Hur vore mord?", "Volatil.") som fel, inte som stil.
+
 ## 0.8.358
 
 - Ta bort AI-undertext sker direkt, utan att vänta i kön (till exempel på att moln-GPU:n blir redo).
