@@ -566,7 +566,7 @@ SWEDISH_MEANING_RULE = (
     'correction "technically it is a dress" identifies the garment, not the action '
     'of wearing it. Continue the person description with wording such as "iklädd ...", '
     'not a nominalized "att bära ...". Separate the corrective statement into its own '
-    'sentence: "Iklädd en kjol. Tekniskt sett är det en klänning." Do not attach '
+    'sentence: "Iklädd en kvinnas kjol. Tekniskt sett är det en klänning." (keep every word of the description). Do not attach '
     '"iklädd" to "det är en klänning": the person is dressed, not the garment. '
     'Never make the wearing itself a garment. '
     'In the Tamil pairing சூதும் போதையும், சூது means gambling, not heat: Swedish spel/hasardspel. '
@@ -588,7 +588,8 @@ SWEDISH_MEANING_RULE = (
     'Do not silently change uncertain ASR words (for example snow ghost or snow goes) into '
     'a vehicle just because that would fit; uncertainty in the source is not proof. '
     "BUD/S (heard as Bud's or buds after since/through/after in a military context, e.g. 'in the teams together since Bud's') is "
-    'the US Navy SEAL basic training: write BUD/S, never a name or "Bud\'s tid". '
+    'the US Navy SEAL basic training: write BUD/S, never a name or "Bud\'s tid". Only after since/through/after/from/during: '
+    '"bud" or "buddy" said to someone is a form of address (kompis, polarn), never BUD/S. '
     'An active verb with an object stays active in Swedish: "jam the door" is "kila fast dörren", never the passive "kilas fast dörren". '
     'Norwegian and Danish "må ikke" is a prohibition, Swedish "får inte" (must not), never "måste inte" or "behöver inte" (need not). '
     'Norwegian puts a possessive AFTER its noun ("Glowland din", "bilen min"); Swedish puts it before ("din Glowland", "min bil"), never '
@@ -604,9 +605,15 @@ SWEDISH_MEANING_RULE = (
     'Swedish "kastar ur sig" or "slänger sig med", not "kastar runt sig med" (throwing oneself). '
     'Dying is not killing: Japanese 死ぬ (die, intransitive) and English "to die" must not become Swedish "döda" (kill, transitive). '
     'Preserve who dies and who causes death; never infer killing from a weapon mentioned in the sentence. '
-    'Write what a Swedish speaker says, not English copied word by word: "How about X?" is "Vad sägs om X?" (never "Hur vore X?"), '
+    'Write what a Swedish speaker says, not English copied word by word: "How about X?" proposing something is "Vad sägs om X?" (never '
+    '"Hur vore X?"), but "What about X?" asking about someone or something already in play is "Och X då?" or "Hur blir det med X?", '
+    'never "Vad sägs om X?"; "What about him?" is "Vad är det med honom?". '
     'a volatile person is "oberäknelig" (volatil is chemistry/finance), "I keep thinking" is "jag tänker hela tiden" '
-    '(not "jag fortsätter att tänka"), "this business" as a trade is "den här branschen". ')
+    '(not "jag fortsätter att tänka"), "this business" as a trade is "den här branschen". '
+    'A shouted "Hey!" to get attention is "Hallå!" or "Hörru!"; "Hej!" is only a greeting. "Roger that" is "Uppfattat", "Yeah, well" '
+    'is "Ja, men", "So, hey" is "Så, okej", "you know me" is "du känner mig", "Be alert" is "Var på er vakt" (never "på alert"), '
+    '"Look, man" is "Hör här". Never use Norwegian or Danish words (likegyldig, ikke, jeg, kanskje, også, veldig): write Swedish. '
+    'Keep a nickname or form of address the same through the whole file (if Chief is kept as a name, keep Chief everywhere). ')
 
 
 # Norwegian/Danish "må ikke" forbids ("must not"); Swedish "måste inte" means "need not" (Agnes mot verden, dev jobs 123 and 202:
@@ -841,7 +848,59 @@ def deterministic_flags(rows, target_key='sv'):
     """Language, grammar and source-anchored meaning defects, including on a cut-off source row."""
     if target_key != 'sv':
         return []
-    return non_latin_flags(rows, target_key) + imperial_unit_flags(rows, target_key) + numeral_scale_flags(rows, target_key) + swedish_context_flags(rows, target_key) + swedish_grammar_flags(rows)
+    return (non_latin_flags(rows, target_key) + imperial_unit_flags(rows, target_key) + numeral_scale_flags(rows, target_key)
+            + swedish_context_flags(rows, target_key) + swedish_grammar_flags(rows) + file_consistency_flags(rows))
+
+
+# Unraid job 63 (Z Nation 4x03): "It's whatever." -> "Det är likegyldigt." (Norwegian). Only words that are not Swedish in any form.
+_SCANDINAVIAN_WORDS = re.compile(r"\b(?:likegyldig\w*|ikke|jeg|hvorfor|hvordan|hvad|kanskje|også|veldig|takk)\b", re.IGNORECASE)
+
+
+_CALL_WORDS = {'hey', 'oh', 'yes', 'no', 'sir', 'and', 'mr', 'mrs', 'ms', 'dr', 'doc'}
+
+
+def _close_to(name, text, minimum=.75):
+    """A word of `text` is the name or a near spelling of it (Lucys, Kanada for Canada, Normandie for Normandy)."""
+    from difflib import SequenceMatcher
+    wanted = name.casefold()
+    return any(wanted in word or SequenceMatcher(None, wanted, word).ratio() >= minimum
+               for word in re.findall(r'[^\W\d_]+', text.casefold()))
+
+
+def file_consistency_flags(rows):
+    """Unraid job 63 (Z Nation 4x03): "Sun May." -> "Söndag maj." although the file kept "Including Red and Sun May." as the name; "Did you
+    forget about that, bud?" -> "BUD/S"; a Norwegian word. A name is flagged only on a row that is nothing but names ("Sun May.", "Red?"),
+    when the file itself keeps that name unchanged in another row's Swedish and this row's Swedish has neither it nor a near spelling of it.
+    A name inside a sentence is left alone: "Ray Mountains" is rightly "Raybergen", "France" "Frankrike" (replay over 242 saved files)."""
+    flags = []
+    sources = [str(row.get('source', '')) for row in rows]
+    forms = proper_name_forms(sources)
+    kept = {}
+    for row in rows:
+        target = str(row.get('sv') or '')
+        for key, written in forms.items():
+            if any(re.search(rf'(?<![\w]){re.escape(form)}(?![\w])', str(row.get('source', ''))) and form in target for form in written):
+                kept[key] = kept.get(key, 0) + 1
+    for row in rows:
+        source, target = str(row.get('source', '')), str(row.get('sv') or '')
+        words = re.findall(r'[^\W\d_]+', source)
+        only_names = bool(words) and all(name_key(word) in forms or word.casefold() in _CALL_WORDS for word in words)
+        for key, written in forms.items():
+            if not only_names:
+                break
+            form = next((f for f in written if re.search(rf'(?<![\w]){re.escape(f)}(?![\w])', source)), None)
+            if form and kept.get(key) and not _close_to(form, target):
+                flags.append({'id': row['id'], 'category': 'meaning', 'source_quote': form, 'target_quote': target,
+                              'reason': f'Namnet "{form}" står oöversatt på andra ställen i filen men är översatt eller borta här; skriv det likadant.'})
+                break
+        if 'BUD/S' in target and 'BUD/S' not in source and not _BUDS_SOURCE.search(source):
+            flags.append({'id': row['id'], 'category': 'meaning', 'source_quote': source, 'target_quote': 'BUD/S',
+                          'reason': 'BUD/S är bara SEAL-utbildningen efter since/through; "bud" till en person är tilltal (kompis).'})
+        foreign = _SCANDINAVIAN_WORDS.search(target)
+        if foreign and not _SCANDINAVIAN_WORDS.search(source):
+            flags.append({'id': row['id'], 'category': 'untranslated', 'source_quote': source, 'target_quote': foreign.group(),
+                          'reason': f'"{foreign.group()}" är norska/danska, inte svenska.'})
+    return flags
 
 
 # "Okej, jag ringer dig efter jag blir våldtagen." (Agnes, dev job 246): "efter" before a clause needs "att". Only subject pronouns that cannot

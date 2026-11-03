@@ -10,6 +10,13 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.360
+
+- Ett engelskt ord kvar i ett svenskt sammansatt ord ("kvantentanglementgrej") godtas som anmärkning; jobbet faller inte längre på det.
+- Rader som underkänns först i sista försöket läses om från ljudet; ändrade rader översätts igen och hela filen granskas en gång till.
+- Ett namn som filen behåller ("Sun May", "Red") får inte översättas på en rad som bara är namnet.
+- "bud" (kompis) blir inte längre BUD/S; "What about X?" blir "Och X då?"; norska ord i svenskan flaggas; fler vanliga direktöversättningar rättas.
+
 ## 0.8.359
 
 - Rättningen stoppar inte längre en riktig rättning bara för att granskaren föreslog samma ord, om rättningen hittade dem själv.

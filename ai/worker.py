@@ -4275,7 +4275,11 @@ def validate_translation_flags(verdict, sample, target_key):
         if flag['category'] == 'untranslated':
             source_words = ' '.join(re.findall(r'[^\W\d_]+', flag['source_quote'].casefold()))
             target_words = ' '.join(re.findall(r'[^\W\d_]+', flag['target_quote'].casefold()))
-            if not source_words or f' {source_words} ' not in f' {target_words} ':
+            # Unraid job 65 (Stuart): "entanglement" inside "kvantentanglementgrej" is untranslated too; requiring a separate word refused the
+            # correct flag four times and the job failed. One source word of six letters or more inside a longer target word counts.
+            inside_compound = (len(source_words) >= 6 and ' ' not in source_words
+                               and any(source_words in word and word != source_words for word in target_words.split()))
+            if not source_words or (f' {source_words} ' not in f' {target_words} ' and not inside_compound):
                 raise ValueError('Påstådda oöversatta källord finns inte i den citerade måltexten.')
         previous = seen.get(flag['id'])
         if previous is not None and previous != flag:
@@ -5633,8 +5637,52 @@ def translate_and_review(job, rows, *, announce=lambda stage: None):
         try:
             review_and_save_translation(job, translated, final=True)
         except SourceQualityError as second_error:
-            raise TranslationQualityError(f'{second_error} (efter två översättningsförsök)') from second_error
+            translated = reread_after_final_attempt(job, rows, translated, second_error, announce=announce)
         return translated
+
+
+def reread_after_final_attempt(job, rows, translated, error, *, announce=lambda stage: None):
+    """Unraid job 64 (Z Nation 4x02): "Yes, sir, I'm three." was first doubted by the FINAL review, so the audio behind it was never read again
+    (that happens only between the attempts), although another pass heard "On three?". The rows that refuse the file and were not read again
+    yet are read now with the same rules (reread_flagged_rows: two model families must agree); only rows whose source then changed are
+    translated again, and the whole file is reviewed once more with the same final review. Nothing changed: the file is refused as before."""
+    refused_message = f'{error} (efter två översättningsförsök)'
+    try:
+        report = json.loads((QUALITY_REPORTS / f"job-{job['id']}.json").read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        report = {}
+    earlier = {record.get('id') for record in job.get('reread_rows') or []}
+    spoken = set(job.get('spoken_swedish_ids') or ())
+    hard = (report.get('remaining_findings') or {}).get('hard') or []
+    ids = [row_id for row_id in hard if row_id not in earlier and row_id not in spoken][:REREAD_MAXIMUM_ROWS]
+    if not REREAD_ENABLED or not ids:
+        raise TranslationQualityError(refused_message) from error
+    announce('reread')
+    previous = list(job.get('reread_rows') or [])
+    changed = reread_flagged_rows(job, rows, ids)
+    job['reread_rows'] = previous + list(job.get('reread_rows') or [])
+    check_cancelled(job['id'])
+    if not changed:
+        raise TranslationQualityError(refused_message) from error
+    try:
+        (QUALITY_REPORTS / f"job-{job['id']}.json").replace(QUALITY_REPORTS / f"job-{job['id']}-attempt2.json")
+    except OSError:
+        pass
+    announce('retry')
+    by_id = {row['id']: row for row in rows}
+    pending = [dict(by_id[row['id']]) for row in translated if row['id'] in changed]
+    context = [{**by_id[row['id']], 'sv': row.get('sv')} if row['id'] not in changed else dict(by_id[row['id']]) for row in translated]
+    retried = {row['id']: row for row in retry_translation(job, pending, refused={}, context_rows=context)}
+    if set(retried) != set(changed):
+        raise RuntimeError('Omöversättningen ändrade rad-ID.')
+    result = [retried.get(row['id'], row) for row in translated]
+    check_cancelled(job['id'])
+    announce('review')
+    try:
+        review_and_save_translation(job, result, final=True)
+    except SourceQualityError as last_error:
+        raise TranslationQualityError(f'{last_error} (efter två översättningsförsök och omläsning)') from last_error
+    return result
 
 
 PUNCTUATION_SYSTEM = (
