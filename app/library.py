@@ -150,7 +150,7 @@ def scan_library(roots, probe=None, kind_overrides=None, progress=None, previous
             mtime_ns = os.stat(directory).st_mtime_ns
             old = old_directories.get(key)
             if (directories is not None and old and old.get("mtime_ns") == mtime_ns
-                    and all(path in previous_items for path in old.get("files", []))):
+                    and all(path in previous_items and "opensub_sv_exists" in previous_items[path] for path in old.get("files", []))):
                 counts["skipped"] += 1
                 new_directories[key] = old
                 for path in old.get("files", []):
@@ -192,6 +192,7 @@ def scan_library(roots, probe=None, kind_overrides=None, progress=None, previous
                     "ai_sv_exists": has_preferred or has_legacy,
                     "ai_sv_path": (str(preferred_subtitle) if has_preferred else str(legacy_subtitle) if has_legacy else None),
                     "ai_en_exists": english_subtitle.name in names,
+                    "opensub_sv_exists": (media.stem + ".opensub.sv.srt") in names,
                     "ai_en_path": str(english_subtitle) if english_subtitle.name in names else None,
                     "kind": overrides.get(str(media), _default_kind(root)),
                     "probe": probe_result,

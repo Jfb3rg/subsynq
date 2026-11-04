@@ -34,7 +34,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.363"
+VERSION = "0.8.364"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -124,9 +124,11 @@ def jobs_signature(jobs):
 
 
 def needs_swedish_subtitle(item, ignore_existing=False):
+    """A file still without a Swedish subtitle. One fetched from OpenSubtitles counts like an embedded one (the user, 2026-11-04: such a
+    row should not be red); with "ignore existing subtitles" on, only SubSynq's own AI subtitle counts."""
     if item.get("ai_sv_exists"):
         return False
-    return ignore_existing or not item.get("embedded_sv_exists")
+    return ignore_existing or not (item.get("embedded_sv_exists") or item.get("opensub_sv_exists"))
 
 
 def subtitle_is_stale(item, job):
@@ -439,14 +441,18 @@ def auto_scan_loop():
 
 def render_media_row(item, nested=False, token="", job=None, ignore_existing=False, lang="sv", show="all"):
     missing = needs_swedish_subtitle(item, ignore_existing)
-    row_class = " class='subtitle-missing'" if missing else ""
+    from_opensubtitles = bool(item.get("opensub_sv_exists")) and not item.get("ai_sv_exists") and not item.get("embedded_sv_exists")
+    row_class = (" class='subtitle-missing'" if missing and not from_opensubtitles
+                 else " class='subtitle-opensub'" if from_opensubtitles else "")
     episode = (f"<strong>{escape(item.get('episode_code') or t('episode_fallback', lang))}</strong> · "
               if nested else "")
-    status_class = "missing" if missing else "available"
+    status_class = "opensub" if from_opensubtitles else "missing" if missing else "available"
     if item.get("ai_sv_exists"):
         status = t("status_ai_exists", lang)
     elif item.get("embedded_sv_exists"):
         status = t("status_embedded_exists", lang)
+    elif from_opensubtitles:
+        status = t("status_opensub_exists", lang)
     else:
         status = t("status_missing", lang)
     job_html = ""
@@ -551,7 +557,8 @@ def render_media_row(item, nested=False, token="", job=None, ignore_existing=Fal
         media_query = quote(item['path'], safe='')
         job_html += (f"<a class='small-link' href='/subtitles/view?media={media_query}&lang=en'>"
                      f"{escape(t('action_view_english_subtitle', lang))}</a>")
-    can_start = missing and (not job or job.get("status") in (
+    # A subtitle from OpenSubtitles is only the emergency fallback: SubSynq's own AI subtitle can still be made.
+    can_start = (missing or from_opensubtitles) and (not job or job.get("status") in (
         "failed", "quality_failed", "completed", "deleted", "cancelled"))
     start_html = ""
     if can_start and token:
@@ -1996,6 +2003,7 @@ class Handler(BaseHTTPRequestHandler):
                         db.execute("INSERT OR REPLACE INTO metadata VALUES ('opensubtitles_requests', ?)",
                                    (json.dumps(pending + [{'media_path': item['path']}]),))
                     raise opensubtitles.OpenSubtitlesError(f"{item['name']}: {check} Det tar ungefär en halv minut; ladda om sidan.") from check
+                opensubtitles.mark_in_library(DATABASE, item['path'])
                 notice = (f"{item['name']}: svensk undertext hämtad från OpenSubtitles (matchad på {result['how']}"
                           + (f", utgåva {result['release']}" if result.get('release') else '') + ')'
                           + (f" · {result['remaining']} nedladdningar kvar i dag" if result.get('remaining') is not None else '') + '.')

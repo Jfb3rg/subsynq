@@ -1740,6 +1740,7 @@ def opensubtitles_request_loop():
             name = Path(request['media_path']).name
             try:
                 result = opensubtitles.fetch(CONFIG, request['media_path'], 'SubSynq worker', speech=speech_for_sync)
+                opensubtitles.mark_in_library(DATABASE, request['media_path'])
                 notice = (f"{name}: svensk undertext hämtad från OpenSubtitles (matchad på {result['how']}"
                           + (f", utgåva {result['release']}" if result.get('release') else '') + ')'
                           + (f" · {result['remaining']} nedladdningar kvar i dag" if result.get('remaining') is not None else '') + '.')
@@ -1766,6 +1767,7 @@ def emergency_subtitle(job):
             return
         try:
             result = opensubtitles.fetch(CONFIG, job['media_path'], 'SubSynq worker', speech=speech_for_sync)
+            opensubtitles.mark_in_library(DATABASE, job['media_path'])
             note = (f" · Nödlösning: svensk undertext hämtad från OpenSubtitles (matchad på {result['how']}) som "
                     f"{Path(result['path']).name}")
         except opensubtitles.OpenSubtitlesError as error:

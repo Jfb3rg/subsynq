@@ -102,5 +102,49 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual([c['release'] for c in chosen], ['Z.Nation.S04E02.1080p.BluRay', 'Z.Nation.S04E02.720p.HDTV'])
 
 
+class OpenSubtitlesRowTests(unittest.TestCase):
+    """The user (2026-11-04): Z Nation 4x02 got its subtitle from OpenSubtitles but stayed red; such a row gets its own colour."""
+
+    @staticmethod
+    def item(**extra):
+        return {'path': '/tv/Z Nation/Season 4/Z.Nation.4x02.mkv', 'name': 'Z.Nation.4x02.mkv', 'kind': 'episode', 'size_bytes': 1,
+                'ai_sv_exists': False, 'embedded_sv_exists': False, 'opensub_sv_exists': True, 'probe': {}, **extra}
+
+    def test_the_row_is_not_red_shows_the_source_and_still_offers_the_ai_subtitle(self):
+        import server
+        row = server.render_media_row(self.item(), token='tok')
+        self.assertIn("class='subtitle-opensub'", row)
+        self.assertIn("subtitle-status opensub", row)
+        self.assertIn('Undertext från OpenSubtitles', row)
+        self.assertNotIn("subtitle-missing", row)
+        self.assertIn("action='/jobs/start'", row)
+
+    def test_it_counts_as_a_swedish_subtitle_except_when_existing_ones_are_ignored(self):
+        import server
+        self.assertFalse(server.needs_swedish_subtitle(self.item()))
+        self.assertTrue(server.needs_swedish_subtitle(self.item(), ignore_existing=True))
+        self.assertTrue(server.needs_swedish_subtitle(self.item(opensub_sv_exists=False)))
+        ai_row = server.render_media_row(self.item(ai_sv_exists=True, ai_sv_path='/x.ai.sv.srt'), token='tok')
+        self.assertNotIn('Undertext från OpenSubtitles', ai_row)        # SubSynq's own subtitle wins
+
+    def test_the_scan_sees_the_file_and_rereads_folders_recorded_before_the_flag(self):
+        from library import scan_library
+        folder = Path(tempfile.mkdtemp()) / 'tv'
+        (folder / 'Show').mkdir(parents=True)
+        (folder / 'Show' / 'Show.S01E01.mkv').write_bytes(b'x')
+        (folder / 'Show' / 'Show.S01E01.opensub.sv.srt').write_text('1\n', encoding='utf-8')
+        import os
+        for directory in (folder / 'Show', folder):
+            os.utime(directory, (1_700_000_000, 1_700_000_000))
+        state = {}
+        items = scan_library([folder], previous=None, state=state)
+        self.assertTrue(items[0]['opensub_sv_exists'])
+        old = [{k: v for k, v in items[0].items() if k != 'opensub_sv_exists'}]      # stored by 0.8.362
+        again = {}
+        scan_library([folder], previous=old, directories=state['directories'], state=again)
+        self.assertEqual(again['skipped'], 1)            # the root folder is unchanged and holds no video ...
+        self.assertEqual(again['listed'], 1)             # ... but the folder with the old row is read once more
+
+
 if __name__ == '__main__':
     unittest.main()

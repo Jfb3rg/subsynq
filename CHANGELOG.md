@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.364
+
+- En fil med undertext från OpenSubtitles visas inte längre som röd: den får en egen färg och märket "Undertext från OpenSubtitles", och knappen för en AI-undertext finns kvar.
+
 ## 0.8.363
 
 - "Hämta från OpenSubtitles" hittar nu svensk undertext även för filer som Radarr/Sonarr har döpt om: filmen eller avsnittet identifieras med IMDb-id från bibliotekets .nfo-filer, och en undertext sparas bara om replikernas tider stämmer med talet i just din fil (en förskjuten undertext flyttas på plats).

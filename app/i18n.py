@@ -41,6 +41,7 @@ STRINGS = {
     "status_ai_exists": {"sv": "AI-undertext finns", "en": "AI subtitle exists"},
     "status_embedded_exists": {"sv": "Svensk originalundertext finns", "en": "Original Swedish subtitle exists"},
     "status_missing": {"sv": "Svensk undertext saknas", "en": "Swedish subtitle missing"},
+    "status_opensub_exists": {"sv": "Undertext från OpenSubtitles", "en": "Subtitle from OpenSubtitles"},
     "status_failed": {"sv": "Jobbet misslyckades", "en": "Job failed"},
     "status_unknown_error": {"sv": "Okänt fel", "en": "Unknown error"},
     "status_ai_created": {"sv": "AI-undertext skapad", "en": "AI subtitle created"},

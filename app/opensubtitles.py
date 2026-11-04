@@ -346,6 +346,25 @@ def subtitle_text(content):
     return text.replace('\r\n', '\n')
 
 
+def mark_in_library(database, media_path):
+    """The stored library row of a file that just got a subtitle from OpenSubtitles shows it at once (no scan needed). Never raises:
+    the subtitle is saved either way and the next scan sees it."""
+    import sqlite3
+    try:
+        with sqlite3.connect(database, timeout=10) as db:
+            row = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
+            if not row:
+                return
+            library = json.loads(row[0])
+            for item in library.get('items') or []:
+                if item.get('path') == str(media_path):
+                    item['opensub_sv_exists'] = True
+                    db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_scan', ?)", (json.dumps(library),))
+                    return
+    except (sqlite3.Error, ValueError, TypeError):
+        return
+
+
 def target_path(media_path):
     media = Path(media_path)
     return media.with_name(media.stem + SUFFIX)
