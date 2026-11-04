@@ -211,6 +211,21 @@ class RouteTests(Base):
         self.assertEqual((status, location), (303, '/queue?saved=opensubtitles'))
         self.assertIn('biblioteksskanningen', server.opensubtitles_notice())
 
+    def test_a_file_needing_the_timing_check_is_handed_to_the_worker(self):
+        # 2026-11-04: no exact match, but the .nfo names the film; the worker (speech detector) checks the timing.
+        self.enable()
+        item = {'path': str(self.media), 'name': self.media.name, 'kind': 'movie'}
+        with sqlite3.connect(self.config / 'subsynq.db') as db:
+            db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_scan', ?)", (json.dumps({'items': [item]}),))
+        identity = {'kind': 'movie', 'imdb': 5034838, 'tmdb': None}
+        with patch.object(os_, 'fetch', side_effect=os_.NeedsTimingCheck(identity)):
+            self.post('/jobs/opensubtitles', media_path=str(self.media), return_kind='movie')
+            self.post('/jobs/opensubtitles', media_path=str(self.media), return_kind='movie')     # pressed twice: asked once
+        with sqlite3.connect(self.config / 'subsynq.db') as db:
+            pending = json.loads(db.execute("SELECT value FROM metadata WHERE key='opensubtitles_requests'").fetchone()[0])
+        self.assertEqual(pending, [{'media_path': str(self.media)}])
+        self.assertIn('tt5034838', server.opensubtitles_notice())
+
     def test_the_queue_button_only_for_refused_runs_when_switched_on(self):
         job = {'id': 1, 'status': 'quality_failed', 'media_path': '/extra/a.mkv', 'message': ''}
         library = {'/extra/a.mkv': {'path': '/extra/a.mkv', 'kind': 'media', 'ai_sv_exists': False}}

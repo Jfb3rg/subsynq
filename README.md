@@ -87,8 +87,11 @@ replikerna är oklara.
 Allmänt** kan du ange nyckel, användarnamn och lösenord för OpenSubtitles.com. Knappen
 **Hämta från OpenSubtitles** finns då på filens rad i Filmer, Serier och Extra och vid
 underkända körningar i kön; den kan också köras automatiskt när en AI-undertext underkänns.
-En svensk undertext hämtas bara om den hör till exakt den filen: filens kontrollsumma, eller
-hela filnamnet (utgåvenamnet). Titel, säsong eller avsnitt räcker aldrig, och maskin- eller
+En svensk undertext hämtas bara om den hör till exakt den filen: filens kontrollsumma, hela
+filnamnet (utgåvenamnet), eller filmens/avsnittets IMDb-id från bibliotekets `.nfo`-filer
+(som Emby, Jellyfin och Kodi skriver) följt av en kontroll av att replikernas tider stämmer
+med talet i just din fil; högst tre undertexter provas och en förskjuten flyttas på plats.
+Titel, säsong eller avsnitt räcker aldrig, och maskin- eller
 AI-översatta undertexter tas inte. Filen sparas som `namn.opensub.sv.srt` och ersätter
 aldrig AI-undertexten. Nedladdningar räknas mot ditt kontos gräns hos OpenSubtitles.
 

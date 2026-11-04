@@ -1697,6 +1697,61 @@ def read_lead_word_probes(job, media, merged, readings, models, total, skip_indi
     return probes
 
 
+def speech_for_sync(media):
+    """(speech intervals, windows) of a file for the OpenSubtitles timing check (app/subtitle_sync.py): Silero VAD on ten 90 s windows
+    of the dialogue track (centre channel for 5.1/7.1). Reads 15 minutes of audio, never the whole file."""
+    import numpy as np
+    from subtitle_sync import windows_for
+    info = probe_media(media)
+    tracks = info.get('audio') or []
+    if not tracks:
+        raise opensubtitles.OpenSubtitlesError('Filen har inget ljudspår att kontrollera undertexternas tider mot.')
+    chosen = choose_audio_track(tracks, lambda track: None)
+    track = next(item for item in tracks if item['index'] == chosen['index'])
+    windows = windows_for(float(info.get('duration_seconds') or 0))
+    centre = ['-af', 'pan=mono|c0=FC'] if str(track.get('channel_layout') or '').startswith(('5.1', '7.1')) else ['-ac', '1']
+    speech = []
+    for start, length in windows:
+        raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', f'{start:.2f}', '-t', f'{length:.2f}', '-i', str(media), '-map', f"0:{track['index']}",
+                              *centre, '-ar', '16000', '-f', 's16le', '-'], capture_output=True, timeout=300, check=True).stdout
+        audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+        for span in get_speech_timestamps(audio, VadOptions(threshold=.5, min_speech_duration_ms=200, min_silence_duration_ms=150, speech_pad_ms=60)):
+            speech.append((start + span['start'] / 16000, start + span['end'] / 16000))
+    return speech, windows
+
+
+OPENSUBTITLES_REQUESTS = 'opensubtitles_requests'
+
+
+def opensubtitles_request_loop():
+    """The web server's "Hämta från OpenSubtitles" for a file without an exact match: the timing check needs the speech detector, which
+    only the worker has. Runs in its own thread, so it never waits behind subtitle jobs; one file at a time; the result is the notice the
+    library shows (metadata 'opensubtitles_notice')."""
+    while True:
+        time.sleep(3)
+        try:
+            with sqlite3.connect(DATABASE, timeout=10) as db:
+                row = db.execute('SELECT value FROM metadata WHERE key=?', (OPENSUBTITLES_REQUESTS,)).fetchone()
+                pending = json.loads(row[0]) if row else []
+                if not pending:
+                    continue
+                request, rest = pending[0], pending[1:]
+                db.execute('INSERT OR REPLACE INTO metadata VALUES (?, ?)', (OPENSUBTITLES_REQUESTS, json.dumps(rest)))
+            name = Path(request['media_path']).name
+            try:
+                result = opensubtitles.fetch(CONFIG, request['media_path'], 'SubSynq worker', speech=speech_for_sync)
+                notice = (f"{name}: svensk undertext hämtad från OpenSubtitles (matchad på {result['how']}"
+                          + (f", utgåva {result['release']}" if result.get('release') else '') + ')'
+                          + (f" · {result['remaining']} nedladdningar kvar i dag" if result.get('remaining') is not None else '') + '.')
+            except (opensubtitles.OpenSubtitlesError, OSError, subprocess.SubprocessError, ValueError) as error:
+                notice = f'OpenSubtitles: {name}: {error}'
+            with sqlite3.connect(DATABASE, timeout=10) as db:
+                db.execute("INSERT OR REPLACE INTO metadata VALUES ('opensubtitles_notice', ?)", (notice[:600],))
+            print(f'OpenSubtitles: {notice}', flush=True)
+        except Exception as error:      # never stop the loop
+            print(f'VARNING: OpenSubtitles-förfrågan: {error!r}', flush=True)
+
+
 def emergency_subtitle(job):
     """The user's emergency fallback (2026-11-02): when an AI job ends refused and automatic OpenSubtitles is switched on, fetch a Swedish
     subtitle for exactly this file (app/opensubtitles.py: file hash or the whole file name, never a title) and say so on the job. Never
@@ -1710,7 +1765,7 @@ def emergency_subtitle(job):
         if not row or row[0] != 'quality_failed':
             return
         try:
-            result = opensubtitles.fetch(CONFIG, job['media_path'], 'SubSynq worker')
+            result = opensubtitles.fetch(CONFIG, job['media_path'], 'SubSynq worker', speech=speech_for_sync)
             note = (f" · Nödlösning: svensk undertext hämtad från OpenSubtitles (matchad på {result['how']}) som "
                     f"{Path(result['path']).name}")
         except opensubtitles.OpenSubtitlesError as error:
@@ -6703,6 +6758,7 @@ def main():
     cleanup_orphaned_cloud_instances()
     reset_cloud_session_after_restart()
     threading.Thread(target=resource_refresh_loop, daemon=True).start()
+    threading.Thread(target=opensubtitles_request_loop, daemon=True).start()
     # Fetch any missing AI models by itself; nobody should have to download them by hand.
     # SUBSYNQ_MODEL_AUTODOWNLOAD=0 turns this (and the waiting) off.
     model_downloads = None

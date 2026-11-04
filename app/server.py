@@ -34,7 +34,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.362"
+VERSION = "0.8.363"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1986,7 +1986,16 @@ class Handler(BaseHTTPRequestHandler):
                 item = runnable_library_item(json.loads(saved[0]) if saved else {'items': []}, media_path)
                 if item is None:
                     raise ValueError('Filen finns inte i den aktuella biblioteksskanningen.')
-                result = opensubtitles.fetch(CONFIG, item['path'], f'SubSynq v{VERSION}')
+                try:
+                    result = opensubtitles.fetch(CONFIG, item['path'], f'SubSynq v{VERSION}')
+                except opensubtitles.NeedsTimingCheck as check:
+                    # The timing check needs the worker's speech detector: hand the file over (worker: opensubtitles_request_loop).
+                    with sqlite3.connect(DATABASE) as db:
+                        row = db.execute("SELECT value FROM metadata WHERE key='opensubtitles_requests'").fetchone()
+                        pending = [r for r in (json.loads(row[0]) if row else []) if r.get('media_path') != item['path']]
+                        db.execute("INSERT OR REPLACE INTO metadata VALUES ('opensubtitles_requests', ?)",
+                                   (json.dumps(pending + [{'media_path': item['path']}]),))
+                    raise opensubtitles.OpenSubtitlesError(f"{item['name']}: {check} Det tar ungefär en halv minut; ladda om sidan.") from check
                 notice = (f"{item['name']}: svensk undertext hämtad från OpenSubtitles (matchad på {result['how']}"
                           + (f", utgåva {result['release']}" if result.get('release') else '') + ')'
                           + (f" · {result['remaining']} nedladdningar kvar i dag" if result.get('remaining') is not None else '') + '.')

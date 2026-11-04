@@ -7,7 +7,13 @@ because they search by title. Here a subtitle is taken only when it is tied to t
    release), or
 2. the whole file name, when an upload's release name or file name is the same name (punctuation and case aside).
 
-A title, season or episode alone is never enough. Machine and AI translations are skipped. The file is written next to the video as
+A title, season or episode alone is never enough. Machine and AI translations are skipped.
+
+3. (2026-11-04) When neither matches -- a library renamed by Radarr/Sonarr ("Godzilla vs. Kong (2021) Remux-2160p.mkv") never has the
+   release's own name, and remuxes are rarely hashed -- the film or episode is identified by the IMDb/TMDB id the library's own .nfo files
+   give (Emby/Kodi: movie.nfo, tvshow.nfo plus the episode's season and episode), never by a title. Up to three of its Swedish subtitles
+   are downloaded and each is checked against the speech in THIS file (app/subtitle_sync.py, run by the worker, which has the speech
+   detector); only one whose timing fits is kept, moved by the measured constant offset or frame-rate factor. The file is written next to the video as
 `<name>.opensub.sv.srt` and never replaces SubSynq's `.ai.sv.srt`. The API is api.opensubtitles.com/api/v1 (Api-Key and a descriptive
 User-Agent on every call; /login gives a token and possibly another host for paying members; /subtitles searches; /download gives a link).
 """
@@ -32,6 +38,109 @@ _lock = threading.Lock()
 
 class OpenSubtitlesError(RuntimeError):
     """A refusal or failure, with a Swedish message for the user."""
+
+
+class NeedsTimingCheck(OpenSubtitlesError):
+    """No exact match, but the library's .nfo identifies the film or episode: the worker checks candidates against the file's speech."""
+
+    def __init__(self, identity):
+        super().__init__('Ingen exakt träff; undertexter för ' + describe(identity) + ' kontrolleras mot ljudet i filen.')
+        self.identity = identity
+
+
+MAX_TIMING_CANDIDATES = 3
+
+
+def _nfo_ids(path):
+    """{'imdb': int, 'tmdb': int, 'season': int, 'episode': int} from an Emby/Kodi .nfo file (missing keys left out)."""
+    try:
+        text = Path(path).read_text(encoding='utf-8', errors='replace')[:200_000]
+    except OSError:
+        return {}
+    ids = {}
+    for kind, value in re.findall(r'<uniqueid[^>]*type="(imdb|tmdb)"[^>]*>\s*([^<\s]+)\s*<', text, re.IGNORECASE):
+        ids.setdefault(kind.lower(), value)
+    for kind, tag in (('imdb', 'imdbid'), ('imdb', 'imdb_id'), ('tmdb', 'tmdbid')):
+        match = re.search(rf'<{tag}>\s*([^<\s]+)\s*</{tag}>', text, re.IGNORECASE)
+        if match:
+            ids.setdefault(kind, match.group(1))
+    result = {}
+    imdb = re.fullmatch(r'tt(\d{5,10})', str(ids.get('imdb', '')).strip(), re.IGNORECASE)
+    if imdb:
+        result['imdb'] = int(imdb.group(1))
+    if str(ids.get('tmdb', '')).strip().isdigit():
+        result['tmdb'] = int(ids['tmdb'])
+    for key in ('season', 'episode'):
+        match = re.search(rf'<{key}>\s*(\d{{1,4}})\s*</{key}>', text)
+        if match:
+            result[key] = int(match.group(1))
+    return result
+
+
+def nfo_identity(media_path):
+    """The film or episode as the library's own .nfo files identify it, or None.
+
+    Episode: '<file>.nfo' gives season and episode, the nearest 'tvshow.nfo' above it the series' IMDb/TMDB id. Film: 'movie.nfo' or
+    '<file>.nfo' with an IMDb/TMDB id. An episode .nfo without season and episode, or a series without an id, is no identity."""
+    media = Path(media_path)
+    own = _nfo_ids(media.with_suffix('.nfo'))
+    show = next((ids for ids in (_nfo_ids(folder / 'tvshow.nfo') for folder in (media.parent, media.parent.parent, media.parent.parent.parent))
+                 if ids.get('imdb') or ids.get('tmdb')), None)
+    if show and own.get('season') is not None and own.get('episode') is not None:
+        return {'kind': 'episode', 'imdb': show.get('imdb'), 'tmdb': show.get('tmdb'), 'season': own['season'], 'episode': own['episode']}
+    if show:
+        return None
+    movie = _nfo_ids(media.parent / 'movie.nfo') if (media.parent / 'movie.nfo').is_file() else {}
+    ids = movie if (movie.get('imdb') or movie.get('tmdb')) else own
+    if ids.get('imdb') or ids.get('tmdb'):
+        return {'kind': 'movie', 'imdb': ids.get('imdb'), 'tmdb': ids.get('tmdb')}
+    return None
+
+
+def describe(identity):
+    name = f"tt{identity['imdb']:07d}" if identity.get('imdb') else f"TMDB {identity.get('tmdb')}"
+    return (f"{name} säsong {identity['season']} avsnitt {identity['episode']}" if identity.get('kind') == 'episode' else name)
+
+
+def identity_params(identity):
+    if identity['kind'] == 'episode':
+        base = {'parent_imdb_id': identity['imdb']} if identity.get('imdb') else {'parent_tmdb_id': identity['tmdb']}
+        return {**base, 'season_number': identity['season'], 'episode_number': identity['episode']}
+    return {'imdb_id': identity['imdb']} if identity.get('imdb') else {'tmdb_id': identity['tmdb']}
+
+
+def _same_title(attributes, identity):
+    """The result really is this film or episode (the search is by id; a result that says otherwise is dropped)."""
+    details = attributes.get('feature_details') or {}
+    def same(key, wanted):
+        value = details.get(key)
+        return wanted is None or value in (None, '') or int(value) == int(wanted)
+    try:
+        if identity['kind'] == 'episode':
+            return (same('parent_imdb_id', identity.get('imdb')) and same('parent_tmdb_id', identity.get('tmdb'))
+                    and same('season_number', identity['season']) and same('episode_number', identity['episode']))
+        return same('imdb_id', identity.get('imdb')) and same('tmdb_id', identity.get('tmdb'))
+    except (TypeError, ValueError):
+        return False
+
+
+_VERSION_WORDS = re.compile(r'(2160p|1080p|720p|576p|480p|remux|bluray|blu ray|bdrip|brrip|web dl|webdl|webrip|web|hdtv|dvdrip|dvd|proper|repack|extended|directors cut|unrated|imax)')
+
+
+def timing_candidates(results, identity, media_name, *, limit=MAX_TIMING_CANDIDATES):
+    """The Swedish subtitles of exactly this film/episode, the most likely version first (shared version words with the file name such
+    as 1080p/BluRay/WEB, then the most downloaded), at most `limit`."""
+    wanted = set(_VERSION_WORDS.findall(name_key(media_name)))
+    ranked = []
+    for item in results or ():
+        attributes = item.get('attributes') or {}
+        if not _usable(attributes) or not _same_title(attributes, identity):
+            continue
+        names = ' '.join(name_key(name) for name in [attributes.get('release') or ''] + [f.get('file_name') or '' for f in attributes.get('files') or ()])
+        shared = len(wanted & set(_VERSION_WORDS.findall(names)))
+        ranked.append((-shared, -int(attributes.get('download_count') or 0), _candidate(attributes, 'IMDb-id och tidskontroll')))
+    ranked.sort(key=lambda entry: entry[:2])
+    return [candidate for _, _, candidate in ranked[:limit]]
 
 
 # --- settings ------------------------------------------------------------------------------------------------------------------------
@@ -242,9 +351,12 @@ def target_path(media_path):
     return media.with_name(media.stem + SUFFIX)
 
 
-def fetch(config, media_path, user_agent, *, opener=None):
+def fetch(config, media_path, user_agent, *, opener=None, speech=None):
     """Find, download and write the subtitle for exactly this file. Returns {'path', 'how', 'release', 'remaining'}; raises
-    OpenSubtitlesError (with the reason) when nothing safe was found or something failed. Never touches any other subtitle."""
+    OpenSubtitlesError (with the reason) when nothing safe was found or something failed. Never touches any other subtitle.
+
+    `speech(media) -> (speech intervals, windows)` is the worker's speech detector; without it a file that needs the timing check
+    raises NeedsTimingCheck, so the web server can hand it to the worker."""
     settings = load_settings(config)
     if not settings['enabled'] or not settings['api_key']:
         raise OpenSubtitlesError('Nödlösningen med OpenSubtitles är inte påslagen under Inställningar.')
@@ -256,15 +368,47 @@ def fetch(config, media_path, user_agent, *, opener=None):
     by_hash = client.search(moviehash=movie_hash(media))
     by_name = [] if any((item.get('attributes') or {}).get('moviehash_match') is True for item in by_hash) else client.search(query=media.stem)
     candidate, why = choose(by_hash, by_name, media.name)
+    timing = None
     if candidate is None:
-        raise OpenSubtitlesError(why)
-    content, remaining = client.download(candidate['file_id'])
-    text = subtitle_text(content)
+        identity = nfo_identity(media)
+        if identity is None:
+            raise OpenSubtitlesError(why + ' Biblioteket har ingen .nfo med IMDb-id för filen, så ingen tidskontroll kunde göras.')
+        if speech is None:
+            raise NeedsTimingCheck(identity)
+        candidates = timing_candidates(client.search(**identity_params(identity)), identity, media.name)
+        if not candidates:
+            raise OpenSubtitlesError(f'Ingen svensk undertext på OpenSubtitles för {describe(identity)}.')
+        from subtitle_sync import shift, verdict
+        intervals, windows = speech(media)
+        tried, remaining = [], None
+        for option in candidates:
+            content, remaining = client.download(option['file_id'])
+            try:
+                text = subtitle_text(content)
+            except OpenSubtitlesError:
+                tried.append(f"{option['release'] or 'okänd utgåva'} (ingen SRT)")
+                continue
+            result = verdict(text, intervals, windows)
+            if result['fits']:
+                candidate, timing = option, result
+                text = shift(text, result['offset'], result['scale'])
+                break
+            tried.append(f"{option['release'] or 'okänd utgåva'} (tiderna passar inte)")
+        if candidate is None:
+            raise OpenSubtitlesError(f"{len(tried)} svenska undertexter för {describe(identity)} provades men ingen passade tiderna i just den "
+                                     f"här filen; ingen sparades. Provade: {'; '.join(tried)[:300]}"
+                                     + (f' · {remaining} nedladdningar kvar i dag' if remaining is not None else ''))
+    else:
+        content, remaining = client.download(candidate['file_id'])
+        text = subtitle_text(content)
     target = target_path(media)
     temporary = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
     temporary.write_text(text, encoding='utf-8')
     os.replace(temporary, target)
-    return {'path': str(target), 'how': candidate['how'], 'release': candidate['release'], 'remaining': remaining, 'at': time.time()}
+    how = candidate['how']
+    if timing and (timing['offset'] or timing['scale'] != 1.0):
+        how += f" (flyttad {timing['offset']:+.1f} s" + (f", hastighet {timing['scale']:.3f}" if timing['scale'] != 1.0 else '') + ')'
+    return {'path': str(target), 'how': how, 'release': candidate['release'], 'remaining': remaining, 'at': time.time(), 'timing': timing}
 
 
 # --- web ------------------------------------------------------------------------------------------------------------------------------
@@ -279,7 +423,9 @@ def render_card(settings, token, notice=''):
         "<div class='card' id='opensubtitles'><h2>Nödlösning: OpenSubtitles</h2>"
         + (f"<p class='success' role='status'>{escape(notice)}</p>" if notice else '')
         + "<p class='muted'>Bara när SubSynqs egen AI-undertext inte går att göra. En svensk undertext hämtas endast om den hör till "
-          "exakt den här filen: filens kontrollsumma, eller hela filnamnet (utgåvenamnet). Titel, säsong och avsnitt räcker aldrig. "
+          "exakt den här filen: filens kontrollsumma, hela filnamnet (utgåvenamnet), eller filmens/avsnittets IMDb-id från bibliotekets "
+          ".nfo-filer och sedan en kontroll av att replikernas tider stämmer med talet i just din fil (högst tre provas, en förskjuten "
+          "undertext flyttas på plats). Titel, säsong och avsnitt räcker aldrig. "
           "Maskin- och AI-översatta undertexter tas inte. Filen sparas som <code>namn.opensub.sv.srt</code> och ersätter aldrig "
           "AI-undertexten.</p>"
         "<form action='/settings/opensubtitles' method='post' autocomplete='off'>" + token_field +
