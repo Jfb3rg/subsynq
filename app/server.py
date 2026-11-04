@@ -15,7 +15,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit, parse_qs, quote
-from library import SEASON_FOLDER, VIDEO_EXTENSIONS, has_embedded_swedish_subtitle, scan_library, subtitle_coverage
+from library import SEASON_FOLDER, VIDEO_EXTENSIONS, episode_identity, has_embedded_swedish_subtitle, scan_library, subtitle_coverage
 from probe import probe_media
 from presentation import LANGUAGES as TRACK_LANGUAGES, format_file_size, render_tracks
 from hardware import allowed_preferences, load_hardware, render_hardware
@@ -34,7 +34,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.361"
+VERSION = "0.8.362"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -210,9 +210,13 @@ class BusyError(Exception):
     """Raised when a library scan is already running."""
 
 
-def perform_library_scan(choice=scan_state.ALL):
+def perform_library_scan(choice=scan_state.ALL, quick=False):
     """Scan one library ('movie', 'episode' or 'media') or all of them and persist the result. Shared by the
-    scan buttons and the background automatic scan loop. A scan of one library keeps the others' earlier results."""
+    scan buttons and the background automatic scan loop. A scan of one library keeps the others' earlier results.
+
+    An unchanged file is never opened again (its earlier track inspection is kept). `quick` (the automatic scan) also skips every folder
+    whose modification time is unchanged since the last scan, so a library where nothing was added is checked with one directory lookup
+    per folder and the disks can spin down. The buttons still list every folder."""
     roots = scan_state.roots_for(choice, lambda root: Path(root).is_dir())
     if not SCAN_LOCK.acquire(blocking=False):
         raise BusyError("En skanning pågår redan.")
@@ -221,12 +225,22 @@ def perform_library_scan(choice=scan_state.ALL):
         try:
             overrides_path = CONFIG / "kind-overrides.json"
             overrides = json.loads(overrides_path.read_text(encoding="utf-8-sig")) if overrides_path.exists() else {}
-            items = scan_library(roots, probe=probe_media, kind_overrides=overrides, progress=SCAN_STATUS.progress)
             with sqlite3.connect(DATABASE) as db:
                 saved = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
-                result = scan_state.merge_scan(json.loads(saved[0]) if saved else {}, roots, items,
-                                               datetime.now(timezone.utc).isoformat(), choice == scan_state.ALL)
+                saved_directories = db.execute("SELECT value FROM metadata WHERE key='library_directories'").fetchone()
+            earlier = json.loads(saved[0]) if saved else {}
+            known_directories = json.loads(saved_directories[0]) if saved_directories else {}
+            state = {}
+            items = scan_library(roots, probe=probe_media, kind_overrides=overrides, progress=SCAN_STATUS.progress,
+                                 previous=earlier.get("items") or [], directories=known_directories if quick else None, state=state)
+            result = scan_state.merge_scan(earlier, roots, items, datetime.now(timezone.utc).isoformat(), choice == scan_state.ALL)
+            directories = {path: record for path, record in known_directories.items() if not scan_state._under(path, roots)}
+            directories.update(state.get("directories") or {})
+            with sqlite3.connect(DATABASE) as db:
                 db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_scan', ?)", (json.dumps(result),))
+                db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_directories', ?)", (json.dumps(directories),))
+            logging.info("Biblioteksskanning%s: %d mappar lästa, %d oförändrade hoppades över, %d filer undersökta, %d återanvända",
+                         " (snabb)" if quick else "", state.get("listed", 0), state.get("skipped", 0), state.get("probed", 0), state.get("reused", 0))
         except Exception as error:  # noqa: BLE001 - the status must never stay on "running"
             SCAN_STATUS.fail(error if isinstance(error, FileNotFoundError)
                              else "Kunde inte läsa biblioteksmapparna eller spara resultatet.")
@@ -335,7 +349,45 @@ def resolve_webhook_media_per_root(path_str, root_prefixes):
         "Kontrollera rotmapparna under Inställningar.")
 
 
-def queue_webhook_media(media, ignore_existing):
+def add_media_to_library(media):
+    """A file a Radarr/Sonarr/Emby/Jellyfin webhook reported is added to the stored library at once (one file inspected, its folder read),
+    so it shows in SubSynq without waiting for a scan. Its folder record is dropped, so the next quick scan reads that folder again.
+    Returns the new item, or None when the file is not under a library folder."""
+    root = next((Path(root) for root in scan_state.LIBRARY_ROOTS.values()
+                 if str(media) == root or str(media).startswith(root.rstrip("/") + "/")), None)
+    if root is None or not media.is_file():
+        return None
+    overrides_path = CONFIG / "kind-overrides.json"
+    overrides = json.loads(overrides_path.read_text(encoding="utf-8-sig")) if overrides_path.exists() else {}
+    if not SCAN_LOCK.acquire(timeout=60):
+        return None              # a long scan is running; it finds the file itself
+    try:
+        with sqlite3.connect(DATABASE) as db:
+            saved = db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()
+            saved_directories = db.execute("SELECT value FROM metadata WHERE key='library_directories'").fetchone()
+        library = json.loads(saved[0]) if saved else {"items": []}
+        directories = json.loads(saved_directories[0]) if saved_directories else {}
+        found = [item for item in scan_library([media.parent], probe=probe_media, kind_overrides=overrides,
+                                               previous=library.get("items") or [], recursive=False) if item["path"] == str(media)]
+        if not found:
+            return None
+        item = {**found[0], "kind": overrides.get(str(media), "episode" if root.name == "tv" else "movie" if root.name == "movies" else "media"),
+                **episode_identity(media, root)}
+        items = [existing for existing in library.get("items") or [] if existing.get("path") != str(media)]
+        position = next((index for index, existing in enumerate(items)
+                         if scan_state._rank(existing) > scan_state._rank(item)
+                         or (scan_state._rank(existing) == scan_state._rank(item) and str(existing.get("path")) > str(media))), len(items))
+        library["items"] = items[:position] + [item] + items[position:]
+        directories.pop(str(media.parent), None)
+        with sqlite3.connect(DATABASE) as db:
+            db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_scan', ?)", (json.dumps(library),))
+            db.execute("INSERT OR REPLACE INTO metadata VALUES ('library_directories', ?)", (json.dumps(directories),))
+    finally:
+        SCAN_LOCK.release()
+    return item
+
+
+def queue_webhook_media(media, ignore_existing, item=None):
     """Queue a single file discovered via a Radarr/Sonarr webhook. Returns a
     human-readable reason when nothing was queued, or None on success -- the
     caller always answers the webhook with 200 either way, since 'skipped
@@ -343,7 +395,7 @@ def queue_webhook_media(media, ignore_existing):
     preferred, legacy = media.with_suffix(".ai.sv.srt"), media.with_suffix(".sv.ai.srt")
     if preferred.is_file() or legacy.is_file():
         return "En AI-undertext finns redan för filen."
-    if not ignore_existing and has_embedded_swedish_subtitle(probe_media(media)):
+    if not ignore_existing and has_embedded_swedish_subtitle(item.get("probe") if item else probe_media(media)):
         return "Filen har redan en inbäddad svensk undertext."
     try:
         enqueue_job(DATABASE, str(media), media.name)
@@ -378,7 +430,7 @@ def auto_scan_loop():
         if metadata.get("auto_scan_enabled") != "1":
             continue
         try:
-            result = perform_library_scan()
+            result = perform_library_scan(quick=True)
         except (BusyError, OSError, sqlite3.Error, ValueError):
             continue
         if metadata.get("auto_start_jobs") == "1":
@@ -1208,7 +1260,9 @@ def render_settings_content(theme, accent, hardware, preference, token, saved,
         "onchange='this.closest(\"form\").requestSubmit()'>"
         "<span>Sök efter ny media automatiskt (var 5:e minut)</span></label>"
         "<p class='muted'>Normalt måste du klicka \"Skanna bibliotek\" själv. Aktivera det här "
-        "för att låta SubSynq bevaka mapparna åt dig i bakgrunden.</p>"
+        "för att låta SubSynq bevaka mapparna åt dig i bakgrunden. Bara mappar där något har lagts till, "
+        "tagits bort eller bytt namn läses, och bara nya filer öppnas, så diskarna kan gå ner i viloläge. "
+        "Med webhooks från Radarr, Sonarr eller Emby läggs ny media till direkt.</p>"
         "<label class='checkbox-row'>"
         f"<input type='checkbox' name='auto_start_jobs' value='1'{start_checked} "
         "onchange='this.closest(\"form\").requestSubmit()'>"
@@ -2303,6 +2357,12 @@ class Handler(BaseHTTPRequestHandler):
         except (KeyError, TypeError, ValueError) as error:
             self.respond(400, 'text/plain', str(error))
             return
+        # The new file shows in the library at once, also when no job may start by itself (the user, 2026-11-04).
+        try:
+            added = add_media_to_library(media)
+        except (OSError, sqlite3.Error, ValueError):
+            logging.exception('Webhook: filen kunde inte läggas till i biblioteket')
+            added = None
         if metadata.get('auto_start_jobs') != '1':
             # The same switch as for the library scan: with "Starta undertextjobb automatiskt" off, nothing starts a
             # (billable) job by itself, and that includes the webhooks. Real case 2026-10-16: Sonarr imported an
@@ -2311,7 +2371,7 @@ class Handler(BaseHTTPRequestHandler):
                 'status': 'skipped',
                 'reason': 'Automatisk jobbstart är av under Inställningar, så webhooken köar inget jobb.'}))
             return
-        reason = queue_webhook_media(media, metadata.get('ignore_existing_subtitle') == '1')
+        reason = queue_webhook_media(media, metadata.get('ignore_existing_subtitle') == '1', item=added)
         if reason:
             self.respond(200, 'application/json', json.dumps({'status': 'skipped', 'reason': reason}))
             return

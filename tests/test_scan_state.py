@@ -135,7 +135,7 @@ class ServerScanTests(unittest.TestCase):
     def test_scanning_the_series_folder_only_reads_that_folder_and_keeps_the_movies(self):
         asked = []
 
-        def fake_scan(roots, probe=None, kind_overrides=None, progress=None):
+        def fake_scan(roots, probe=None, kind_overrides=None, progress=None, **incremental):
             asked.append(list(roots))
             progress("/tv", 1)
             return [item("/tv/s/e2.mkv")]
@@ -208,7 +208,7 @@ class ServerScanTests(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow(roots, probe=None, kind_overrides=None, progress=None):
+        def slow(roots, probe=None, kind_overrides=None, progress=None, **incremental):
             progress(roots[0], 2)
             started.set()
             release.wait(10)

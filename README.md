@@ -96,7 +96,7 @@ Hör taligenkänningen samma ord fel i fil efter fil kan du lägga en **ordlista
 `/config/glossary.json` (i `data/config/`), till exempel
 `[{"heard": "snow goat", "write": "snowgo"}]`. Hela ord byts innan något översätts.
 
-Manuell start är standard. Automatisk skanning och jobbstart kan väljas i
+Manuell start är standard. Den automatiska skanningen läser bara mappar där något har ändrats och öppnar bara nya filer, så diskarna kan gå ner i viloläge; med webhooks från Radarr, Sonarr eller Emby läggs ny media till direkt. Automatisk skanning och jobbstart kan väljas i
 inställningarna. Befintliga SubSynq-undertexter skrivs inte över automatiskt;
 borttagning via gränssnittet kräver bekräftelse och sker direkt, utan att vänta i kön.
 Knappen "Ta bort AI-undertext" finns på varje fil som har en AI-undertext.

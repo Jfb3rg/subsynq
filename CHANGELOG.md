@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.362
+
+- Den automatiska sökningen läser bara mappar där något har ändrats och öppnar bara nya filer, så diskarna kan gå ner i viloläge.
+- Skanna-knapparna öppnar inte längre oförändrade filer igen.
+- En fil som Radarr, Sonarr, Emby eller Jellyfin rapporterar läggs till i biblioteket direkt, även när automatisk jobbstart är av.
+
 ## 0.8.361
 
 - När ljudläsarna hör olika ord läses repliken om med mer ljud runt omkring; bara en läsning som varje modell har hört kan väljas, och bara om den nuvarande texten är fel.

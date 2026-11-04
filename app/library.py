@@ -1,6 +1,7 @@
 """Read-only discovery with optional track inspection."""
 import os
 import re
+import time
 from pathlib import Path
 
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".mov", ".ts", ".webm"}
@@ -108,18 +109,68 @@ def episode_identity(media, root):
     }
 
 
-def scan_library(roots, probe=None, kind_overrides=None, progress=None):
+def _default_kind(root):
+    return "episode" if root.name == "tv" else "movie" if root.name == "movies" else "media"
+
+
+def _reusable_probe(previous, size, mtime_ns):
+    """The earlier probe of an unchanged file (same size and modification time), or None. A failed or pending probe is never reused."""
+    if not previous or previous.get("size_bytes") != size or previous.get("mtime_ns") != mtime_ns:
+        return None
+    probe = previous.get("probe")
+    return probe if isinstance(probe, dict) and probe.get("status") not in (None, "pending", "error") else None
+
+
+def scan_library(roots, probe=None, kind_overrides=None, progress=None, previous=None, directories=None, state=None, recursive=True):
+    """Every video file under `roots`, in folder order.
+
+    `previous` (the items of the last scan) lets an unchanged file keep its earlier track inspection: the file itself is not opened again.
+    `directories` (the folder record of the last scan, see `state`) makes the scan quick: a folder whose modification time is unchanged was
+    not given, removed or renamed a file, so it is not even listed; its files keep their earlier items. Only folders where something
+    changed are read, and only new or changed files are inspected. Before 0.8.362 the automatic scan opened every video file every five
+    minutes and the library's disks could never spin down (the user, 2026-11-04).
+
+    `state` (a dict) receives 'directories' (the folder record to keep for the next quick scan) and counts: 'listed', 'skipped', 'probed',
+    'reused'."""
+    previous_items = {str(item.get("path")): item for item in (previous or ())}
+    old_directories = directories or {}
+    new_directories = {}
+    counts = {"listed": 0, "skipped": 0, "probed": 0, "reused": 0}
     items = []
-    def fail(error):
-        raise error
+    overrides = kind_overrides or {}
     for root in roots:
         root = Path(root)
         if not root.is_dir():
             raise FileNotFoundError(f"Biblioteksmappen saknas: {root}")
         found = 0
-        for directory, dirs, files in os.walk(root, onerror=fail, followlinks=False):
-            dirs[:] = sorted(d for d in dirs if not Path(directory, d).is_symlink())
-            for filename in sorted(files):
+        stack = [root]
+        while stack:
+            directory = stack.pop()
+            key = str(directory)
+            mtime_ns = os.stat(directory).st_mtime_ns
+            old = old_directories.get(key)
+            if (directories is not None and old and old.get("mtime_ns") == mtime_ns
+                    and all(path in previous_items for path in old.get("files", []))):
+                counts["skipped"] += 1
+                new_directories[key] = old
+                for path in old.get("files", []):
+                    item = dict(previous_items[path])
+                    item["kind"] = overrides.get(path, _default_kind(root))
+                    items.append(item)
+                    counts["reused"] += 1
+                    found += 1
+                if progress and old.get("files"):
+                    progress(str(root), found)
+                stack.extend(Path(sub) for sub in reversed(old.get("subdirs", [])))
+                continue
+            counts["listed"] += 1
+            with os.scandir(directory) as listing:
+                entries = list(listing)
+            subdirs = sorted(entry.path for entry in entries if entry.is_dir(follow_symlinks=False))
+            files = sorted(entry.name for entry in entries if not entry.is_dir(follow_symlinks=False))
+            names = set(files)
+            videos = []
+            for filename in files:
                 media = Path(directory, filename)
                 if media.suffix.lower() not in VIDEO_EXTENSIONS or media.is_symlink():
                     continue
@@ -128,22 +179,37 @@ def scan_library(roots, probe=None, kind_overrides=None, progress=None):
                 legacy_subtitle = media.with_suffix(".sv.ai.srt")
                 english_subtitle = media.with_suffix(".ai.en.srt")
                 identity = episode_identity(media, root)
-                probe_result = probe(media) if probe else {"status": "pending"}
+                probe_result = _reusable_probe(previous_items.get(str(media)), info.st_size, info.st_mtime_ns) if previous_items else None
+                if probe_result is not None:
+                    counts["reused"] += 1
+                else:
+                    probe_result = probe(media) if probe else {"status": "pending"}
+                    counts["probed"] += 1 if probe else 0
+                has_preferred, has_legacy = preferred_subtitle.name in names, legacy_subtitle.name in names
                 items.append({
                     "path": str(media), "name": media.name,
                     "size_bytes": info.st_size, "mtime_ns": info.st_mtime_ns,
-                    "ai_sv_exists": preferred_subtitle.is_file() or legacy_subtitle.is_file(),
-                    "ai_sv_path": (str(preferred_subtitle) if preferred_subtitle.is_file()
-                                   else str(legacy_subtitle) if legacy_subtitle.is_file() else None),
-                    "ai_en_exists": english_subtitle.is_file(),
-                    "ai_en_path": str(english_subtitle) if english_subtitle.is_file() else None,
-                    "kind": (kind_overrides or {}).get(str(media), "episode" if root.name == "tv" else "movie" if root.name == "movies" else "media"),
+                    "ai_sv_exists": has_preferred or has_legacy,
+                    "ai_sv_path": (str(preferred_subtitle) if has_preferred else str(legacy_subtitle) if has_legacy else None),
+                    "ai_en_exists": english_subtitle.name in names,
+                    "ai_en_path": str(english_subtitle) if english_subtitle.name in names else None,
+                    "kind": overrides.get(str(media), _default_kind(root)),
                     "probe": probe_result,
                     "embedded_sv_exists": has_embedded_swedish_subtitle(probe_result),
                     "sidecar_langs": sidecar_languages(media, files),
                     **identity,
                 })
+                videos.append(str(media))
                 found += 1
                 if progress:
                     progress(str(root), found)
+            # A folder changed within the last two seconds may change again within the same timestamp tick (a file added while it was
+            # being read): it is not trusted, so the next quick scan reads it again (the "racy" case git also guards against).
+            trusted = time.time_ns() - mtime_ns > 2_000_000_000
+            new_directories[key] = {"mtime_ns": mtime_ns if trusted else -1, "files": videos,
+                                    "subdirs": [sub for sub in subdirs if not Path(sub).is_symlink()]}
+            if recursive:
+                stack.extend(Path(sub) for sub in reversed(new_directories[key]["subdirs"]))
+    if state is not None:
+        state.update(counts, directories=new_directories)
     return items
