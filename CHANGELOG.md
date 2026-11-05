@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.371
+
+- En replikgräns som taligenkänningen lagt mitt i en mening flyttas till meningens slut när den ligger i samma två repliker ("… how could I possibly" / "expect you to understand? …" blir "… how could I possibly expect you to understand?").
+- En lång mening som delas på två repliker delas vid ett kommatecken eller före "and/but/so …" i stället för efter "the", "and" eller "of".
+- Tiden för en flyttad gräns tas ur taligenkänningens egna ord; inga ord ändras.
+
 ## 0.8.368
 
 - Undertexten skrivs med högst två rader à 42 tecken per replik, som på svensk tv; en replik som inte ryms delas i två efter varandra. Tidigare kunde en rad gå från kant till kant på en stor tv.

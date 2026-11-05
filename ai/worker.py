@@ -89,6 +89,7 @@ from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, CHAIN_GPU_MIN_DISK_GB, CHAIN
 from qwen_quality import alignment_quality, reliable_alignment_islands
 from probe import probe_media
 from subtitle_layout import layout_cues
+from sentence_cuts import evidence_words, move_cuts_to_sentence_ends
 import dub_bed
 from translation_qa import (might_be_swedish, dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
@@ -3282,6 +3283,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     alternatives = reading_alternatives(merged, consensus_readings, word_families=word_families)
     confirmed_prefixes = {item['row']: item['prefix'] for item in consensus_prefixes}
     job['reading_context'] = {'duration': total, 'spans': strict_speech}
+    job['_sentence_cut_words'] = evidence_words(profile_evidence)
     return [{'id': index, 'start': row['start'], 'end': row['end'], 'source': row['text'],
              **({'confirmed_language': row['confirmed_language']} if row.get('confirmed_language') else {}),
              **({'confirmed_prefix': confirmed_prefixes[index]} if index in confirmed_prefixes else {}),
@@ -3342,6 +3344,7 @@ def save_source_transcript(job, media, rows, hardware, model, *, raw=False, sour
         'lead_word_probes': job.get('lead_word_probes', []),
         'reading_time': job.get('reading_time', {}),
         'phrase_overlaps_removed': job.get('phrase_overlaps_removed', []),
+        'sentence_cuts': job.get('sentence_cuts', []),
         'rows': [{'id': row['id'], 'start': row['start'], 'end': row['end'],
                   'source': row['source'], **({'source_unclear': True} if row.get('source_unclear') else {}),
                   **({'confirmed_language': row['confirmed_language'], 'confirmed_source_words': row.get('confirmed_source_words', [])}
@@ -5796,6 +5799,13 @@ def translate_and_review(job, rows, *, announce=lambda stage: None):
     job['reread_rows'] = []
     # Unpunctuated rows are given punctuation first, so that sentence fragments are not translated as sentences.
     restore_source_punctuation(rows, punctuation_call)
+    # Z Nation 4x02 (Unraid jobs 64/73/74): a boundary inside a sentence moves to a sentence end of the same two rows, timed by Whisper's words.
+    cut_words = job.pop('_sentence_cut_words', None)
+    if cut_words:
+        moved, job['sentence_cuts'] = move_cuts_to_sentence_ends(rows, cut_words)
+        rows[:] = moved
+        if job['sentence_cuts']:
+            print(f"Meningsgränser: {len(job['sentence_cuts'])} radgräns(er) flyttade till ett meningsslut", flush=True)
     translated = translate(job, rows)
     check_cancelled(job['id'])
     announce('review')
