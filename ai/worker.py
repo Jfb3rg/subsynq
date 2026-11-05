@@ -88,11 +88,12 @@ from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, CHAIN_GPU_MIN_DISK_GB, CHAIN
                           load_keys as load_cloud_keys)
 from qwen_quality import alignment_quality, reliable_alignment_islands
 from probe import probe_media
+from subtitle_layout import layout_cues
 import dub_bed
 from translation_qa import (might_be_swedish, dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
                             deterministic_flags, SWEDISH_MEANING_RULE, looks_untranslated, name_key, non_latin_runs, proper_name_forms,
-                            quote_is_only_names, repair_kept_names, restore_id_order, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
+                            quote_is_only_names, repair_kept_names, restore_id_order, SOFT_FLAG_CATEGORIES, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
                             swedish_rows_to_keep, whisper_language_label)
 from forced_reading import needs_second_reading, prefer_second_reading, reading_summary
 from source_judge import EngineUnavailable, choose_readings, complete_cut_off_rows, contradictory_rejected_choice, repeats_neighbour
@@ -5004,9 +5005,18 @@ def review_and_save_translation(job, rows, *, target_key='sv', target_language='
 
         def extra_repair_rounds(remaining, candidate):
             """The last attempt repairs a defect that the review still names again, up to EXTRA_REPAIR_ROUNDS times (each round: only those rows,
-            with their neighbours reviewed again), before the file is refused: a refused 44-minute episode costs an hour of rented GPU."""
+            with their neighbours reviewed again), before the file is refused: a refused 44-minute episode costs an hour of rented GPU.
+
+            A finding on a cut-off row that says the TRANSLATION is wrong is repaired once like any other before it is reported (user's rule,
+            0.8.291). Unraid jobs 75/76 (Main 0.8.366): "Ja, men jag har blivit led blind" and "reaktorjärndräkt", first named by the final
+            review, were never sent to a repair, because hard_flags leaves cut-off rows out, and shipped as doubtful lines."""
+            tried = {flag['id'] for flag in repair_flags}
             for _ in range(EXTRA_REPAIR_ROUNDS):
                 hard = hard_flags(remaining, rows)
+                cut = [flag for flag in remaining if flag not in hard and flag['id'] not in tried and flag['id'] not in spoken
+                       and flag.get('category') not in SOFT_FLAG_CATEGORIES]
+                tried |= {flag['id'] for flag in cut}
+                hard = hard + cut
                 if not hard:
                     break
                 check_cancelled(job['id'])
@@ -6277,9 +6287,10 @@ def write_srt(job, media, rows, *, target_key='sv'):
     if output.exists():
         raise FileExistsError(f'En {suffix} finns redan; SubSynq skriver aldrig över den automatiskt.')
     chunks = []
-    for number, row in enumerate(rows, 1):
-        text = row.get(target_key, row.get('sv', ''))
-        chunks.append(f"{number}\n{srt_timestamp(row['start'])} --> {srt_timestamp(row['end'])}\n{text}\n")
+    # At most two lines of 42 characters (Z Nation 4x03, Unraid job 76: one line per cue, up to 107 characters, edge to edge on a 65-inch TV).
+    cues = layout_cues([(row['start'], row['end'], row.get(target_key, row.get('sv', ''))) for row in rows])
+    for number, (start, end, text) in enumerate(cues, 1):
+        chunks.append(f"{number}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{text}\n")
     update_job(job['id'], 'writing', 98, f'Sparar den nya {suffix}-filen')
     try:
         with output.open('x', encoding='utf-8', newline='\n') as handle:
