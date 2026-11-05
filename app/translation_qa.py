@@ -474,6 +474,22 @@ def asks_dying_to_become_killing(flag, source, target):
             and bool(re.search(r'\bdöda\b|\bdödande\b|\btransitiv', str(flag.get('reason', '')), re.IGNORECASE)))
 
 
+_OPENER_WORDS = {'well', 'ja', 'tja', 'jo', 'väl', 'nå', 'alltså', 'jaha', 'jaså'}
+
+
+def asks_well_not_to_be_ja(flag, source, target):
+    """A finding whose only complaint is that an opening "Well," became Swedish "Ja,". Stuart (Unraid job 72, row 460): "Well, my dear, have you
+    changed your mind?" -> "Ja, min kära, har du ändrat dig?" is natural Swedish (an opening "Ja," does not agree with anything, like "Ja, vad har vi
+    för val?"), the phrase repair rightly kept it four times and the file was refused. 47 saved rows translate an opening "Well," with "Ja,"; the
+    remark is set aside only when every word it quotes is one of the opener words, so a remark about anything else in the line still counts."""
+    if flag.get('category') != 'meaning' or not re.match(r'\s*well\s*,', str(source), re.IGNORECASE) \
+            or not re.match(r'\s*ja\s*,', str(target), re.IGNORECASE):
+        return False
+    quoted = re.findall(r"['\"‘“]([^'\"’”]+)['\"’”]", str(flag.get('reason', '')))
+    words = {word.casefold() for text in quoted for word in re.findall(r'[^\W\d_]+', text)}
+    return bool(words) and {'well', 'ja'} <= words and words <= _OPENER_WORDS
+
+
 def unfounded_flags(flags, sample, *, target_key='sv'):
     """(kept, removed): the meaning and grammar findings that survive the checks above. `removed` holds
     {'id', 'category', 'why', 'reason'} so the quality report can show what was set aside and why."""
@@ -494,6 +510,8 @@ def unfounded_flags(flags, sample, *, target_key='sv'):
                 why = 'svenskans "er/ert/era" är tyskans "euer/ihr" (ni), inte "er" (han)'
             elif asks_dying_to_become_killing(flag, row.get('source', ''), row.get(target_key, '')):
                 why = 'källan säger att någon dör; "dö" får inte bli "döda" (fast betydelseregel)'
+            elif asks_well_not_to_be_ja(flag, row.get('source', ''), row.get(target_key, '')):
+                why = 'ett inledande "Well," är "Ja," på svenska lika väl som "Tja,"'
         if why:
             removed.append({'id': flag['id'], 'category': flag.get('category'), 'why': why,
                             'reason': flag.get('reason', '')})
@@ -901,6 +919,34 @@ def file_consistency_flags(rows):
             flags.append({'id': row['id'], 'category': 'untranslated', 'source_quote': source, 'target_quote': foreign.group(),
                           'reason': f'"{foreign.group()}" är norska/danska, inte svenska.'})
     return flags
+
+
+def repair_kept_names(rows, flags, target_key='sv'):
+    """Unraid jobs 70/73 (Z Nation 4x03/4x02, Main 0.8.364): "Red." -> "Röd." and "Sun May." -> "Sol i maj." were flagged by file_consistency_flags,
+    but the phrase repair never sees a reviewer's reason (it once copied a calque), took Red for the colour and changed nothing in four rounds;
+    those rows were all that refused both files. A flagged row whose every word is a name the file keeps unchanged elsewhere gets its source
+    text back as is. A row with any other word ("Hey, Red!") is left to the model; a change that the check still flags is not made."""
+    result, changes = [dict(row) for row in rows], []
+    if target_key != 'sv':
+        return result, changes
+    requested = {(f.get('id'), f.get('source_quote'), f.get('target_quote')) for f in flags if f.get('category') == 'meaning'}
+    forms = proper_name_forms(str(row.get('source', '')) for row in result)
+    found = {(flag['id'], flag['source_quote'], flag['target_quote']) for flag in file_consistency_flags(result)
+             if flag['reason'].startswith('Namnet ')}
+    for index, row in enumerate(result):
+        source, before = str(row.get('source', '')).strip(), row.get('sv')
+        if not any(key[0] == row['id'] and key in requested for key in found):
+            continue
+        words = re.findall(r'[^\W\d_]+', source)
+        if not words or not all(name_key(word) in forms for word in words):
+            continue
+        proposed = dict(row, sv=source)
+        trial = result[:index] + [proposed] + result[index + 1:]
+        if any(flag['id'] == row['id'] for flag in file_consistency_flags(trial)):
+            continue
+        result[index] = proposed
+        changes.append({'id': row['id'], 'category': 'meaning', 'source_quote': source, 'before': before, 'after': source})
+    return result, changes
 
 
 # "Okej, jag ringer dig efter jag blir våldtagen." (Agnes, dev job 246): "efter" before a clause needs "att". Only subject pronouns that cannot

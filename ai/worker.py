@@ -92,7 +92,7 @@ import dub_bed
 from translation_qa import (might_be_swedish, dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
                             deterministic_flags, SWEDISH_MEANING_RULE, looks_untranslated, name_key, non_latin_runs, proper_name_forms,
-                            quote_is_only_names, restore_id_order, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
+                            quote_is_only_names, repair_kept_names, restore_id_order, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
                             swedish_rows_to_keep, whisper_language_label)
 from forced_reading import needs_second_reading, prefer_second_reading, reading_summary
 from source_judge import EngineUnavailable, choose_readings, complete_cut_off_rows, contradictory_rejected_choice, repeats_neighbour
@@ -101,7 +101,7 @@ from glossary import apply_glossary, load_glossary
 from reread import agreed_replacement, confirmed_interior_insertion, conflicting_reread_rows, interior_insertion_slot, language_from_text, clipped_prefix_evidence
 from reread import foreign_context_plan, foreign_context_reading, foreign_context_replacement, CONTEXT_WINDOWS, words_inside, wording_support, orthography_shift
 from reread_boundaries import (language_group_plans, confirmed_group_language, local_language_override,
-                               kana_slot, confirmed_kana_insertion, confirmed_group_partition)
+                               kana_slot, confirmed_kana_insertion, confirmed_group_partition, confirmed_continuation)
 from translation_qa import source_grammar_notes
 from code_switch import plan_checks as plan_code_switch_checks, apply_checks as apply_code_switch_checks
 from speech_timing import pad_reading_time
@@ -4676,6 +4676,11 @@ def repair_flagged_translation(job, rows, flags, *, target_key='sv', target_lang
     flags = [f for f in flags if (f.get('id'), f.get('category'), f.get('source_quote'), f.get('target_quote')) not in corrected]
     if record is not None and scales:
         record({'stage': 'exact_scale', 'changes': scales})
+    rows, names = repair_kept_names(rows, flags, target_key)
+    named = {change['id'] for change in names}
+    flags = [f for f in flags if not (f.get('id') in named and str(f.get('reason', '')).startswith('Namnet '))]
+    if record is not None and names:
+        record({'stage': 'kept_name', 'changes': names})
     result = (repair_flagged_translation_split(job, rows, flags, target_key=target_key, target_language=target_language, record=record)
               if flags else [dict(row) for row in rows])
     before = {row['id']: row for row in rows}
@@ -5673,6 +5678,27 @@ def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, jud
             text, insertion = confirmed_interior_insertion(row, readings[row['id']], neighbours)
             if text:
                 record.update(decision='ersatt', candidate=text, interior_insertion=insertion)
+        index = rows.index(row)
+        continuation = (confirmed_continuation(rows[index - 1], row, readings[row['id']])
+                        if text is None and index and record['decision'] != 'för få modellfamiljer läste stället' else None)
+        if continuation:
+            # Stuart (Unraid job 72, rows 440/441): the first word of this row closes the previous row's sentence; both rows change.
+            left = rows[index - 1]
+            new_left, new_right = continuation['rows']
+            record.update(decision='radgränsen flyttad efter bekräftad fortsättning', candidate=new_right['source'],
+                          continuation=continuation, previous_start=row['start'], previous_end=row['end'],
+                          id=row['id'], start=new_right['start'], end=new_right['end'])
+            left.update(source=new_left['source'], end=new_left['end'])
+            left.pop('reading_time_source_end', None)
+            if continuation['added_words']:
+                left['confirmed_source_words'] = sorted(set(left.get('confirmed_source_words') or []) | set(continuation['added_words']))
+            row.update(source=new_right['source'], start=new_right['start'])
+            for changed_row in (left, row):
+                changed_row.pop('source_unclear', None)
+                if changed_row['id'] not in changed:
+                    changed.append(changed_row['id'])
+            job['reread_rows'].append(record)
+            continue
         if text:
             clipped = clipped_prefix_evidence(row, text, readings[row['id']])
             if clipped:

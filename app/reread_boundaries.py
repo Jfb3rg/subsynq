@@ -272,3 +272,94 @@ def confirmed_kana_insertion(row, readings, neighbours=()):
     position=letters[index]
     return row['source'][:position]+letter+row['source'][position:],dict(letter=letter,proofs=proofs,
         architectures=['whisper','qwen'],times_preserved=True)
+
+
+SENTENCE_END = ('.', '?', '!')
+
+
+def confirmed_continuation(left, right, readings):
+    """Move the first word of a row that starts inside the previous row's sentence back to that sentence.
+
+    Stuart (Unraid job 72, rows 440/441): "Don't be hard." / "yourself most people underestimate the mighty force that is geology sorry" was
+    refused twice (the reviewer missed "yourself"). The tight reread of 441 heard "hard on yourself. Most people underestimate the mighty force
+    that is geology." (large-v3 and Qwen) and "Most people underestimate the mighty force that is geology." (large-v2), but the row-by-row vote
+    saw similar text with other words and changed nothing. Required: the row starts with a small letter; large-v3 AND Qwen (two architectures)
+    both hear the end of the previous row, at most one more word and this first word closing a sentence; EVERY reading hears exactly the rest of
+    the existing words after it. At most one existing last word that no reading hears is dropped (more families than the one that wrote it).
+    Times come from large-v3's own words; the left row only grows into the gap, the right row only starts later."""
+    current = str(right.get('source', '')).strip()
+    first = re.match(r'([^\W\d_]+)', current)
+    if not first or not first.group(1)[0].islower() or not 0 <= float(right['start']) - float(left['end']) <= .5:
+        return None
+    left_words, right_words = _normalized(left['source']).split(), _normalized(current).split()
+    if len(right_words) < 4 or not left_words:
+        return None
+    opener = right_words[0]
+    heads, rests = {}, {}
+    for reading in readings:
+        name = reading.get('name')
+        if name not in ('precision', 'v2', 'qwen'):
+            return None
+        text = str(reading.get('text', '')).strip()
+        words = _normalized(text).split()
+        if opener in words:
+            at = words.index(opener)
+            head, rest = words[:at + 1], words[at + 1:]
+            ending = re.search(rf'\b{re.escape(opener)}\b\s*([.?!])', text, re.IGNORECASE)
+            overlap = next((k for k in range(min(3, len(left_words), len(head) - 1), 0, -1) if head[:k] == left_words[-k:]), 0)
+            if not ending or not overlap or len(head) - overlap - 1 > 1:
+                return None
+            heads[name] = (head[overlap:-1], reading)
+        else:
+            rest = words
+        if name in rests:
+            return None
+        rests[name] = rest
+    if set(heads) != {'precision', 'qwen'} or len({tuple(extra) for extra, _ in heads.values()}) != 1 or len(rests) < 2:
+        return None
+    rest = next(iter(rests.values()))
+    if any(other != rest for other in rests.values()):
+        return None
+    existing = right_words[1:]
+    dropped = existing[len(rest):]
+    if existing[:len(rest)] != rest or len(dropped) > 1 or any(word in rest for word in dropped):
+        return None
+    extra = heads['precision'][0]
+    timed = heads['precision'][1].get('words') or []
+    try:
+        tokens = [(_normalized(w['word']), float(w['start']), float(w['end']), float(w['probability'])) for w in timed]
+    except (KeyError, TypeError, ValueError):
+        return None
+    tokens = [t for t in tokens if t[0]]
+    if not all(math.isfinite(v) for t in tokens for v in t[1:]) or any(not 0 < t[2] - t[1] <= 1.5 for t in tokens):
+        return None
+    names = [t[0] for t in tokens]
+    if opener not in names:
+        return None
+    at = names.index(opener)
+    closing = tokens[at - len(extra):at + 1]
+    following = tokens[at + 1:at + 2]
+    if ([t[0] for t in closing] != extra + [opener] or any(t[3] < .8 for t in closing) or not following
+            or following[0][0] != (rest[0] if rest else None)):
+        return None
+    new_end, new_start = round(closing[-1][2], 3), round(following[0][1], 3)
+    if not (float(left['end']) <= new_end <= new_start - .04 and new_start <= float(right['end']) - .6
+            and new_end - float(left['end']) <= 1.5):
+        return None
+    written = re.findall(r'\S+', current)
+    raw_extra = [w['word'].strip() for w in timed if _normalized(w['word']) in extra][:len(extra)]
+    mark = re.search(rf'\b{re.escape(opener)}\b\s*([.?!])', heads['precision'][1]['text'], re.IGNORECASE).group(1)
+    left_text = re.sub(r'[\s.?!,;:]+$', '', str(left['source']).strip())
+    joined = ' '.join([left_text] + [re.sub(r'[.?!,;:]+$', '', w) for w in raw_extra] + [re.sub(r'[^\w\'’-]+$', '', written[0]) + mark])
+    remainder = ' '.join(written[1:len(written) - len(dropped)])
+    if not remainder:
+        return None
+    remainder = remainder[0].upper() + remainder[1:]
+    if not remainder.rstrip().endswith(SENTENCE_END):
+        source_end = re.search(r'([.?!])\s*$', heads['precision'][1]['text'])
+        remainder = remainder.rstrip(',;: ') + (source_end.group(1) if source_end else '')
+    return dict(rows=[dict(left, source=joined, end=new_end), dict(right, source=remainder, start=new_start)],
+                added_words=extra, dropped_words=dropped, moved_word=opener, previous_end=float(left['end']),
+                previous_start=float(right['start']), families=sorted(rests), architectures=['whisper', 'qwen'],
+                times=dict(closing=[dict(word=t[0], start=t[1], end=t[2], probability=t[3]) for t in closing],
+                           next_word=dict(word=following[0][0], start=following[0][1])))
