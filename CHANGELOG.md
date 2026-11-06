@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.372
+
+- En hyrd molnserver som inte gick att stänga glöms inte längre: SubSynq försöker igen varje minut (och när arbetaren startar) tills leverantören bekräftar att den är stängd, och visar en varning under tiden i stället för att säga att den är stängd.
+
 ## 0.8.371
 
 - En replikgräns som taligenkänningen lagt mitt i en mening flyttas till meningens slut när den ligger i samma två repliker ("… how could I possibly" / "expect you to understand? …" blir "… how could I possibly expect you to understand?").

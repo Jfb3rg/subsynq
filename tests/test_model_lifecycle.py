@@ -149,7 +149,7 @@ class ModelLifecycleTests(unittest.TestCase):
                 }
                 replacements.update({name: Mock() for name in (
                     'wait_for_database', 'gpu_health', 'set_hardware', 'recover_interrupted_jobs',
-                    'cleanup_orphaned_cloud_instances', 'reset_cloud_session_after_restart', 'prepare_asr_job',
+                    'cleanup_orphaned_cloud_instances', 'retry_pending_cloud_destroys', 'reset_cloud_session_after_restart', 'prepare_asr_job',
                     'destroy_cloud_gpu', 'release_language_model_before_asr', 'finish_model_job', 'update_job')})
                 with ExitStack() as stack:
                     for name, replacement in replacements.items():

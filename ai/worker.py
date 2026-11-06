@@ -1403,15 +1403,94 @@ def rent_cloud_chain(job, provider, mode):
             update_job(job['id'], 'transcribing', 1, note)
 
 
-def destroy_cloud_gpu(provider, instance_id):
+# A rented server whose destroy call failed stays on this list (metadata) and is tried again until the provider confirms it is gone.
+# Before, a failed destroy was only a log line: the server was forgotten, the session was reported closed and the server kept billing.
+PENDING_DESTROY_KEY = 'cloud_pending_destroy'
+DESTROY_PAUSES = (0, 5, 15)            # seconds before each attempt
+DESTROY_RETRY_SECONDS = 60
+_LAST_DESTROY_RETRY = [0.0]
+
+
+def _gone_already(error):
+    """The provider says the server does not exist: nothing is billed any more."""
+    text = str(error).casefold()
+    return ' 404' in text or 'not found' in text or 'no_such' in text or 'does not exist' in text
+
+
+def _pending_destroys(*, add=None, remove=None, error=None):
+    """The servers still waiting to be destroyed: [{'id', 'since', 'tries', 'error'}], after adding or removing one."""
+    with sqlite3.connect(DATABASE, timeout=10) as db:
+        row = db.execute('SELECT value FROM metadata WHERE key=?', (PENDING_DESTROY_KEY,)).fetchone()
+        try:
+            pending = json.loads(row[0]) if row else []
+        except (TypeError, ValueError):
+            pending = []
+        if not isinstance(pending, list):
+            pending = []
+        if remove is not None:
+            pending = [item for item in pending if item.get('id') != remove]
+        if add is not None:
+            item = next((item for item in pending if item.get('id') == add), None)
+            if item is None:
+                item = {'id': add, 'since': stamp(), 'tries': 0}
+                pending.append(item)
+            item['tries'] = int(item.get('tries', 0)) + 1
+            item['error'] = str(error or '')[:300]
+        if pending:
+            db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', (PENDING_DESTROY_KEY, json.dumps(pending)))
+        else:
+            db.execute('DELETE FROM metadata WHERE key=?', (PENDING_DESTROY_KEY,))
+    return pending
+
+
+def destroy_cloud_gpu(provider, instance_id, *, pauses=DESTROY_PAUSES):
+    """Destroy a rented server; True once the provider has confirmed it (or says it no longer exists). A server that could not be destroyed
+    after `pauses` attempts is kept on the pending list and tried again by retry_pending_cloud_destroys, never just forgotten."""
     if not instance_id:
-        return
-    try:
-        api_key = load_cloud_keys(CONFIG).get(provider)
-        if api_key:
+        return True
+    stored = cloud_gpu.stored_instance_id(provider, instance_id)
+    last = None
+    for pause in pauses:
+        if pause:
+            time.sleep(pause)
+        try:
+            api_key = load_cloud_keys(CONFIG).get(provider)
+            if not api_key:
+                raise RuntimeError(f'ingen API-nyckel för {provider}')
             cloud_gpu.destroy_chain_instance(provider, api_key, instance_id)
-    except Exception as error:
-        print(f'VARNING: kunde inte förstöra molninstans {instance_id}: {error!r}', flush=True)
+        except Exception as error:
+            if _gone_already(error):
+                break
+            last = error
+            continue
+        last = None
+        break
+    try:
+        if last is None:
+            _pending_destroys(remove=stored)
+        else:
+            _pending_destroys(add=stored, error=repr(last))
+    except (sqlite3.Error, TypeError, ValueError, AttributeError) as error:
+        print(f'VARNING: kunde inte spara listan över molnservrar att stänga: {error!r}', flush=True)
+    if last is not None:
+        print(f'VARNING: kunde inte förstöra molninstans {instance_id} ({last!r}); försöker igen var {DESTROY_RETRY_SECONDS}:e sekund.', flush=True)
+        return False
+    return True
+
+
+def retry_pending_cloud_destroys(*, force=False):
+    """Try every server on the pending list once more (at most once a minute unless `force`); the list shrinks as the provider confirms."""
+    if not force and time.monotonic() - _LAST_DESTROY_RETRY[0] < DESTROY_RETRY_SECONDS:
+        return
+    _LAST_DESTROY_RETRY[0] = time.monotonic()
+    try:
+        pending = _pending_destroys()
+    except (sqlite3.Error, TypeError, ValueError, AttributeError):
+        return
+    for item in pending:
+        provider, raw_id = cloud_gpu.split_stored_instance_id(item.get('id'))
+        if destroy_cloud_gpu(provider, raw_id, pauses=(0,)):
+            print(f'Molnservern {item.get("id")} är nu stängd (efter {item.get("tries", 1)} misslyckade försök).', flush=True)
 
 
 def cleanup_orphaned_cloud_instances():
@@ -1486,11 +1565,14 @@ def forget_kept_cloud_server():
 
 
 def destroy_kept_cloud_server():
+    """True when there was no kept server or the provider confirmed it is gone; a failure stays on the pending list (destroy_cloud_gpu)."""
     global _KEPT_CLOUD
     kept, _KEPT_CLOUD = _KEPT_CLOUD, None
-    if kept:
-        destroy_cloud_gpu(kept['provider'], kept['instance_id'])
-        forget_kept_cloud_server()
+    if not kept:
+        return True
+    destroyed = destroy_cloud_gpu(kept['provider'], kept['instance_id'])
+    forget_kept_cloud_server()
+    return destroyed
 
 
 def acquire_cloud_chain(job, provider, mode):
@@ -1598,8 +1680,11 @@ def expire_kept_cloud_server():
         state = cloud_session.load(DATABASE)
         if cloud_session.idle_seconds(state) > cloud_session.IDLE_SECONDS:
             print('Molnsessionen har inte kört något jobb på en timme; servern stängs.', flush=True)
-            destroy_kept_cloud_server()
-            cloud_session.save(DATABASE, {'state': 'off', 'message': 'Molnsessionen stängdes automatiskt efter 1 timme utan jobb.'})
+            if destroy_kept_cloud_server():
+                cloud_session.save(DATABASE, {'state': 'off', 'message': 'Molnsessionen stängdes automatiskt efter 1 timme utan jobb.'})
+            else:
+                cloud_session.save(DATABASE, {'state': 'off', 'message': 'Molnservern kunde INTE stängas efter 1 timme utan jobb (leverantören svarade inte). '
+                                                                        'SubSynq försöker igen varje minut; kontrollera hos leverantören om den inte stängs.'})
         return
     try:
         waiting = cloud_jobs_are_waiting(hardware_preference())
@@ -6805,6 +6890,7 @@ def main():
     set_hardware(False, health=health)
     recover_interrupted_jobs()
     cleanup_orphaned_cloud_instances()
+    retry_pending_cloud_destroys(force=True)
     reset_cloud_session_after_restart()
     threading.Thread(target=resource_refresh_loop, daemon=True).start()
     threading.Thread(target=opensubtitles_request_loop, daemon=True).start()
@@ -6823,6 +6909,7 @@ def main():
         if not job:
             run_cloud_session()
             expire_kept_cloud_server()
+            retry_pending_cloud_destroys()
             if waiting_for_models and time.monotonic() - last_waiting_note >= 30:
                 note_jobs_waiting_for_models()
                 last_waiting_note = time.monotonic()
