@@ -280,7 +280,7 @@ SENTENCE_END = ('.', '?', '!')
 def confirmed_continuation(left, right, readings):
     """Move the first word of a row that starts inside the previous row's sentence back to that sentence.
 
-    Stuart (Unraid job 72, rows 440/441): "Don't be hard." / "yourself most people underestimate the mighty force that is geology sorry" was
+    SampleSeries (regression caserows 440/441): "Don't be hard." / "yourself most people underestimate the mighty force that is geology sorry" was
     refused twice (the reviewer missed "yourself"). The tight reread of 441 heard "hard on yourself. Most people underestimate the mighty force
     that is geology." (large-v3 and Qwen) and "Most people underestimate the mighty force that is geology." (large-v2), but the row-by-row vote
     saw similar text with other words and changed nothing. Required: the row starts with a small letter; large-v3 AND Qwen (two architectures)

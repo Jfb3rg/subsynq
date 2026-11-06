@@ -15,16 +15,16 @@ def cue(start, end, text, confidence=.5):
 class FamilyVoteWordingTests(unittest.TestCase):
     """A: the family vote takes the wording more families heard, not the most confident clipped reading."""
 
-    # Godzilla Minus Zero (dev job 219), 40-42 s: one v3 pass lost the first character.
-    GODZILLA = {'context': [cue(39.9, 40.96, 'あんた何よりか', .29), cue(40.96, 41.84, '退避', .36)],
+    # Example Trailer (regression case), 40-42 s: one v3 pass lost the first character.
+    SAMPLEFILM = {'context': [cue(39.9, 40.96, 'あんた何よりか', .29), cue(40.96, 41.84, '退避', .36)],
                 'precision': [cue(39.9, 41.12, 'あんたバレるのか', .37), cue(41.24, 41.94, '避', 1.0)],
                 'v2': [cue(39.99, 41.25, 'あんたバリバリか!', .26), cue(41.25, 42.0, '退避!', .43)],
                 'qwen': [cue(40.66, 42.3, '还有一个，开始。', .5)]}
     FINAL = [cue(38.47, 39.9, '私があの案を提案したんです'), cue(39.9, 40.96, 'あんた何よりか', .29),
              cue(42.9, 44.42, 'やっぱりこうなるんだ', .81)]
 
-    def test_godzilla_evacuate_is_restored_whole(self):
-        result = restore_family_voted_speech(self.FINAL, self.GODZILLA)
+    def test_samplefilm_evacuate_is_restored_whole(self):
+        result = restore_family_voted_speech(self.FINAL, self.SAMPLEFILM)
         added = [row['text'] for row in result if row not in self.FINAL]
         self.assertEqual(added, ['退避!'])
 
@@ -40,7 +40,7 @@ class FamilyVoteWordingTests(unittest.TestCase):
 class OutvotedSingleReadingTests(unittest.TestCase):
     """C: a doubtful row only one reading heard is replaced when three families heard the same other words."""
 
-    # Glemselens øy (dev jobs 212 and 216), 118-126 s.
+    # Nordic Sample (regression caseand 216), 118-126 s.
     READINGS = {'context': [cue(121.64, 123.32, 'Gjent mors', .43), cue(124.96, 126.16, 'grønn og vann', .49)],
                 'rescue': [cue(120.36, 122.38, 'Vi skal hjem.', .96)],
                 'v2': [cue(120.34, 122.52, 'Vi skal hjem!', .87)],
@@ -49,7 +49,7 @@ class OutvotedSingleReadingTests(unittest.TestCase):
     FINAL = [cue(118.3, 120.2, 'Hold fast i rommene, Gunnars!', .7), cue(121.96, 123.32, 'Gjent mors', .43),
              cue(124.96, 126.16, 'grønn og vann', .49)]
 
-    def test_glemselens_oy_gjent_mors_becomes_vi_skal_hjem(self):
+    def test_nordic_oy_gjent_mors_becomes_vi_skal_hjem(self):
         rows, changes = replace_outvoted_single_readings(self.FINAL, self.READINGS)
         self.assertEqual([row['text'] for row in rows], ['Hold fast i rommene, Gunnars!', 'Vi skal hjem.', 'grønn og vann'])
         self.assertEqual((rows[1]['start'], rows[1]['end']), (120.36, 122.38))
@@ -95,7 +95,7 @@ class UnresolvedGrammarTests(unittest.TestCase):
             result = worker.repair_flagged_translation_once({'id': 218}, [dict(self.ROW)], [dict(self.FLAG)])
         return result, model
 
-    def test_fortitude_tense_is_repaired_with_the_remark(self):
+    def test_northfield_tense_is_repaired_with_the_remark(self):
         result, model = self.run_repair([{'rows': [{'id': 27, 'sv': self.ROW['sv']}]},
                                          {'rows': [{'id': 27, 'sv': 'Jag önskar att vi hade tid att bygga mer.'}]}])
         self.assertEqual(result[0]['sv'], 'Jag önskar att vi hade tid att bygga mer.')
@@ -131,7 +131,7 @@ class ShownModelNameTests(unittest.TestCase):
 
 
 class LeadWordProbeTests(unittest.TestCase):
-    """FORTITUDE (dev jobs 218 and 221): only the rescue pass heard "you" before the cut row "were arrested"; Qwen is asked once more."""
+    """NORTHFIELD (regression caseand 221): only the rescue pass heard "you" before the cut row "were arrested"; Qwen is asked once more."""
 
     FINAL = [cue(6.85, 8.01, 'Give me the code', .8), cue(11.4, 12.18, 'were arrested', .74),
              cue(12.76, 15.8, "Wearing a woman's skirt technically it's a dress.", .71)]

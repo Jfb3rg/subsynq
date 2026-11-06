@@ -11,7 +11,7 @@ from asr_windows import _normalized, remove_adjacent_phrase_overlap
 
 class PhraseOverlapTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = json.loads((Path(__file__).parent / 'fixtures' / 'man-of-war-duplicate-phrase.json').read_text())
+        self.fixture = json.loads((Path(__file__).parent / 'fixtures' / 'duplicate-phrase.json').read_text())
 
     def run_case(self, fixture=None, **options):
         f = fixture or self.fixture
@@ -22,7 +22,7 @@ class PhraseOverlapTests(unittest.TestCase):
         rows, changes = self.run_case()
         self.assertEqual(len(changes), 1)
         self.assertEqual(rows[0]['text'], "This is what's left simple people")
-        self.assertEqual(rows[1]['text'], "We're trying to live their lives, trying to survive!")   # no capital mid-sentence (dev job 262)
+        self.assertEqual(rows[1]['text'], "We're trying to live their lives, trying to survive!")   # no capital mid-sentence (regression case)
         self.assertEqual((rows[0]['end'], rows[1]['start']), (93.01, 93.01))
         self.assertEqual((rows[0]['start'], rows[1]['end']), (87.93, 96.27))
         self.assertEqual(rows[0]['confirmed_lead_onset'], self.fixture['base'][0]['confirmed_lead_onset'])

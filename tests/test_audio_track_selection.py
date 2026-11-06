@@ -83,7 +83,7 @@ class SelectAudioTrackTests(unittest.TestCase):
             choice = worker.select_audio_track(job, Path('film.mkv'), Mock(), 60.0, '/tmp')
         return choice, listened
 
-    def test_man_of_war_picks_the_english_original_over_the_german_dub(self):
+    def test_sample_gamma_picks_the_english_original_over_the_german_dub(self):
         job = {'id': 48}
         choice, listened = self.select([track(0), track(1)], job, {0: 'de', 1: 'en'})
         self.assertEqual((choice['index'], choice['method']), (1, 'audio'))

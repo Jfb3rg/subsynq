@@ -11,7 +11,7 @@ import doubtful_report
 import worker
 from translation_qa import cut_off_ids, doubtful_rows, hard_flags, source_is_cut_off
 
-# Yukon Men S01E01 (dev job 136): the nine findings that refused the file after three repairs. Six were on source rows that Whisper cut off in the middle of a
+# Wildlife Sample S01E01 (regression case): the nine findings that refused the file after three repairs. Six were on source rows that Whisper cut off in the middle of a
 # sentence (or that the segmentation split), two on complete rows. (The ends of rows 45 and 429 are the words of the delivered Swedish and of the next row.)
 ROWS = [
     {'id': 37, 'source': 'Holy .'}, {'id': 38, 'source': "Let's get the out of"}, {'id': 39, 'source': 'This way of life can kill.'},

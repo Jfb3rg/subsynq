@@ -3,11 +3,11 @@
 SWITCHED OFF BY DEFAULT (STATUS 2026-10-19, night 36). On read speech (FLEURS) Qwen3-ASR (another model family, already in the chain) reads Hindi
 (12.6 % wrong words against Whisper large-v3's 24.8 %), Korean (11.6 against 15.2) and Chinese (4.9 against 6.5) clearly better, so for those
 languages Qwen can re-read the speech and its words replace Whisper's, every cue keeping Whisper's start and end. On real film audio it did not hold:
-the HOPE trailer (Korean) with the burned-in English subtitles as witness, Qwen lost words Whisper had right ("mudfish", "putting out the mountain fires",
+the SAMPLE_ALPHA trailer (Korean) with the burned-in English subtitles as witness, Qwen lost words Whisper had right ("mudfish", "putting out the mountain fires",
 "reservists") in four of five cues, with cue-by-cue reading and with whole runs alike. The code stays as an opt-in experiment (SUBSYNQ_READER_PLAN=on); it
 must not become the default without a measurement on film audio. The language is told by the script of what Whisper wrote (Devanagari, Hangul, Han).
 
-Qwen reads whole runs of neighbouring cues, not one cue at a time: Whisper's cue borders often cut through a word (real KING trailer: "समंदर | है"),
+Qwen reads whole runs of neighbouring cues, not one cue at a time: Whisper's cue borders often cut through a word (real SAMPLE_BETA trailer: "समंदर | है"),
 and a clip that starts or ends inside a word gives garbage at the edge. The run's text is then cut into the cues again by aligning its words to the words
 Whisper wrote. Pure logic here; the worker cuts the clips and asks the Qwen service (`read_cues_with_plan` in ai/worker.py).
 """
@@ -18,8 +18,8 @@ import translation_qa
 
 # script (translation_qa.NON_LATIN_SCRIPTS) -> the plan for it. `needs` is the setting that switches it on: `on` or only `all`.
 PLAN = {
-    'Devanagari': {'language': 'Hindi', 'label': 'hindi', 'needs': 'on'},        # KING trailer: mixed, no witness
-    'Hangul': {'language': 'Korean', 'label': 'koreanska', 'needs': 'on'},       # HOPE trailer: worse than Whisper
+    'Devanagari': {'language': 'Hindi', 'label': 'hindi', 'needs': 'on'},        # SAMPLE_BETA trailer: mixed, no witness
+    'Hangul': {'language': 'Korean', 'label': 'koreanska', 'needs': 'on'},       # SAMPLE_ALPHA trailer: worse than Whisper
     'CJK': {'language': 'Chinese', 'label': 'kinesiska', 'needs': 'all'},        # FLEURS says better; no Chinese trailer yet
 }
 ENV_NAME = 'SUBSYNQ_READER_PLAN'        # unset/0/off: switched off (default); on: Hindi and Korean; all: also Chinese

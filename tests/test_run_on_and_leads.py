@@ -10,7 +10,7 @@ def cue(start, end, text, confidence=.9):
 
 
 class PunctuatedRunOnTests(unittest.TestCase):
-    """Real job 18 (Ray Gunn 1:52): the long pass wrote one unpunctuated run-on, the short pass heard
+    """regression case(Sample Trailer 1:52): the long pass wrote one unpunctuated run-on, the short pass heard
     four punctuated sentences with almost no pause between them."""
 
     MERGED = [cue(108.40, 109.10, 'hard being', 1.0),
@@ -45,7 +45,7 @@ class PunctuatedRunOnTests(unittest.TestCase):
 
 
 class OrphanSubjectLeadTests(unittest.TestCase):
-    """Real job 18 (Ray Gunn 2:08): "I" was placed 2.8 s before "like you, Gun."; the isolated-word
+    """regression case(Sample Trailer 2:08): "I" was placed 2.8 s before "like you, Gun."; the isolated-word
     filters then removed it and the sentence lost its subject."""
 
     ROWS = [cue(123.10, 123.90, 'Stay tuned.'), cue(124.28, 125.00, 'I'), cue(127.79, 128.89, 'like you, Gun.')]
@@ -96,7 +96,7 @@ class RunOnWithTrailingLeadTests(unittest.TestCase):
 
 
 class StretchedQwenWordTests(unittest.TestCase):
-    """Real Ray Gunn run: Qwen's aligner gave "I" the span 0.0-4.0 s (a silence) before "like"."""
+    """Real Sample Trailer run: Qwen's aligner gave "I" the span 0.0-4.0 s (a silence) before "like"."""
 
     def test_a_word_stretched_over_a_silence_is_kept_not_dropped(self):
         from asr_windows import split_qwen_alignment

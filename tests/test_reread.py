@@ -19,7 +19,7 @@ def readings(precision, v2, qwen):
             {'name': 'qwen', 'text': qwen, 'confidence': .5}]
 
 
-# Real readings of the rows the final review flagged in the KOKUHO, HOPE and FRANCE trailers (dev jobs 69, 71, 72, 74, 76; STATUS natt 40).
+# Real readings of the rows the final review flagged in the KOKUHO, SAMPLE_ALPHA and FRANCE trailers (regression case; STATUS natt 40).
 KOKUHO_DEAL = ('き成立や', readings('取引成立や', '取引成立や', '取引成立や。'))
 KOKUHO_FACE = ('ですよのお顔に自分が食われちまいます からね',
                readings('そのお顔に自分は食われちまいますからね', 'そのお顔に自分が食われちまいますからね', 'そのお顔に自分が食われちまいますからね。'))
@@ -33,7 +33,7 @@ KOKUHO_GARBLED_TOO = ('客車もんは時期だがいい気もやわ',
 KOKUHO_CENTURY = ('世紀の王子家か?', readings('聖地の王国が', '聖地の王国へか', '聖地の大骨折が。'))
 KOKUHO_CLIPPED = ('歌舞伎役者にさせるん?', readings('本気で歌舞伎役者にさせる!', '本気で歌舞伎役者にさせるん', 'で歌舞伎役者にさせる。'))
 KOKUHO_RIGHT = ('実の息子より部屋子の方が芸が上言うのが', readings('実の息子より部屋子の方が芸が上言うのが', '実の息子より部屋後の方が芸が上いうのが', '実の息子より部屋子の方が芸が上いうのが。'))
-HOPE_DEAL = ('미꾸라지 마냥 미끄러운 거래 한 20분쯤 걸었는데',
+SAMPLE_ALPHA_DEAL = ('미꾸라지 마냥 미끄러운 거래 한 20분쯤 걸었는데',
              readings('미꾸라지 마냥 미끄러운 걸 한 20분쯤 걸었네', '삐꾸라지마냥 삐끄덩거리고 한 20분쯤 걸었네', '비굴하지만요. 떡걸음 한 20분쯤 걸었네.'))
 FRANCE_FAMOUS = ("Cette célébrité s'y démonte.", readings('Cette célébrité si démonte.', 'Cette célébrité si démonte.', "Cette célébrité s'y démonte."))
 
@@ -59,7 +59,7 @@ class ReplacedRowsTests(unittest.TestCase):
     def test_two_whisper_models_agreeing_against_qwen_do_not_replace_a_text_that_may_be_better(self):
         """KOKUHO row 8: both Whisper models read "聖地の王国" and Qwen "聖地の大骨折"; every family must agree, and they agree only at about 0.6."""
         self.assertEqual(replaced(KOKUHO_CENTURY), (None, 'modellfamiljerna läste olika ord'))
-        self.assertEqual(replaced(HOPE_DEAL), (None, 'modellfamiljerna läste olika ord'))
+        self.assertEqual(replaced(SAMPLE_ALPHA_DEAL), (None, 'modellfamiljerna läste olika ord'))
 
     def test_three_families_agreeing_at_0_77_are_not_enough(self):
         """KOKUHO row 8 in job 77: all three readers heard "聖地の王国…" (agreement 0.77) but the burned-in subtitles say "Future stars or failure of
@@ -140,7 +140,7 @@ class LanguageTests(unittest.TestCase):
         self.assertIsNone(worker.reread_language({}, latin))
 
     def test_a_chosen_language_pack_fixes_the_language(self):
-        # Glemselens øy (dev job 265): unforced, large-v2 and Qwen read the Norwegian "Jeg er Joe." as English "Yeah, Joe." and replaced it.
+        # Nordic Sample (regression case): unforced, large-v2 and Qwen read the Norwegian "Jeg er Joe." as English "Yeah, Joe." and replaced it.
         rows = [{'source': 'Jeg er Joe.'}, {'source': 'Skal vi bli beste venner?'}]
         self.assertEqual(worker.reread_language({'norwegian_reader': {'chosen': True}}, rows), 'no')
         self.assertEqual(worker.reread_language({'swedish_reader': {'chosen': True}}, rows), 'sv')

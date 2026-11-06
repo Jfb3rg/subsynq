@@ -9,7 +9,7 @@ because they search by title. Here a subtitle is taken only when it is tied to t
 
 A title, season or episode alone is never enough. Machine and AI translations are skipped.
 
-3. (2026-11-04) When neither matches -- a library renamed by Radarr/Sonarr ("Godzilla vs. Kong (2021) Remux-2160p.mkv") never has the
+3. (2026-11-04) When neither matches -- a library renamed by Radarr/Sonarr ("Example Film (2021) Remux-2160p.mkv") never has the
    release's own name, and remuxes are rarely hashed -- the film or episode is identified by the IMDb/TMDB id the library's own .nfo files
    give (Emby/Kodi: movie.nfo, tvshow.nfo plus the episode's season and episode), never by a title. Up to three of its Swedish subtitles
    are downloaded and each is checked against the speech in THIS file (app/subtitle_sync.py, run by the worker, which has the speech

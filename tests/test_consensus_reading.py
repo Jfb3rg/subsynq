@@ -14,8 +14,8 @@ def texts(rows):
     return [row['text'] for row in rows]
 
 
-# Real HOPE readings (job 33): the final cue came from one forced re-read, the other passes read it alike.
-HOPE = {
+# Real SAMPLE_ALPHA readings (job 33): the final cue came from one forced re-read, the other passes read it alike.
+SAMPLE_ALPHA = {
     'precision': [cue(30.1, 32.1, '대비군이라고 하자 8명인데요?', .44), cue(57.5, 58.8, '저희 집에 있다니까요', .18),
                   cue(67.8, 69.4, '우리가 아는 적은 아닙니다.', .55)],
     'rescue': [cue(30.3, 32.2, '대비문의를 받자 8명인데요?', .6), cue(56.4, 58.8, '국회문이 저희 집에 있다니까요.', .5),
@@ -38,11 +38,11 @@ class RestoreAgreedSpeechTests(unittest.TestCase):
 
     def test_lines_the_passes_read_with_different_words_are_left_out_rather_than_guessed(self):
         # "국회문이" (rescue) or "그 괴물이" (v2): the passes disagree about the words, so nothing is added.
-        result = restore_multi_pass_agreed_speech(FINAL, HOPE)
+        result = restore_multi_pass_agreed_speech(FINAL, SAMPLE_ALPHA)
         self.assertEqual(result, FINAL)
 
     def test_a_second_family_reading_breaks_the_tie_towards_the_right_words(self):
-        readings = dict(HOPE, qwen=[cue(56.0, 59.4, '그 괴물이 저희 집에 있다니까요', .5)])
+        readings = dict(SAMPLE_ALPHA, qwen=[cue(56.0, 59.4, '그 괴물이 저희 집에 있다니까요', .5)])
         added = [row for row in restore_multi_pass_agreed_speech(FINAL, readings) if 55 < row['start'] < 60]
         self.assertEqual(texts(added), ['그 괴물이 저희 집에 있다니까요'])
         self.assertLess(abs(added[0]['start'] - 56.4), .6, 'timing comes from the passes, not from the clip window')
@@ -70,36 +70,36 @@ class RestoreAgreedSpeechTests(unittest.TestCase):
 
 class PreferConsensusReadingTests(unittest.TestCase):
     def test_a_doubtful_cue_read_differently_by_most_passes_takes_their_wording(self):
-        result = prefer_consensus_reading(FINAL, HOPE, margin=.05)
+        result = prefer_consensus_reading(FINAL, SAMPLE_ALPHA, margin=.05)
         self.assertEqual(result[1]['text'], '대비군이라고 하자 8명인데요?')
         self.assertEqual((result[1]['start'], result[1]['end']), (30.93, 32.13), 'the timing is never changed')
 
     def test_a_confident_cue_is_never_changed(self):
         sure = [dict(FINAL[1], confidence=.7)]
-        self.assertEqual(prefer_consensus_reading(sure, HOPE, margin=.05), sure)
+        self.assertEqual(prefer_consensus_reading(sure, SAMPLE_ALPHA, margin=.05), sure)
 
     def test_a_cue_the_passes_do_not_clearly_disagree_with_is_left_alone(self):
-        self.assertEqual(prefer_consensus_reading(FINAL, HOPE, margin=.5), FINAL)
+        self.assertEqual(prefer_consensus_reading(FINAL, SAMPLE_ALPHA, margin=.5), FINAL)
 
     def test_a_reading_of_something_else_is_not_used(self):
         other = [cue(30.93, 32.13, 'Hello how are you today', .4)]
-        self.assertEqual(prefer_consensus_reading(other, HOPE, margin=.0), other)
+        self.assertEqual(prefer_consensus_reading(other, SAMPLE_ALPHA, margin=.0), other)
 
     def test_the_input_is_not_modified(self):
         before = [dict(row) for row in FINAL]
-        prefer_consensus_reading(FINAL, HOPE, margin=.05)
+        prefer_consensus_reading(FINAL, SAMPLE_ALPHA, margin=.05)
         self.assertEqual(FINAL, before)
 
 
 class PlanConsensusWindowsTests(unittest.TestCase):
     def test_speech_nobody_wrote_down_and_doubtful_cues_get_a_window_the_first_ones_first(self):
-        windows = plan_consensus_windows(FINAL, HOPE)
+        windows = plan_consensus_windows(FINAL, SAMPLE_ALPHA)
         self.assertEqual(len(windows), 4)
         self.assertTrue(all(window['end'] - window['start'] <= 12.6 for window in windows))
         self.assertGreater(windows[0]['start'], 55, 'uncovered speech is asked about before a doubtful cue')
         self.assertTrue(any(29 < window['start'] < 31 for window in windows), 'the doubtful cue at 30.9 s')
         # A doubtful cue (confidence .32) that no cluster of three passes covered still gets its own window, last
-        # (Man of War, dev job 49: the two least certain lines were never given to Qwen3-ASR).
+        # (Sample Gamma, regression case: the two least certain lines were never given to Qwen3-ASR).
         self.assertTrue(24 < windows[-1]['start'] < 25 and windows[-1]['end'] > 25.2, windows)
 
     def test_a_confident_cue_that_the_passes_agree_with_needs_no_window(self):
@@ -113,11 +113,11 @@ class PlanConsensusWindowsTests(unittest.TestCase):
 
 
 
-# Real HOPE readings (job 36) of rows 1 and 2: the final cues came from the multilingual pass; the passes cut the
+# Real SAMPLE_ALPHA readings (job 36) of rows 1 and 2: the final cues came from the multilingual pass; the passes cut the
 # same speech into pieces, and a forced-Korean reading without voice-activity filter read the right words.
 ROW_1 = cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55)
 ROW_2 = cue(13.1, 16.3, '갑자기 기증이.', .66)
-HOPE_PIECES = {
+SAMPLE_ALPHA_PIECES = {
     'precision': [cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55), cue(13.1, 16.3, '갑자기 기증이.', .66)],
     'context': [cue(6.4, 7.9, '삐꾸라지 마냥.', .8), cue(8.6, 9.8, '삐꾸라지 마냥.', .66),
                 cue(11.5, 16.3, '20분쯤 걸었는데 갑자기 기증이.', .6)],
@@ -132,24 +132,24 @@ HOPE_PIECES = {
 
 class JoinedPiecesAndForcedReadingTests(unittest.TestCase):
     def test_the_pieces_of_a_pass_inside_a_cue_are_joined_into_one_reading(self):
-        joined = span_readings([ROW_1], HOPE_PIECES)
+        joined = span_readings([ROW_1], SAMPLE_ALPHA_PIECES)
         self.assertEqual(joined['forced+'][0]['text'], '미꾸라지 마냥 미끄러운 거래 한 20분쯤 걸었는데')
         self.assertEqual(joined['rescue+'][0]['text'], '삐꾸라지 마냥 미끄러운 거리 한 20분쯤 걸었는데')
         self.assertNotIn('precision+', joined, 'one piece is not a join')
 
     def test_pieces_belonging_to_other_cues_are_not_joined(self):
-        joined = span_readings([ROW_2], HOPE_PIECES)
+        joined = span_readings([ROW_2], SAMPLE_ALPHA_PIECES)
         self.assertNotIn('rescue+', joined)
 
     def test_a_cue_the_forced_reading_and_other_models_contradict_is_corrected_even_at_a_higher_confidence(self):
-        result = prefer_consensus_reading([ROW_1, ROW_2], HOPE_PIECES, margin=.05)
+        result = prefer_consensus_reading([ROW_1, ROW_2], SAMPLE_ALPHA_PIECES, margin=.05)
         self.assertIn('기적이', result[1]['text'])
         self.assertNotIn('기증', result[1]['text'])
         self.assertEqual((result[1]['start'], result[1]['end']), (13.1, 16.3), 'the timing is never changed')
 
     def test_the_joined_pieces_decide_a_cue_the_passes_cut_differently(self):
         # Rescue, v2 and the forced reading all cut the speech in pieces and all read "미꾸라지"; the cue says "삐꾸라지".
-        agreed = dict(HOPE_PIECES,
+        agreed = dict(SAMPLE_ALPHA_PIECES,
                       rescue=[cue(6.5, 7.9, '미꾸라지 마냥', .71), cue(8.5, 10.0, '미끄러운 거리', .71),
                               cue(10.5, 13.2, '한 20분쯤 걸었는데', .61)],
                       v2=[cue(7.0, 7.9, '미꾸라지마냥', .77), cue(7.9, 10.2, '미끄덩거려.', .78),
@@ -159,11 +159,11 @@ class JoinedPiecesAndForcedReadingTests(unittest.TestCase):
 
     def test_a_cue_all_passes_but_one_read_alike_keeps_its_wording(self):
         # Only the forced reading says "미꾸라지": one voice against the other model families changes nothing.
-        result = prefer_consensus_reading([ROW_1], HOPE_PIECES, margin=.05)
+        result = prefer_consensus_reading([ROW_1], SAMPLE_ALPHA_PIECES, margin=.05)
         self.assertEqual(result[0]['text'], ROW_1['text'])
 
     def test_one_other_family_alone_does_not_override_a_cue_above_the_ordinary_ceiling(self):
-        only_v2 = {name: rows for name, rows in HOPE_PIECES.items() if name != 'forced'}
+        only_v2 = {name: rows for name, rows in SAMPLE_ALPHA_PIECES.items() if name != 'forced'}
         only_v2['rescue'] = [row for row in only_v2['rescue'] if not row['text'].startswith('갑자기')]
         self.assertEqual(prefer_consensus_reading([ROW_2], only_v2, margin=.05)[0]['text'], ROW_2['text'])
 
@@ -209,7 +209,7 @@ class ForcedLanguageReadingTests(unittest.TestCase):
 
 
 
-# Real HOPE readings (job 38): the forced reading was the most confident one for the first cue but had dropped words.
+# Real SAMPLE_ALPHA readings (job 38): the forced reading was the most confident one for the first cue but had dropped words.
 OTHERS_38 = {
     'precision': [cue(0.8, 5.5, '며칠 전에 친구들이랑 사냥을 해나갔었어.', .61),
                   cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55), cue(13.1, 16.3, '갑자기 기증이.', .66)],
@@ -243,11 +243,11 @@ class ForcedReadingMustNotDropWordsTests(unittest.TestCase):
 
 
 
-# Real Sigma readings (Tamil, job 41): the merge ended on a forced re-read at confidence 0.27-0.32 although other
+# Real SampleEta readings (Tamil, job 41): the merge ended on a forced re-read at confidence 0.27-0.32 although other
 # passes had read the same places at 0.75-0.8.
-SIGMA_FINAL = [cue(16.2, 18.2, 'அப்பா பயமாறு பா சூலிடு பா', .29), cue(97.7, 99.0, 'நான் மிக்க தீவிக்கிறேன்.', .32),
+SAMPLEETA_FINAL = [cue(16.2, 18.2, 'அப்பா பயமாறு பா சூலிடு பா', .29), cue(97.7, 99.0, 'நான் மிக்க தீவிக்கிறேன்.', .32),
                cue(99.2, 101.7, 'ஆனால் நான் உங்களின் வணக்கைகளை தண்டmedenmadு முட்ட விட்டிய பிடிய இருக்கிறேன்.', .27)]
-SIGMA_READINGS = {
+SAMPLEETA_READINGS = {
     'rescue': [cue(15.6, 18.1, 'அப்பா பயமாறு பா சூலிடு பா', .73), cue(97.4, 99.3, 'நான் நிறைய தூத்தைப் பழகினேன்.', .76),
                cue(99.3, 101.7, 'ஆனால் தாயாமானது விட்டதே இல்லை.', .75)],
     'v2': [cue(15.5, 17.3, 'அப்பா பயமா இருப்பா', .81), cue(17.3, 18.1, 'சுலிடுப்பா', .78)],
@@ -257,19 +257,19 @@ SIGMA_READINGS = {
 
 class ConfidentReadingTests(unittest.TestCase):
     def test_cues_the_merge_left_at_a_very_low_confidence_take_the_pass_readings_that_are_much_more_confident(self):
-        result = prefer_confident_reading(SIGMA_FINAL, SIGMA_READINGS)
+        result = prefer_confident_reading(SAMPLEETA_FINAL, SAMPLEETA_READINGS)
         self.assertEqual(result[0]['text'], 'அப்பா பயமா இருப்பா சுலிடுப்பா', 'two v2 pieces joined (0.795)')
         self.assertEqual(result[1]['text'], 'நான் நிறைய தூத்தைப் பழகினேன்.')
         self.assertEqual(result[2]['text'], 'ஆனால் தாயாமானது விட்டதே இல்லை.', 'a garbled cue with Latin letters may shrink')
-        self.assertEqual([(row['start'], row['end']) for row in result], [(row['start'], row['end']) for row in SIGMA_FINAL])
+        self.assertEqual([(row['start'], row['end']) for row in result], [(row['start'], row['end']) for row in SAMPLEETA_FINAL])
 
     def test_a_cue_without_a_recorded_confidence_is_never_touched(self):
-        unknown = [dict(row, confidence=0) for row in SIGMA_FINAL]
-        self.assertEqual(prefer_confident_reading(unknown, SIGMA_READINGS), unknown)
+        unknown = [dict(row, confidence=0) for row in SAMPLEETA_FINAL]
+        self.assertEqual(prefer_confident_reading(unknown, SAMPLEETA_READINGS), unknown)
 
     def test_a_cue_at_an_ordinary_confidence_is_never_touched(self):
-        fine = [dict(row, confidence=.5) for row in SIGMA_FINAL]
-        self.assertEqual(prefer_confident_reading(fine, SIGMA_READINGS), fine)
+        fine = [dict(row, confidence=.5) for row in SAMPLEETA_FINAL]
+        self.assertEqual(prefer_confident_reading(fine, SAMPLEETA_READINGS), fine)
 
     def test_a_confident_piece_that_would_cost_words_is_not_used(self):
         row = [cue(1.0, 4.0, 'we have been waiting for you now', .35)]

@@ -447,14 +447,14 @@ class QueueContentTests(unittest.TestCase):
         self.assertIn('Aktiva jobb · 1', page)
 
     def test_queued_job_appears_under_ko_not_aktiva_jobb(self):
-        jobs = {'/extra/lou.mp4': {'id': 90, 'media_path': '/extra/lou.mp4',
-                                    'media_name': 'lou.mp4', 'status': 'queued',
+        jobs = {'/extra/sampletrailer.mp4': {'id': 90, 'media_path': '/extra/sampletrailer.mp4',
+                                    'media_name': 'sampletrailer.mp4', 'status': 'queued',
                                     'progress': 0, 'message': 'Väntar på AI-worker',
                                     'updated_at': '2026-09-24T08:00:00Z'}}
         page = render_queue_content([], jobs, 'token')
         self.assertIn('Aktiva jobb · 0', page)
         self.assertIn('Kö · 1', page)
-        self.assertIn('lou.mp4', page)
+        self.assertIn('sampletrailer.mp4', page)
 
     def test_finished_job_has_no_progress_bar_or_cancel_button(self):
         jobs = {'/extra/hope.mp4': {'id': 80, 'media_path': '/extra/hope.mp4',

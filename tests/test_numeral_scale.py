@@ -64,7 +64,7 @@ class NumeralScaleTests(unittest.TestCase):
             with self.assertRaises(worker.SourceQualityError):
                 worker.review_and_save_translation({'id': 1}, [item])
 
-    def test_actual_sigma_error_is_hard_meaning_evidence_with_exact_quotes(self):
+    def test_actual_sampleeta_error_is_hard_meaning_evidence_with_exact_quotes(self):
         item = row('500 கோடி.', '500 miljarder.')
         before = copy.deepcopy(item)
         flags = deterministic_flags([item])

@@ -14,7 +14,7 @@ def lines(cues):
 
 
 class WrapTests(unittest.TestCase):
-    """Z Nation 4x03 (Unraid job 76): one line per cue, up to 107 characters; at most two lines of 42 now."""
+    """Example Series 4x03 (regression case): one line per cue, up to 107 characters; at most two lines of 42 now."""
 
     def test_a_short_line_is_left_alone(self):
         self.assertEqual(wrap_lines('Är de båda vid liv?'), 'Är de båda vid liv?')
@@ -76,7 +76,7 @@ class CueTests(unittest.TestCase):
 
 
 class JoinTests(unittest.TestCase):
-    """Z Nation 4x02 (Unraid job 74): one sentence came as several cues right after each other."""
+    """Example Series 4x02 (regression case): one sentence came as several cues right after each other."""
 
     def test_a_sentence_in_two_cues_right_after_each_other_becomes_one_cue_of_two_lines(self):
         cues = [(215.72, 218.1, 'Har du någon aning om hur många jag sviker genom'), (218.12, 219.93, 'att missa den här bouleturneringen?')]

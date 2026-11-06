@@ -8,7 +8,7 @@ import numpy as np
 import worker
 from asr_windows import refine_starts, restore_lead_words
 
-# Yukon Men S01E01 (dev job 89): the cue starts and ends as written, and the voiced stretches (voice detection, no padding). The onsets are measured; the
+# Wildlife Sample S01E01 (regression case): the cue starts and ends as written, and the voiced stretches (voice detection, no padding). The onsets are measured; the
 # ends of the stretches are close to the cue ends (the first stretch after 18.8 s carries several cues in one breath).
 CUES = [(3.14, 6.00), (6.00, 9.13), (9.13, 11.84), (12.24, 15.18), (18.42, 19.60), (19.76, 20.66), (20.66, 21.32), (21.32, 23.26), (23.58, 25.52),
         (25.80, 27.86), (28.22, 30.56), (30.82, 32.02)]
@@ -21,7 +21,7 @@ def cues():
 
 class RefineStartsTests(unittest.TestCase):
     def restored(self):
-        # Real job 230: rescue/Qwen restored "you" at 10.52; VAD subsequently moved it back to 11.40.
+        # regression case: rescue/Qwen restored "you" at 10.52; VAD subsequently moved it back to 11.40.
         original = [{'start': 7.208, 'end': 8.01, 'text': 'Give me the code'},
                     {'start': 11.16, 'end': 12.18, 'text': 'were arrested', 'confidence': .744140625}]
         readings = {'rescue': [{'start': 10.52, 'end': 17.22,
@@ -103,7 +103,7 @@ class SpeechRateTests(unittest.TestCase):
         self.assertEqual((refined[0]['start'], changed, shifts), (45.107, 1, [.687]))
         self.assertEqual(refine_starts([cue], [(45.6, 46.4)], maximum_rate=None)[0][0]['start'], 45.48, 'without the limit: the old result')
 
-    def test_yukon_men_the_fast_cues_the_old_shift_cut_into(self):
+    def test_wildlife_sample_men_the_fast_cues_the_old_shift_cut_into(self):
         # job 89 cue starts, voice onsets and, in brackets, where a clean reading of the audio puts the first word
         for start, end, onset, text, spoken_from in (
                 (2469.09, 2470.09, 2469.58, 'Did you guys hear that?', 2469.14), (1282.54, 1283.88, 1283.36, "And we're running out of wood.", 1282.66),

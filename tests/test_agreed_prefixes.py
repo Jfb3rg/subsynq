@@ -9,7 +9,7 @@ from asr_windows import restore_agreed_prefixes
 from source_judge import choose_readings
 import worker
 
-# Exact saved readings from Dev job 90, independently rechecked on longer audio.
+# Exact saved readings from regression caseindependently rechecked on longer audio.
 TIMED = json.loads('''{"start":74.94,"end":78.08,"text":"Yo me encargo de que Salomé siga el camino correcto.","confidence":0.78369140625,"words":[{"start":75.02,"end":75.1,"text":"Yo","probability":0.83056640625},{"start":75.1,"end":75.24,"text":"me","probability":0.92041015625},{"start":75.24,"end":75.6,"text":"encargo","probability":0.9581705729166666},{"start":75.6,"end":75.7,"text":"de","probability":0.89404296875},{"start":75.7,"end":75.8,"text":"que","probability":0.78369140625},{"start":75.8,"end":76.24,"text":"Salomé","probability":0.9178059895833334},{"start":76.24,"end":76.9,"text":"siga","probability":0.888671875},{"start":76.9,"end":77.04,"text":"el","probability":0.90087890625},{"start":77.04,"end":77.26,"text":"camino","probability":0.8798828125},{"start":77.26,"end":78,"text":"correcto.","probability":0.908447265625}]}''')
 BASE = json.loads('''{"start":74.375,"end":77.875,"text":"me encargo de que Salomé siga el camino correcto."}''')
 

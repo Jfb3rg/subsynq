@@ -1,7 +1,7 @@
 """Whisper large-v3 or large-v2 for a language whose script identifies it (Tamil, Hangul, ...).
 
 When the first pass shows a script (Tamil letters = Tamil), the whole transcript is replaced by one more reading with the
-language fixed. That reading used to be Whisper large-v3 only. On the Tamil trailer Sigma (dev jobs 42 and 50, and a
+language fixed. That reading used to be Whisper large-v3 only. On the Tamil trailer SampleEta (regression caseand 50, and a
 benchmark on a rented 24 GB RTX 3090, 2026-10-16) large-v3 with Tamil fixed wrote "che meses", "Omaha down", "descent of
 bunu", "PROFESSOR" and Greek letters among the Tamil (average log-probability -1.4), while large-v2 with the same
 settings read clean Tamil lines (-0.27). The language-specific fine-tunes tried (Tamil medium/small, two Korean large-v3

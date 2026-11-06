@@ -131,8 +131,8 @@ Samlad utgåva av utvecklingsversionerna 0.8.267–0.8.334.
 
 ## 0.8.258
 
-- **Osäkra repliker får fler chanser att bli rätt.** Varje replik som Whisper är osäker på (säkerhet under 0,6) får nu en egen kontroll av Qwen3-ASR, även när bara två avlyssningar täckte den. Tidigare fick de allra osäkraste raderna (säkerhet 0,22 och 0,35 i Man of War) ingen kontroll alls.
-- **En språkmodell väljer mellan det som faktiskt hördes.** När Whisper, Whisper v2 och Qwen läst en osäker replik olika väljer språkmodellen den mest rimliga av dem, i stället för att en röstningsregel avgör. Den skriver aldrig egen text och får inte tappa ord, ta över grannradens ord, välja en stamning eller en ordalydelse bara en motor hört. I prov på sparade körningar (engelska, tyska, tamil) rättades bland annat "throw you out window" till "throw you out the window", "Was gibt's man?" till "Was gibt's, Mann?" och en trasig rad i Man of War; de dåliga byten som kom upp avvisades. Det är mätt mot sparade avlyssningar med den lilla lokala modellen, inte i en hel körning på moln-GPU.
+- **Osäkra repliker får fler chanser att bli rätt.** Varje replik som Whisper är osäker på (säkerhet under 0,6) får nu en egen kontroll av Qwen3-ASR, även när bara två avlyssningar täckte den. Tidigare fick de allra osäkraste raderna (säkerhet 0,22 och 0,35 i Sample Gamma) ingen kontroll alls.
+- **En språkmodell väljer mellan det som faktiskt hördes.** När Whisper, Whisper v2 och Qwen läst en osäker replik olika väljer språkmodellen den mest rimliga av dem, i stället för att en röstningsregel avgör. Den skriver aldrig egen text och får inte tappa ord, ta över grannradens ord, välja en stamning eller en ordalydelse bara en motor hört. I prov på sparade körningar (engelska, tyska, tamil) rättades bland annat "throw you out window" till "throw you out the window", "Was gibt's man?" till "Was gibt's, Mann?" och en trasig rad i Sample Gamma; de dåliga byten som kom upp avvisades. Det är mätt mot sparade avlyssningar med den lilla lokala modellen, inte i en hel körning på moln-GPU.
 - **Snabbare på långa filmer.** En del av jämförelsen mellan avlyssningarna var kvadratisk i antalet repliker och är nu indexerad efter tid, med exakt samma resultat.
 
 ## 0.8.257
@@ -150,17 +150,17 @@ Samlad utgåva av utvecklingsversionerna 0.8.267–0.8.334.
 
 ## 0.8.254
 
-- **Filer med flera ljudspår: engelska väljs automatiskt, och du kan välja spår själv.** Tidigare lyssnade AI:n alltid på det första ljudspåret. En film med en dubbning först och originalet efter (som Man of War-trailern, med tysk dubbning som spår 0) fick därför undertexter av dubbningens felhörda ord och stoppades av kvalitetskontrollen. Nu hoppas kommentar- och syntolkningsspår över, ett spår som är märkt som engelskt kontrolleras mot ljudet, spår utan språkmärkning avlyssnas, och finns inget engelskt spår används filens standardspår (annars det första). Filer med bara ett ljudspår påverkas inte och avlyssnas inte extra.
+- **Filer med flera ljudspår: engelska väljs automatiskt, och du kan välja spår själv.** Tidigare lyssnade AI:n alltid på det första ljudspåret. En film med en dubbning först och originalet efter (som Sample Gamma-trailern, med tysk dubbning som spår 0) fick därför undertexter av dubbningens felhörda ord och stoppades av kvalitetskontrollen. Nu hoppas kommentar- och syntolkningsspår över, ett spår som är märkt som engelskt kontrolleras mot ljudet, spår utan språkmärkning avlyssnas, och finns inget engelskt spår används filens standardspår (annars det första). Filer med bara ett ljudspår påverkas inte och avlyssnas inte extra.
 - **Eget val i gränssnittet.** För filer med minst två ljudspår visas rutan **Ljudspår** bredvid **Skapa svensk AI-undertext**. Väljer du ett spår används det alltid, utan avlyssning, och valet följer med vid omförsök och omkörning. Jobbets modellrad visar vilket spår som lästes och varför. Massval, automatisk start och Radarr/Sonarr väljer alltid automatiskt.
 
 ## 0.8.253
 
-- **Rättelse av 0.8.252: moln-GPU ska fungera på 24 GB-kort, och texten som rekommenderade 32 GB-kort är borttagen.** Mätprovet visade att granskaren gemma4:31b hittar färre påhittade fel än gemma4:26b, men inte att en fil alltid klarar granskningen: en Man of War-körning på ett 32 GB-kort stoppades ändå. Planen beskriver nu bara vad som mättes.
+- **Rättelse av 0.8.252: moln-GPU ska fungera på 24 GB-kort, och texten som rekommenderade 32 GB-kort är borttagen.** Mätprovet visade att granskaren gemma4:31b hittar färre påhittade fel än gemma4:26b, men inte att en fil alltid klarar granskningen: en Sample Gamma-körning på ett 32 GB-kort stoppades ändå. Planen beskriver nu bara vad som mättes.
 - **Rättningen kastar inte längre bort sin egen ändring.** När granskaren hittat ett fel föreslår rättningen en ändring (till exempel "Inte jag." → "Inte min."), men ett andra steg skrev om raden och kunde svara med exakt samma text, så ingenting ändrades och filen stoppades. Om det andra steget bara upprepar den felaktiga raden behålls nu rättningens eget förslag.
 
 ## 0.8.252
 
-- **Moln-GPU: listan visar vilken granskningsmodell varje kort får, och planen förklarar valet.** Ett mätprov på riktiga tyska filmtrailers (Ein Talent fürs Morden och Man of War, två översättningsförsök och rättning som i en vanlig körning) visade att kortets storlek avgör: med ett 24 GB-kort får du granskaren gemma4:26b, som hittade på fel och fällde båda filerna; med ett kort på 32 GB eller mer (till exempel A100 40 GB, RTX 6000 Ada eller RTX 5090) får du gemma4:31b, och båda filerna klarade granskningen. Det större kortet kostar ofta bara något mer. Ingen annan provad modell (Qwen3, Qwen3.5, Mistral Small, TranslateGemma) var bättre än den som används i dag. Gäller när inställningarna för större molnmodeller står på auto.
+- **Moln-GPU: listan visar vilken granskningsmodell varje kort får, och planen förklarar valet.** Ett mätprov på riktiga tyska filmtrailers (Sample Delta och Sample Gamma, två översättningsförsök och rättning som i en vanlig körning) visade att kortets storlek avgör: med ett 24 GB-kort får du granskaren gemma4:26b, som hittade på fel och fällde båda filerna; med ett kort på 32 GB eller mer (till exempel A100 40 GB, RTX 6000 Ada eller RTX 5090) får du gemma4:31b, och båda filerna klarade granskningen. Det större kortet kostar ofta bara något mer. Ingen annan provad modell (Qwen3, Qwen3.5, Mistral Small, TranslateGemma) var bättre än den som används i dag. Gäller när inställningarna för större molnmodeller står på auto.
 
 ## 0.8.251
 
@@ -200,41 +200,41 @@ Samlad utgåva av utvecklingsversionerna 0.8.267–0.8.334.
 
 ## 0.8.243
 
-- **Sigma (tamil): rader som slutavläsningen lämnade nästan oläsliga byts mot passens mycket säkrare läsning.** Den sista avläsningen kan hamna på ett pass som läst stället dåligt (Sigma: `தண்டmedenmadு முட்ட…` med latinska bokstäver mitt i tamilsk text, säkerhet 0,27, medan tysta-luckor-passet läste `ஆனால் தாயாமானது விட்டதே இல்லை.` med 0,75). En rad med noterad säkerhet under 0,4 tar nu den säkraste läsningen av samma ställe när den är minst 0,6 och minst 0,25 bättre, täcker det mesta av radens tid och inte är mycket kortare (en rad med blandade skrifter får bytas mot en kortare). Rader utan noterad säkerhet (0) rörs aldrig. Bara texten ändras, aldrig tiderna.
-- Provat på verkliga körningar: Sigma får tre rättade rader (bland annat `அப்பா பயமா இருப்பா சுலிடுப்பா` i stället för `பயமாறு`), HOPE och Ray en var; övriga oförändrade.
+- **SampleEta (tamil): rader som slutavläsningen lämnade nästan oläsliga byts mot passens mycket säkrare läsning.** Den sista avläsningen kan hamna på ett pass som läst stället dåligt (SampleEta: `தண்டmedenmadு முட்ட…` med latinska bokstäver mitt i tamilsk text, säkerhet 0,27, medan tysta-luckor-passet läste `ஆனால் தாயாமானது விட்டதே இல்லை.` med 0,75). En rad med noterad säkerhet under 0,4 tar nu den säkraste läsningen av samma ställe när den är minst 0,6 och minst 0,25 bättre, täcker det mesta av radens tid och inte är mycket kortare (en rad med blandade skrifter får bytas mot en kortare). Rader utan noterad säkerhet (0) rörs aldrig. Bara texten ändras, aldrig tiderna.
+- Provat på verkliga körningar: SampleEta får tre rättade rader (bland annat `அப்பா பயமா இருப்பா சுலிடுப்பா` i stället för `பயமாறு`), SAMPLE_ALPHA och testklippet en var; övriga oförändrade.
 
 ## 0.8.242
 
-- **Rättar 0.8.241: en säker men ofullständig tvingad avläsning får inte ersätta en rad som övriga pass är överens om.** I HOPE (jobb 38) bytte den tvingade avläsningen ut `며칠 전에 친구들이랑 사냥을 해나갔었어.` mot `…사냥을 있었어` (ord saknades men avläsningens egen säkerhet var högre). Nu byts en rads text bara när övriga pass inte stämmer bättre med radens egna ord än med den tvingade avläsningens. Rättningarna som 0.8.241 gjorde i samma jobb finns kvar: `갑자기 기적이 들리는` (förut `기증이`) och `미끄러운 거리` (förut `삐끄러운 거를`).
+- **Rättar 0.8.241: en säker men ofullständig tvingad avläsning får inte ersätta en rad som övriga pass är överens om.** I SAMPLE_ALPHA (regressionsprov) bytte den tvingade avläsningen ut `며칠 전에 친구들이랑 사냥을 해나갔었어.` mot `…사냥을 있었어` (ord saknades men avläsningens egen säkerhet var högre). Nu byts en rads text bara när övriga pass inte stämmer bättre med radens egna ord än med den tvingade avläsningens. Rättningarna som 0.8.241 gjorde i samma jobb finns kvar: `갑자기 기적이 들리는` (förut `기증이`) och `미끄러운 거리` (förut `삐끄러운 거를`).
 
 ## 0.8.241
 
-- **Koreanska (och andra språk med egen skrift): en bättre avläsning av de osäkra ställena (HOPE).** När skriften visar vilket språk som talas (Hangul = koreanska) körs de ordinarie avlyssningspassen i flerspråksläge med röstfilter, och det missar eller felhör tyst tal ("갑자기 기침이" där det sägs "기적이"). Nu läser SubSynq de ställen där passen är oense en gång till med språket låst och utan röstfilter, med tio sekunders sammanhang på varje sida (Whisper läser ett kort klipp mycket sämre än samma tal med sammanhang). Den avläsningen tar en rads text bara när den överlappar raden, liknar den, och är säkrare än raden; tiderna ändras aldrig. Dessutom jämförs bitar av andra pass som skurit talet annorlunda efter att de slagits ihop till en läsning per rad, och Whisper-utfyllnad som "한글자막 제공 …" ignoreras överallt.
-- Provat på HOPE (helkörning på dev): rad 3 blir "갑자기 기적이 들리는 거래." (förut "기침") och rad 5 "예비군이래 봤자 8명인데요?" (förut "승리를 받자…"). Rad 2 ("삐꾸라지 …") och talet efter 32 s kvarstår: Whisper läser dem olika vid varje körning.
+- **Koreanska (och andra språk med egen skrift): en bättre avläsning av de osäkra ställena (SAMPLE_ALPHA).** När skriften visar vilket språk som talas (Hangul = koreanska) körs de ordinarie avlyssningspassen i flerspråksläge med röstfilter, och det missar eller felhör tyst tal ("갑자기 기침이" där det sägs "기적이"). Nu läser SubSynq de ställen där passen är oense en gång till med språket låst och utan röstfilter, med tio sekunders sammanhang på varje sida (Whisper läser ett kort klipp mycket sämre än samma tal med sammanhang). Den avläsningen tar en rads text bara när den överlappar raden, liknar den, och är säkrare än raden; tiderna ändras aldrig. Dessutom jämförs bitar av andra pass som skurit talet annorlunda efter att de slagits ihop till en läsning per rad, och Whisper-utfyllnad som "한글자막 제공 …" ignoreras överallt.
+- Provat på SAMPLE_ALPHA (helkörning på dev): rad 3 blir "갑자기 기적이 들리는 거래." (förut "기침") och rad 5 "예비군이래 봤자 8명인데요?" (förut "승리를 받자…"). Rad 2 ("삐꾸라지 …") och talet efter 32 s kvarstår: Whisper läser dem olika vid varje körning.
 
 ## 0.8.240
 
-- **Fler ASR-pass får rösta om texten (HOPE).** I musiktunga trailers (HOPE) föll SRT-skapandet på att några rader var felhörda och att det mesta av talet efter 32 s inte alls kom med. Tre förbättringar som delar samma grund: de olika avlyssningspassen (långa läsningen, kortläsningen, no-VAD-räddningen, tysta-luckor-passet och Whisper large-v2) jämförs rad för rad.
-  1. **Rösta fram texten:** en rad med låg säkerhet (under 0,6) byts mot den läsning som stämmer bäst med övriga pass, när den klart stämmer bättre än radens egen text. Passen som kör samma modell (large-v3) räknas som EN röst, large-v2 och Qwen3-ASR (andra modeller) är egna röster. Bara texten ändras, aldrig tiden. Exempel i HOPE: "승리를 받자 8명인데요" (hördes i ingen annan läsning) blir "대비군이라고 하자 8명인데요?"; "상황실." blir "상황실, 상황실!" (så som det sägs).
-  2. **Lägg tillbaka tal som flera pass hör men ingen rad täcker:** minst tre pass (varav ett med röstaktivitetsfilter) måste läsa samma sak och vara överens om orden (inte ett stockfras som "Thank you", ensamt ord bara om det är säkert). Där passen hör olika ord (HOPE: "국회" eller "괴물") lämnas raden hellre utanför än gissas. Exempel: "Tristan" i Lou.
-  3. **Qwen3-ASR som extra röst:** högst sex korta fönster per fil, bara där passen är oense om en osäker rad eller är överens om tal utan rad, och Qwen kan också bekräfta ett ord i kanten som bara kortläsningen hört (PLANET 9: "Captain,"). Misslyckas Qwen avgör passen själva; jobbet misslyckas aldrig för att Qwen fallerar.
-  Provat mot tolv riktiga körningar och två nya helkörningar på dev (HOPE, PLANET 9): bara de aktuella filerna ändras. HOPE får nu rätt rad 5; talet efter 32 s kommer fortfarande inte med eftersom passen hör olika ord där.
+- **Fler ASR-pass får rösta om texten (SAMPLE_ALPHA).** I musiktunga trailers (SAMPLE_ALPHA) föll SRT-skapandet på att några rader var felhörda och att det mesta av talet efter 32 s inte alls kom med. Tre förbättringar som delar samma grund: de olika avlyssningspassen (långa läsningen, kortläsningen, no-VAD-räddningen, tysta-luckor-passet och Whisper large-v2) jämförs rad för rad.
+  1. **Rösta fram texten:** en rad med låg säkerhet (under 0,6) byts mot den läsning som stämmer bäst med övriga pass, när den klart stämmer bättre än radens egen text. Passen som kör samma modell (large-v3) räknas som EN röst, large-v2 och Qwen3-ASR (andra modeller) är egna röster. Bara texten ändras, aldrig tiden. Exempel i SAMPLE_ALPHA: "승리를 받자 8명인데요" (hördes i ingen annan läsning) blir "대비군이라고 하자 8명인데요?"; "상황실." blir "상황실, 상황실!" (så som det sägs).
+  2. **Lägg tillbaka tal som flera pass hör men ingen rad täcker:** minst tre pass (varav ett med röstaktivitetsfilter) måste läsa samma sak och vara överens om orden (inte ett stockfras som "Thank you", ensamt ord bara om det är säkert). Där passen hör olika ord (SAMPLE_ALPHA: "국회" eller "괴물") lämnas raden hellre utanför än gissas. Exempel: "Tristan" i SampleTrailer.
+  3. **Qwen3-ASR som extra röst:** högst sex korta fönster per fil, bara där passen är oense om en osäker rad eller är överens om tal utan rad, och Qwen kan också bekräfta ett ord i kanten som bara kortläsningen hört (SPACE SAMPLE: "Captain,"). Misslyckas Qwen avgör passen själva; jobbet misslyckas aldrig för att Qwen fallerar.
+  Provat mot tolv riktiga körningar och två nya helkörningar på dev (SAMPLE_ALPHA, SPACE SAMPLE): bara de aktuella filerna ändras. SAMPLE_ALPHA får nu rätt rad 5; talet efter 32 s kommer fortfarande inte med eftersom passen hör olika ord där.
 
 ## 0.8.239
 
-- **PLANET 9: delade meningar slås ihop och en felplacerad kopia tas bort.** (1) Två repliker som den långa läsningen bröt mitt i en mening ("What are" + "they showing?") slås nu ihop när kontrollläsningen hörde dem som en mening (det blev annars "Vad är / vad de visar?"). (2) En replik som brusfria tysta-luckor-passet stämplat där ingen talar (och där röstaktiviteten inte hittar tal) tas bort när samma ord hörs på ett annat ställe med tal: "Record everything." stod vid 1:17 men sägs vid 1:30, och visades två gånger. En replik som verkligen upprepas (tal vid båda tiderna) rörs aldrig.
+- **SPACE SAMPLE: delade meningar slås ihop och en felplacerad kopia tas bort.** (1) Två repliker som den långa läsningen bröt mitt i en mening ("What are" + "they showing?") slås nu ihop när kontrollläsningen hörde dem som en mening (det blev annars "Vad är / vad de visar?"). (2) En replik som brusfria tysta-luckor-passet stämplat där ingen talar (och där röstaktiviteten inte hittar tal) tas bort när samma ord hörs på ett annat ställe med tal: "Record everything." stod vid 1:17 men sägs vid 1:30, och visades två gånger. En replik som verkligen upprepas (tal vid båda tiderna) rörs aldrig.
 
 ## 0.8.238
 
-- **Saknade ord och konstiga radbrytningar när Whisper skriver ett stycke utan skiljetecken (PLANET 9).** Långa Whisper-läsningen skrev ibland hela stycken i gemener utan en enda punkt, skurna mitt i meningar ("…från planeten" + "ahead how old is it…"), och tappade ibland ett ord i kanten ("Captain,", "Record"). Den korta kontrollläsningen (och Whisper large-v2) hade ofta hört exakt samma ord som riktiga, välpunkterade meningar. Nu ersätts en följd av repliker utan någon meningsslut med kontrollläsningens meningar, men bara när de innehåller exakt samma ord (högst två extra ord i kanten, och bara om kontrollläsningen är säker eller large-v2 hörde dem också), täcker samma tid och inte överlappar grannreplikerna. Repliker som redan slutar en mening rörs aldrig. Provat mot tio verkliga körningar: bara PLANET 9 ändrades. Där blir "Captain, we've intercepted a transmission. / From Earth? / Negative. / The signal originates from the planet ahead. / How old is it?" i stället för tre ihopklumpade rader, och "Record everything. / Recording. / Oh my god. / … / Scan for life. / Scanning." i stället för "everything recording" och "scan for | life scanning".
+- **Saknade ord och konstiga radbrytningar när Whisper skriver ett stycke utan skiljetecken (SPACE SAMPLE).** Långa Whisper-läsningen skrev ibland hela stycken i gemener utan en enda punkt, skurna mitt i meningar ("…från planeten" + "ahead how old is it…"), och tappade ibland ett ord i kanten ("Captain,", "Record"). Den korta kontrollläsningen (och Whisper large-v2) hade ofta hört exakt samma ord som riktiga, välpunkterade meningar. Nu ersätts en följd av repliker utan någon meningsslut med kontrollläsningens meningar, men bara när de innehåller exakt samma ord (högst två extra ord i kanten, och bara om kontrollläsningen är säker eller large-v2 hörde dem också), täcker samma tid och inte överlappar grannreplikerna. Repliker som redan slutar en mening rörs aldrig. Provat mot tio verkliga körningar: bara SPACE SAMPLE ändrades. Där blir "Captain, we've intercepted a transmission. / From Earth? / Negative. / The signal originates from the planet ahead. / How old is it?" i stället för tre ihopklumpade rader, och "Record everything. / Recording. / Oh my god. / … / Scan for life. / Scanning." i stället för "everything recording" och "scan for | life scanning".
 
 ## 0.8.237
 
-- **Rättar ett fel i 0.8.234: återanvänd moln-GPU-server kunde ge "CUDA out of memory".** När servern behölls för nästa jobb låg Gemma-modellerna (27b/26b) kvar i GPU-minnet, så nästa jobbs Whisper/Qwen fick inget minne (HOPE, jobb 28: `Qwen3-ASR HTTP 500: CUDA out of memory`). Nu ber SubSynq serverns Ollama att släppa modellerna ur GPU-minnet innan servern behålls, och får det inte bekräftat förstörs servern i stället för att återanvändas. Har du kört 0.8.234–0.8.236 med flera jobb i kön: kör om de jobb som föll på minnesfelet.
+- **Rättar ett fel i 0.8.234: återanvänd moln-GPU-server kunde ge "CUDA out of memory".** När servern behölls för nästa jobb låg Gemma-modellerna (27b/26b) kvar i GPU-minnet, så nästa jobbs Whisper/Qwen fick inget minne (SAMPLE_ALPHA, regressionsprov: `Qwen3-ASR HTTP 500: CUDA out of memory`). Nu ber SubSynq serverns Ollama att släppa modellerna ur GPU-minnet innan servern behålls, och får det inte bekräftat förstörs servern i stället för att återanvändas. Har du kört 0.8.234–0.8.236 med flera jobb i kön: kör om de jobb som föll på minnesfelet.
 
 ## 0.8.236
 
-- **Bättre översättning av rader som saknar skiljetecken.** När Whisper skriver en hel sträcka som gemener utan en enda punkt eller kommatecken (typiskt för trailers med ljudeffekter) kan översättaren inte se var en mening slutar, och en rad som börjar mitt i en mening översätts som en egen mening. Exempel från PLANET 9: "...kommer från planeten" + "ahead how old is it" blev "Framåt. Hur gammal…" och "scan for" + "life scanning" blev "Skanna efter" + "Livsgenomskanning". Nu får sådana rader skiljetecken och versal först (modellen ser hela texten i följd, och resultatet delas tillbaka på raderna efter ordantal). Bara skiljetecken och versaler i meningsstarter ändras; om ett enda ord skiljer sig lämnas allt som det var, rader som redan har skiljetecken rörs aldrig, och tider och radordning är oförändrade. Prov på PLANET 9: "ahead. How old is it?" → "framför oss. Hur gammal är den?", "Scan for | life. Scanning." → "Skanna efter | liv. Skannar.", "What are | they showing?" → "Vad | visar de?".
+- **Bättre översättning av rader som saknar skiljetecken.** När Whisper skriver en hel sträcka som gemener utan en enda punkt eller kommatecken (typiskt för trailers med ljudeffekter) kan översättaren inte se var en mening slutar, och en rad som börjar mitt i en mening översätts som en egen mening. Exempel från SPACE SAMPLE: "...kommer från planeten" + "ahead how old is it" blev "Framåt. Hur gammal…" och "scan for" + "life scanning" blev "Skanna efter" + "Livsgenomskanning". Nu får sådana rader skiljetecken och versal först (modellen ser hela texten i följd, och resultatet delas tillbaka på raderna efter ordantal). Bara skiljetecken och versaler i meningsstarter ändras; om ett enda ord skiljer sig lämnas allt som det var, rader som redan har skiljetecken rörs aldrig, och tider och radordning är oförändrade. Prov på SPACE SAMPLE: "ahead. How old is it?" → "framför oss. Hur gammal är den?", "Scan for | life. Scanning." → "Skanna efter | liv. Skannar.", "What are | they showing?" → "Vad | visar de?".
 
 ## 0.8.235
 
@@ -442,7 +442,7 @@ för faktisk verifiering; små rättningsprov är inget helgodkännande.
 
 Lokal CPU avlastar Gemma med bekräftelse även mellan översättningsutkast och
 dess kontrollpass, inklusive befintliga uppdelningar/omförsök. Varje anrop
-behåller sin fullständiga kontext. Det riktiga Ray-provet i 190 sjönk till
+behåller sin fullständiga kontext. Det riktiga testklippet-provet i 190 sjönk till
 0,17 token/s i utkastkontrollen och nådde 15 minuters timeout. GPU/moln,
 översättningsregler, tidsgränser och antal försök ändras inte. Se STATUS för
 mätningen av den nya versionen; timeouten är inget godkänt helprov.
@@ -484,8 +484,8 @@ Granskningsmodellen gör den separata slutkontrollen. Metoden gäller även hela
 korta idiom. Tvetydiga, överlappande eller felplacerade
 ändringar avvisas. Grammatikpasset körs bara vid kvarvarande belagda grammatikfel
 och får källtext som betydelsekontext. Det onödiga passet ändrade tidigare
-"foton" till "fotoner" i Ray Gunn. Oberoende slutgranskning krävs fortfarande;
-ingen extra rättningsrunda eller sänkt kvalitetsgräns införs. Se den interna statusloggen.
+"foton" till "fotoner" i Sample Trailer. Oberoende slutgranskning krävs fortfarande;
+ingen extra rättningsrunda eller sänkt kvalitetsgräns införs. Se kvalitetsrapporten från din egen körning.
 
 På lokal CPU avlastas modellen mellan slutgranskningens block så att sparade
 promptar inte växer över flera block och konkurrerar med modellvikterna om RAM.
@@ -494,21 +494,21 @@ molnkörningar behåller sin modellivscykel.
 
 ## 0.8.183
 
-Ray Gunn jobb 25: spärren mot att kopiera granskarens ordalydelse stoppade ett
+Sample Trailer regressionsprov: spärren mot att kopiera granskarens ordalydelse stoppade ett
 jobb trots att rättningen ("den här branschen") var rätt. Första kopian görs
 fortfarande om en gång med frasen förbjuden, men en andra kopia godtas nu och
 noteras i rapporten (`copied_reason_accepted`); den oberoende omgranskningen
-avgör. Slutgrinden är oförändrad. Se den interna statusloggen.
+avgör. Slutgrinden är oförändrad. Se kvalitetsrapporten från din egen körning.
 
 ## 0.8.182
 
-Ray Gunn: när översättningens slutkontroll underkänner översättningen läses inte
+Sample Trailer: när översättningens slutkontroll underkänner översättningen läses inte
 längre hela ljudet om med den sämre Whisper large-v2 (det tappade "Get out!" och
 "I like you" som large-v3 hörde). I stället görs översättningen om en gång med
 källtexten kvar och de refuserade formuleringarna förbjudna; första försökets
 rapport sparas som `job-N-attempt1.json`. Faller även andra försöket finns
 v2-reserven kvar som sista utväg. Orsakstexten skiljer på källkontroll och
-översättningens slutkontroll. Se den interna statusloggen.
+översättningens slutkontroll. Se kvalitetsrapporten från din egen körning.
 
 ## 0.8.181
 
@@ -517,12 +517,12 @@ underkändes sparas nu i jobbstatusen och i källfilen (`fallback_reason`), så 
 den inte längre försvinner. Dessutom behåller `split_qwen_alignment` ett ord
 vars ordtid är orimligt lång (forced aligner sträckte "I" över en tystnad) i
 stället för att kasta det; tidigare försvann ordet ur Qwens rad. Ej bevisat
-som orsak till molnets saknade "I" i Ray Gunn jobb 21 (inte återskapat
-lokalt). Se den interna statusloggen.
+som orsak till molnets saknade "I" i Sample Trailer regressionsprov (inte återskapat
+lokalt). Se kvalitetsrapporten från din egen körning.
 
 ## 0.8.180
 
-Översättningens rättning och namn (Ray Gunn jobb 21): (A) en rättning får inte
+Översättningens rättning och namn (Sample Trailer regressionsprov): (A) en rättning får inte
 innehålla en ordföljd på minst tre ord som bara står i granskarens motivering;
 den görs då om en gång med frasen förbjuden, och kopierar den igen stoppas jobbet
 ("Håll med tittning" skrevs tidigare ut). (B) Ett ord som bara skiljer sig från
@@ -533,32 +533,32 @@ den interna statusloggen för mätning och hur man går tillbaka.
 
 ## 0.8.179
 
-Källavlyssning, två generella regler (Ray Gunn): (1) ett ensamt "I"/"you"/"we" …
+Källavlyssning, två generella regler (Sample Trailer): (1) ett ensamt "I"/"you"/"we" …
 före en rad som börjar med liten bokstav slås ihop med den raden innan filtren
 för isolerade ord får ta bort det ("I like you, Gunn." i stället för "like you,
 Gun."). (2) En lång rad utan någon meningsslutstecken ersätts av den korta
 läsningens meningar när de alla (utom sista) är punkterade och säkra, även utan
-hörbar paus; korta rop slås ihop ("Ray! Jump!"). Inga ord hittas på. Se den interna statusloggen
+hörbar paus; korta rop slås ihop ("testklippet! Jump!"). Inga ord hittas på. Se kvalitetsrapporten från din egen körning
 för mätning, begränsningar och hur man går tillbaka.
 
 ## 0.8.178
 
 Källavlyssning: när två oberoende läsningar av samma tidsspann finns (90 s- och
 30 s-fönstren, eller två överlappande fönster) vinner den fylligare om den
-innehåller nästan alla ord i den andra och minst två ord till. Orsak: Ray Gunn
-(jobb 18) tappade "Venus", hela meningar, "Stay tuned" och "I like you" trots att
+innehåller nästan alla ord i den andra och minst två ord till. Orsak: Sample Trailer
+(regressionsprov) tappade "Venus", hela meningar, "Stay tuned" och "I like you" trots att
 precisionsläsningen hörde dem; den hoptryckta långfönsterläsningen behöll platsen.
 Inga ord hittas på: allt kommer från en riktig läsning, osäkra rader (< 0,5)
-räknas inte. Se den interna statusloggen för mätning, begränsningar och hur man går tillbaka.
+räknas inte. Se kvalitetsrapporten från din egen körning för mätning, begränsningar och hur man går tillbaka.
 
 ## 0.8.177
 
 Ord som filen själv skriver som namn (stor bokstav mitt i en mening eller efter
 "Mr."/"Dr." m.fl., även över radgräns) räknas inte längre som oöversatta ord.
-Orsak: Ray Gunn föll för att ljudigenkänningen skrev `gun` (låter som `Gunn`) och
+Orsak: Sample Trailer föll för att ljudigenkänningen skrev `gun` (låter som `Gunn`) och
 granskaren flaggade det som oöversatt. Källtexten ändras aldrig; strykningen syns
 i kvalitetsrapporten (`names_kept`), och översättaren får namnen som "kopiera
-oförändrat". Alla andra spärrar är lika stränga som förut. Se den interna statusloggen för hur
+oförändrat". Alla andra spärrar är lika stränga som förut. Se kvalitetsrapporten från din egen körning för hur
 man går tillbaka.
 
 ## 0.8.176
@@ -606,7 +606,7 @@ Qwen på Unraid använder bfloat16 och en kortlivad process per förfrågan
 för att begränsa och återlämna minne. Ett avgränsat ljudprov gick igenom tre
 förfrågningar utan OOM; full film och flera språk återstår att verifiera.
 694 tester passerade enligt senaste verifieringen. Gemma4 kan fortfarande
-stoppas av värdens globala minnesbrist. Se den interna statusloggen för mätningar.
+stoppas av värdens globala minnesbrist. Se kvalitetsrapporten från din egen körning för mätningar.
 
 ## 0.8.170
 
@@ -637,23 +637,23 @@ Verifiering av Windows-installationen finns i den interna statusloggen.
 
 ## 0.8.144
 
-kan dela långa källrader utan att ändra ord när två oberoende tidsfönster och ljud-/textstöd bekräftar gränsen. Tidigare flaggade fragment får dessutom en explicit kontroll av faktisk sammanhängande måltext efter rättningen; riktiga fortsättningar mellan rader tillåts. KING:s sparade rad runt 00:16 delas nu, men hela svenska resultatet behöver fortfarande verifieras. HOPE:s källavlyssning är inte löst. Se STATUS för belägg och begränsningar.
+kan dela långa källrader utan att ändra ord när två oberoende tidsfönster och ljud-/textstöd bekräftar gränsen. Tidigare flaggade fragment får dessutom en explicit kontroll av faktisk sammanhängande måltext efter rättningen; riktiga fortsättningar mellan rader tillåts. SAMPLE_BETA:s sparade rad runt 00:16 delas nu, men hela svenska resultatet behöver fortfarande verifieras. SAMPLE_ALPHA:s källavlyssning är inte löst.
 
 ## 0.8.143
 
-avlastar Whisper före språkmodellernas arbete och återlämnar frigjort CPU-minne till systemet. En svår kort slutreplik får ett begränsat extra tidsprov utan sänkta ord-/kvalitetskrav. Nytt KING-ljudprov återfår slutrepliken och HOPE:s isolerade källgranskning passerar; nya hela körningar och korrekt svensk undertext återstår att verifiera. Se STATUS för exakta resultat och kvarstående osäkerheter.
+avlastar Whisper före språkmodellernas arbete och återlämnar frigjort CPU-minne till systemet. En svår kort slutreplik får ett begränsat extra tidsprov utan sänkta ord-/kvalitetskrav. Nytt SAMPLE_BETA-ljudprov återfår slutrepliken och SAMPLE_ALPHA:s isolerade källgranskning passerar; nya hela körningar och korrekt svensk undertext återstår att verifiera. Se STATUS för exakta resultat och kvarstående osäkerheter.
 
 ## 0.8.142
 
-sparar hårdvaruvalet direkt när listan ändras och skyddar valet mot automatiska sidomladdningar. Explicit CPU använder CPU för avlyssning och språkmodellsteg; lokal GPU får inte ta över och ett oläsbart hårdvaruval stoppar starten. Valet gäller nästa jobb, startar inget jobb och stoppar inte andra GPU-tjänster. KING:s tidigare långsamma slutgranskning återstår att felsöka.
+sparar hårdvaruvalet direkt när listan ändras och skyddar valet mot automatiska sidomladdningar. Explicit CPU använder CPU för avlyssning och språkmodellsteg; lokal GPU får inte ta över och ett oläsbart hårdvaruval stoppar starten. Valet gäller nästa jobb, startar inget jobb och stoppar inte andra GPU-tjänster. SAMPLE_BETA:s tidigare långsamma slutgranskning återstår att felsöka.
 
 ## 0.8.141
 
-förbättrar den generella slutkantskontrollen: en sammanfogad slutfras kan delas med exakt ordankare och bekräftade ordtider. Utdragna ord kräver ytterligare kort tidskontroll; inga kvalitetskrav sänks. Sparad KING-evidens ger en separat slutreplik, men ny helkörning och kontroll av svensk SRT återstår. **Kör om** från 0.8.140 finns direkt vid underkända/misslyckade körningar i kösidans **Senaste händelser** och håller dig kvar i kön. Dubbla/aktiva/föråldrade jobb stoppas; befintlig AI-undertext kräver bekräftelse före borttagning. Se den interna statusloggen för prov och begränsningar. Gemma 3 12B används för källgranskning/översättning och Gemma 4 12B för slutgranskning/riktad rättning. HOPE/KING har fortfarande osäker källtext; ett slutfört jobb är inte ett mänskligt godkännande av undertexten.
+förbättrar den generella slutkantskontrollen: en sammanfogad slutfras kan delas med exakt ordankare och bekräftade ordtider. Utdragna ord kräver ytterligare kort tidskontroll; inga kvalitetskrav sänks. Sparad SAMPLE_BETA-evidens ger en separat slutreplik, men ny helkörning och kontroll av svensk SRT återstår. **Kör om** från 0.8.140 finns direkt vid underkända/misslyckade körningar i kösidans **Senaste händelser** och håller dig kvar i kön. Dubbla/aktiva/föråldrade jobb stoppas; befintlig AI-undertext kräver bekräftelse före borttagning. Se kvalitetsrapporten från din egen körning för prov och begränsningar. Gemma 3 12B används för källgranskning/översättning och Gemma 4 12B för slutgranskning/riktad rättning. SAMPLE_ALPHA/SAMPLE_BETA har fortfarande osäker källtext; ett slutfört jobb är inte ett mänskligt godkännande av undertexten.
 
 ## 0.8.100
 
-tar bort den gamla `/review`-granskningssidan (tidigt jämförelseverktyg mot en handfull manuellt valda avsnitt, se avsnittet "Granskning (borttagen)" nedan) och dess routes, mallar och `ai/build_*_review.py`-skript. Sidomenyns "Granskning" ersätts av en "Logg"-sida under Inställningar (`/settings/log`) som listar de senaste riktiga jobbhändelserna (start, klart, underkänt, fel) direkt från jobbtabellen. Se den interna statusloggen för detaljerad logg över versioner mellan 0.8.78 och denna.
+tar bort den gamla `/review`-granskningssidan (tidigt jämförelseverktyg mot en handfull manuellt valda avsnitt, se avsnittet "Granskning (borttagen)" nedan) och dess routes, mallar och `ai/build_*_review.py`-skript. Sidomenyns "Granskning" ersätts av en "Logg"-sida under Inställningar (`/settings/log`) som listar de senaste riktiga jobbhändelserna (start, klart, underkänt, fel) direkt från jobbtabellen. Se kvalitetsrapporten från din egen körning för detaljerad logg över versioner mellan 0.8.78 och denna.
 
 ## 0.8.78
 
@@ -669,7 +669,7 @@ lägger till en kostnadsplan för moln-GPU under Inställningar. Leverantör (Va
 
 ## 0.8.72
 
-rättar slutkontrollens felaktiga antagande att en svensk rad som börjar med liten bokstav är en avbruten mening. Sammanhängande tidsatta textblock granskas nu tillsammans, inklusive rader på båda sidor av blockgränsen; korta trailers får även en särskild granskning av slutet. Alla rader granskas, inte bara ett urval. Spärrarna mot borttappad översättning och obegriplig svenska finns kvar. Exakt svensk kandidat och granskningsbesked sparas lokalt i `data/config/translation-quality/`, även vid underkännande. Tidigare beskrivningar nedan av KING/PLANET 9:s underkännanden som bevisat korrekta var för kategoriska; se den interna statusloggen. Detta förbättrar kvalitetskontrollen, inte själva avlyssningen. Planen för framtida moln-GPU finns i `CLOUD-GPU.md`.
+rättar slutkontrollens felaktiga antagande att en svensk rad som börjar med liten bokstav är en avbruten mening. Sammanhängande tidsatta textblock granskas nu tillsammans, inklusive rader på båda sidor av blockgränsen; korta trailers får även en särskild granskning av slutet. Alla rader granskas, inte bara ett urval. Spärrarna mot borttappad översättning och obegriplig svenska finns kvar. Exakt svensk kandidat och granskningsbesked sparas lokalt i `data/config/translation-quality/`, även vid underkännande. Tidigare beskrivningar nedan av SAMPLE_BETA/SPACE SAMPLE:s underkännanden som bevisat korrekta var för kategoriska; se den interna statusloggen. Detta förbättrar kvalitetskontrollen, inte själva avlyssningen. Planen för framtida moln-GPU finns i `CLOUD-GPU.md`.
 
 ## 0.8.71
 
@@ -681,15 +681,15 @@ gör Kö-sidan i gränssnittet färdig på riktigt: den listar nu alla aktiva jo
 
 ## 0.8.69
 
-hittar och lagar den verkliga orsaken till att 0.8.68:s räddade tal ändå inte nådde fram: `split_word_cues()` i `app/asr_windows.py` slog ihop ord till en textrad och accepterade den bara om den *utfyllda* (paddade) tidslängden rymdes inom sjusekunderstaket. En ordgrupp vars faktiska ordlängd redan låg precis under taket kunde bli någon tiondels sekund för lång efter utfyllnaden och kastades då bort helt — inte förkortad, helt struken — trots att varje enskilt ord hade hög igenkänningssäkerhet. Utfyllnaden krymper nu istället för att hela raden stryks när den skulle bli för lång. Verifierat mot KING-trailerns riktiga ljud genom att köra hela avlyssningskedjan: en tidigare helt förlorad replik på cirka 7 sekunder (4,7–11,7s) finns nu med i slutresultatet. Översättningen av den utökade texten stoppas fortfarande av den svenska slutkontrollen, av samma skäl och på samma validerade sätt som HOPE — det är inte en bugg, utan kontrollen som gör sitt jobb på en genuint fragmentarisk källa. Generell fix, ett nytt test, ingen befintlig undertext eller mediefil berörd.
+hittar och lagar den verkliga orsaken till att 0.8.68:s räddade tal ändå inte nådde fram: `split_word_cues()` i `app/asr_windows.py` slog ihop ord till en textrad och accepterade den bara om den *utfyllda* (paddade) tidslängden rymdes inom sjusekunderstaket. En ordgrupp vars faktiska ordlängd redan låg precis under taket kunde bli någon tiondels sekund för lång efter utfyllnaden och kastades då bort helt — inte förkortad, helt struken — trots att varje enskilt ord hade hög igenkänningssäkerhet. Utfyllnaden krymper nu istället för att hela raden stryks när den skulle bli för lång. Verifierat mot SAMPLE_BETA-trailerns riktiga ljud genom att köra hela avlyssningskedjan: en tidigare helt förlorad replik på cirka 7 sekunder (4,7–11,7s) finns nu med i slutresultatet. Översättningen av den utökade texten stoppas fortfarande av den svenska slutkontrollen, av samma skäl och på samma validerade sätt som SAMPLE_ALPHA — det är inte en bugg, utan kontrollen som gör sitt jobb på en genuint fragmentarisk källa. Generell fix, ett nytt test, ingen befintlig undertext eller mediefil berörd.
 
 ## 0.8.68
 
-lagar en generell blind fläck i räddningslogiken för kort tal mellan repliker: den letade tidigare bara efter missat tal *mellan* två redan hittade rader, aldrig före den första eller efter den sista. För en hel avsnittsfil märks det knappt, men för en kort trailer där det enda upptäckta talet ligger mitt i klippet kunde flera sekunder verkligt tal vid början eller slutet aldrig ens övervägas för räddning. `plan_rescue_windows`, `plan_rescue_confirmations` och `fill_bounded_rescue_gaps` i `app/asr_windows.py` räknar nu klippets egen start och slut som en giltig granne när ingen tidigare eller senare rad finns. Verifierat mot KING-trailerns riktiga ljud: ett räddningsfönster och ett bekräftelsefönster skapades nu korrekt före den första repliken (tidigare noll fönster alls), och en oberoende omläsning återfann delar av det saknade talet. Den specifika biten förblev ändå för osäker för att tas med automatiskt (ingen bekräftelseomläsning nådde tillräcklig säkerhet) — vilket är rätt beteende, inte ett kvarvarande fel. Ingen befintlig undertext eller mediefil berörs; ändringen är generell och gäller alla filer, inte bara korta trailers.
+lagar en generell blind fläck i räddningslogiken för kort tal mellan repliker: den letade tidigare bara efter missat tal *mellan* två redan hittade rader, aldrig före den första eller efter den sista. För en hel avsnittsfil märks det knappt, men för en kort trailer där det enda upptäckta talet ligger mitt i klippet kunde flera sekunder verkligt tal vid början eller slutet aldrig ens övervägas för räddning. `plan_rescue_windows`, `plan_rescue_confirmations` och `fill_bounded_rescue_gaps` i `app/asr_windows.py` räknar nu klippets egen start och slut som en giltig granne när ingen tidigare eller senare rad finns. Verifierat mot SAMPLE_BETA-trailerns riktiga ljud: ett räddningsfönster och ett bekräftelsefönster skapades nu korrekt före den första repliken (tidigare noll fönster alls), och en oberoende omläsning återfann delar av det saknade talet. Den specifika biten förblev ändå för osäker för att tas med automatiskt (ingen bekräftelseomläsning nådde tillräcklig säkerhet) — vilket är rätt beteende, inte ett kvarvarande fel. Ingen befintlig undertext eller mediefil berörs; ändringen är generell och gäller alla filer, inte bara korta trailers.
 
 ## 0.8.67
 
-sänker källkontrollens gräns för att känna igen en stabil icke-latinsk skrift från 30 till 20 bokstäver, eftersom en kort trailer ofta bara har några sekunders säkert avlyssnat tal. Verifierad tamilsk dialog visade sig redan vara trygg vid 20 bokstäver i testsviten; det är repetitionskontrollen, inte bokstavsgränsen, som stoppar en kort hallucinerad loop. En hindi-trailer med bara två korta repliker (KING) föll tidigare igenom gränsen och underkändes felaktigt som "icke-förståelig text" av den svensk/engelskspråkiga granskningsmodellen; ingen SRT skrevs och ingen mediefil påverkades. HOPE-trailerns senaste körning (jobb 76) visade sig vid närmare granskning innehålla minst en avhuggen källrad ("Es sind sind." → "De är.") trots att jobbet redovisades som klart; filen är kvar på disk men märks nu **Underkänd – använd inte** i väntan på ny körning eller manuell avlyssning. Inget annat i ASR- eller översättningspipen ändrades.
+sänker källkontrollens gräns för att känna igen en stabil icke-latinsk skrift från 30 till 20 bokstäver, eftersom en kort trailer ofta bara har några sekunders säkert avlyssnat tal. Verifierad tamilsk dialog visade sig redan vara trygg vid 20 bokstäver i testsviten; det är repetitionskontrollen, inte bokstavsgränsen, som stoppar en kort hallucinerad loop. En hindi-trailer med bara två korta repliker (SAMPLE_BETA) föll tidigare igenom gränsen och underkändes felaktigt som "icke-förståelig text" av den svensk/engelskspråkiga granskningsmodellen; ingen SRT skrevs och ingen mediefil påverkades. SAMPLE_ALPHA-trailerns senaste körning (regressionsprov) visade sig vid närmare granskning innehålla minst en avhuggen källrad ("Es sind sind." → "De är.") trots att jobbet redovisades som klart; filen är kvar på disk men märks nu **Underkänd – använd inte** i väntan på ny körning eller manuell avlyssning. Inget annat i ASR- eller översättningspipen ändrades.
 
 ## 0.8.66
 
@@ -697,15 +697,15 @@ bygger om webbgränssnittet enligt en godkänd designspecifikation: en fast sido
 
 ## 0.8.65
 
-läser tydliga, fristående språkmarkeringar i filnamn, exempelvis `tyska`, `German` eller `Deutsch`, och låser då Whisper till rätt språk under hela avlyssningen. Motstridande automatisk skriftidentifiering får inte längre kringgå källkontrollen. Den svenska slutkontrollen gäller även korta trailers och stoppar flera avbrutna meningar, återkommande fristående meningsfragment eller när en orimligt stor del av källans dialog saknas. HOPE används som verkligt omprov; Sigma förblir underkänd utan skapad SRT tills tamil-avlyssningen blivit tillräckligt säker.
+läser tydliga, fristående språkmarkeringar i filnamn, exempelvis `tyska`, `German` eller `Deutsch`, och låser då Whisper till rätt språk under hela avlyssningen. Motstridande automatisk skriftidentifiering får inte längre kringgå källkontrollen. Den svenska slutkontrollen gäller även korta trailers och stoppar flera avbrutna meningar, återkommande fristående meningsfragment eller när en orimligt stor del av källans dialog saknas. SAMPLE_ALPHA används som verkligt omprov; SampleEta förblir underkänd utan skapad SRT tills tamil-avlyssningen blivit tillräckligt säker.
 
 ## 0.8.64
 
-gör automatiskt ett slutligt Whisper-pass med fast språk när en dominerande skrift entydigt identifierar exempelvis tamil, telugu, malayalam eller koreanska. Sigma får därmed en tvingad tamilsk avläsning i stället för den trasiga automatiska språkblandningen. Efter översättningen bedöms dessutom hela svenska resultatet; genomgående translitterering eller oöversatt ordsallad stoppas innan en SRT skrivs.
+gör automatiskt ett slutligt Whisper-pass med fast språk när en dominerande skrift entydigt identifierar exempelvis tamil, telugu, malayalam eller koreanska. SampleEta får därmed en tvingad tamilsk avläsning i stället för den trasiga automatiska språkblandningen. Efter översättningen bedöms dessutom hela svenska resultatet; genomgående translitterering eller oöversatt ordsallad stoppas innan en SRT skrivs.
 
 ## 0.8.63
 
-låter en stabil, dominerande icke-latinsk skrift passera källkontrollen utan att en svensk/engelsk granskningsmodell felaktigt kallar ett obekant språk för nonsens. Om samma rad upprepas patologiskt används fortfarande den strikta kontrollen. Det gör att den tamilska Sigma-trailern kan översättas, medan Shrek-fallet fortfarande stoppas. Gränssnittet visar inte längre ett gammalt slutfört jobb som **AI-undertext skapad** när biblioteksskanningen visar att själva SRT-filen saknas.
+låter en stabil, dominerande icke-latinsk skrift passera källkontrollen utan att en svensk/engelsk granskningsmodell felaktigt kallar ett obekant språk för nonsens. Om samma rad upprepas patologiskt används fortfarande den strikta kontrollen. Det gör att den tamilska SampleEta-trailern kan översättas, medan Shrek-fallet fortfarande stoppas. Gränssnittet visar inte längre ett gammalt slutfört jobb som **AI-undertext skapad** när biblioteksskanningen visar att själva SRT-filen saknas.
 
 ## 0.8.62
 
@@ -725,11 +725,11 @@ gör filplaceringen flyttbar utan att media måste ligga inne i projektmappen. S
 
 ## 0.8.58
 
-lägger till en begränsad, språkstyrd omlyssning av långa luckor där svagt tal finns men ingen undertextrad. Qwen3-ASR identifierar språket och ger en oberoende textavläsning; Whisper large-v3 gör ett kort pass med det språkvalet. En ny rad läggs till bara när texterna överensstämmer, ordsäkerheten är tillräcklig, svagt tal stöder tiden och ingen befintlig rad överlappas. Högst åtta misstänkta luckor per avsnitt får denna extra kontroll, högst tre per kvart, och en redan bekräftad rad behöver inte ett andra Whisper-pass. Det är inte ett löfte om korrekt text på alla språk: språkvalet omfattar de Qwen-språk som SubSynq kan mappa till Whisper, däribland franska, japanska och kinesiska. Ett fokuserat Daryl S01E01-prov återfann `Tu es le remède d'un monde malade` vid 52:22–52:26. Yukon S01E01:s första 90 sekunder var oförändrade rad för rad, och 124 automatiska tester passerade. Ett helt nytt avsnitt eller faktiskt japanskt/kinesiskt material har ännu inte verifierats. Inga äldre SRT-filer skrivs om automatiskt.
+lägger till en begränsad, språkstyrd omlyssning av långa luckor där svagt tal finns men ingen undertextrad. Qwen3-ASR identifierar språket och ger en oberoende textavläsning; Whisper large-v3 gör ett kort pass med det språkvalet. En ny rad läggs till bara när texterna överensstämmer, ordsäkerheten är tillräcklig, svagt tal stöder tiden och ingen befintlig rad överlappas. Högst åtta misstänkta luckor per avsnitt får denna extra kontroll, högst tre per kvart, och en redan bekräftad rad behöver inte ett andra Whisper-pass. Det är inte ett löfte om korrekt text på alla språk: språkvalet omfattar de Qwen-språk som SubSynq kan mappa till Whisper, däribland franska, japanska och kinesiska. Ett fokuserat Daryl S01E01-prov återfann `Tu es le remède d'un monde malade` vid 52:22–52:26. Wildlife_Sample S01E01:s första 90 sekunder var oförändrade rad för rad, och 124 automatiska tester passerade. Ett helt nytt avsnitt eller faktiskt japanskt/kinesiskt material har ännu inte verifierats. Inga äldre SRT-filer skrivs om automatiskt.
 
 ## 0.8.57
 
-är en diagnostik- och säkerhetskopieringsuppdatering, inte en ny automatisk ASR-regel. Projektets kod är nu versionshanterad och uppladdad till det angivna GitHub-arkivet; `data/`, media, undertexter, modeller och `.env` hålls utanför. Nya korta provverktyg kan jämföra mono/center, talfilter av/på och uttrycklig språkledtråd. Daryl S01E01 vid 52 minuter visade att kort fransk avläsning utan VAD fångar repliker som jobb 36 missade. Resultaten och försiktighetskrav för nästa generella luckräddning finns i `SPRAKLUCKOR-S01E01.md`. Inga befintliga undertexter skrevs om och ingen helkörning startades.
+är en diagnostik- och säkerhetskopieringsuppdatering, inte en ny automatisk ASR-regel. Projektets kod är nu versionshanterad och uppladdad till det angivna GitHub-arkivet; `data/`, media, undertexter, modeller och `.env` hålls utanför. Nya korta provverktyg kan jämföra mono/center, talfilter av/på och uttrycklig språkledtråd. Daryl S01E01 vid 52 minuter visade att kort fransk avläsning utan VAD fångar repliker som regressionsprov missade. Resultaten och försiktighetskrav för nästa generella luckräddning finns i `SPRAKLUCKOR-S01E01.md`. Inga befintliga undertexter skrevs om och ingen helkörning startades.
 
 ## 0.8.56
 
@@ -777,7 +777,7 @@ dokumenterar ett avgränsat CPU-prov på rätt S01E01 vid 05:03 och 05:40. Whisp
 
 ## 0.8.45
 
-innehåller den färdiga nya E01-undertexten från jobb 26 (503 repliker). `Maybe` och det fristående `Safe` vid 04:03/04:17 är borta; den bekräftade engelska repliken visas 04:07,86–04:11,08 och den franska hälsningen finns vid 13:46. En manuellt språkgranskad svensk rad ersätter modellens onaturliga ”Vi kretsade runt Spanien”. Föregående E01-SRT och den nygenererade filen före språkgranskningen är bevarade under `data/config/review/backups`. Resultatet bör fortfarande avlyssnas som helhet innan det godkänns.
+innehåller den färdiga nya E01-undertexten från regressionsprov (503 repliker). `Maybe` och det fristående `Safe` vid 04:03/04:17 är borta; den bekräftade engelska repliken visas 04:07,86–04:11,08 och den franska hälsningen finns vid 13:46. En manuellt språkgranskad svensk rad ersätter modellens onaturliga ”Vi kretsade runt Spanien”. Föregående E01-SRT och den nygenererade filen före språkgranskningen är bevarade under `data/config/review/backups`. Resultatet bör fortfarande avlyssnas som helhet innan det godkänns.
 
 ## 0.8.44
 

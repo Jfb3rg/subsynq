@@ -9,7 +9,7 @@ def cue(start, end, text, confidence):
     return {'start': start, 'end': end, 'text': text, 'confidence': confidence}
 
 
-# Real readings of Man of War (dev job 49), English track: the cue at 100.2 s was kept from the 90 s pass while the
+# Real readings of Sample Gamma (regression case), English track: the cue at 100.2 s was kept from the 90 s pass while the
 # short pass, Whisper v2 and Qwen3-ASR all heard "The way you make it your life. All right, lights on me."
 FINAL = [cue(97.3, 98.7, 'War is a monster.', .991),
          cue(100.2, 104.8, 'way you make it your life all right lights on me this', .460),

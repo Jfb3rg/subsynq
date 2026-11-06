@@ -14,7 +14,7 @@ def rows(*pairs):
 
 
 class NameEvidenceTests(unittest.TestCase):
-    """Real job 17 (Ray Gunn): speech cannot tell "Gun" from "Gunn", so a word is a name when the
+    """regression case(Sample Trailer): speech cannot tell "Gun" from "Gunn", so a word is a name when the
     FILE writes it as one: a capital inside a sentence, or right after a title, even across rows."""
 
     def test_a_title_in_one_row_names_the_first_word_of_the_next(self):
@@ -112,7 +112,7 @@ GERMAN = [
 
 
 class GermanNounsAreNotNamesTests(unittest.TestCase):
-    """Real jobs 43 and 44: German writes every noun with a capital, so "Messer", "Mord", "Kollegen" were
+    """regression caseand 44: German writes every noun with a capital, so "Messer", "Mord", "Kollegen" were
     handed to the translator as names to copy unchanged and the Swedish came back full of German nouns."""
 
     def test_a_german_text_has_no_names_from_capitals_alone(self):

@@ -14,7 +14,7 @@ def model_rows(**by_id):
 
 
 class IndependentWordingIsNotACopyTests(unittest.TestCase):
-    """Unraid job 57 (Z Nation 4x02), row 256: the right fix was found twice and refused by two guards."""
+    """regression case(Example Series 4x02), row 256: the right fix was found twice and refused by two guards."""
 
     ROWS = [{'id': 255, 'start': 975.4, 'end': 977.0, 'source': "Otherwise, they'll never let us leave willingly.",
              'sv': 'Annars kommer de aldrig att låta oss lämna frivilligt.'},
@@ -51,7 +51,7 @@ class IndependentWordingIsNotACopyTests(unittest.TestCase):
 
 
 class EveryRefusedWordingTests(unittest.TestCase):
-    """Unraid job 58 (Z Nation 4x03), row 139: told only the latest refusal, the repair swapped "mitt"/"min" for four rounds."""
+    """regression case(Example Series 4x03), row 139: told only the latest refusal, the repair swapped "mitt"/"min" for four rounds."""
 
     ROWS = [{'id': 138, 'start': 632.8, 'end': 634.0, 'source': "That's a mistake.", 'sv': 'Det är ett misstag.'},
             {'id': 139, 'start': 635.4, 'end': 636.28, 'source': "Wouldn't be my first.", 'sv': 'Det vore inte mitt första.'},
@@ -112,7 +112,7 @@ class EveryRefusedWordingTests(unittest.TestCase):
 
 
 class CalqueRuleTests(unittest.TestCase):
-    """Unraid job 56 (Ray Gunn) was approved with "Hur vore mord?" and "Volatil.": the review called calques style."""
+    """regression case(Sample Trailer) was approved with "Hur vore mord?" and "Volatil.": the review called calques style."""
 
     def test_the_review_treats_a_calque_as_a_meaning_defect(self):
         system = audit_system('sv', 'Swedish')

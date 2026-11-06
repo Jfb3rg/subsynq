@@ -31,7 +31,7 @@ Projektet byggs från källkod med Docker Compose, på Unraid och på andra Dock
 git clone https://github.com/Jfb3rg/subsynq.git
 cd subsynq
 cp .env.example .env        # ange port, användare, adress och dina mediamappar
-mkdir -p data/config data/models
+mkdir -p data/config data/models data/movies data/tv data/extra
 docker compose up -d --build
 ```
 
@@ -51,9 +51,9 @@ Kloning och `data/` bör ligga på en disk med gott om plats, till exempel under
 `/mnt/user/appdata/subsynq`. Mediamapparna måste vara skrivbara för användaren ovan.
 Webbgränssnittet saknar inloggning: exponera aldrig porten mot internet.
 **Installera med Unraid-mallar i stället:** de fyra mallarna och en steg-för-steg-guide
-finns i [`unraid/`](unraid/README.md). Färdiga images byggs och läggs på Docker Hub av
-[`publish.yml`](.github/workflows/publish.yml) när `main` uppdateras; de är ännu inte
-publicerade, och mallen för Community Apps kommer först när arkivet är publikt.
+finns i [unraid/](unraid/README.md). GitHubs [publiceringsflöde](.github/workflows/publish.yml)
+testar källkoden och publicerar Docker-imager. Se arbetsgångens resultat och
+releaser för publicerade versioner.
 
 Du behöver Docker med Compose v2, befintliga mediamappar och **cirka 30 GB ledigt**
 för modellerna. AI-körningen behöver också tillräckligt ledigt RAM för
@@ -195,7 +195,11 @@ nätverk. Hälsokontrollen `/health` visar serverstatus, inte undertextkvalitet.
 | [CLOUD-GPU.md](CLOUD-GPU.md) | Molnkörning, kostnader och kvarstående begränsningar |
 | [Modellprov](ai/README-ASR-PROBES.md) | Separata diagnostikverktyg |
 
-Versionsnotiser och enskilda testkörningar hör hemma i ändringshistoriken.
+Versionsnotiser beskriver ändrat beteende och begränsningar utan privata testkörningar.
+
+Mappen [tests/](tests/README.md) hör till källkoden och används före publicering.
+Den ingår inte i Docker-imagerna. Egna jobb, media, modeller och konfiguration
+följer inte med en ny installation.
 
 ## Licens
 

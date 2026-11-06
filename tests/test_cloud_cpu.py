@@ -477,7 +477,7 @@ class GatewayTests(unittest.TestCase):
         import swedish_reader
         self.assertIn(swedish_reader.REPOSITORY, gateway.ALLOWED_WHISPER_MODELS)
         import norwegian_reader
-        self.assertIn(norwegian_reader.REPOSITORY, gateway.ALLOWED_WHISPER_MODELS, 'the rented server refused NB-Whisper (dev jobs 205, 206)')
+        self.assertIn(norwegian_reader.REPOSITORY, gateway.ALLOWED_WHISPER_MODELS, 'the rented server refused NB-Whisper (regression case)')
 
     def test_transcribe_refuses_unknown_options_and_models(self):
         with patch.object(gateway, 'activate_whisper', return_value=FakeWhisper()) as activate:

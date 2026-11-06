@@ -14,7 +14,7 @@ def row(start, end, text, confidence=.9):
 
 
 class TitleRowTests(unittest.TestCase):
-    """Ray Gunn (dev jobs 30, 38, 153): every pass put a break after "Mr." (48.2-49.0 s, then 49.0-49.9 s with no pause) and the subtitle showed "Herr" alone."""
+    """Sample Trailer (regression case): every pass put a break after "Mr." (48.2-49.0 s, then 49.0-49.9 s with no pause) and the subtitle showed "Herr" alone."""
 
     def test_the_real_rows_are_joined_into_one_cue(self):
         rows = [row(46.0, 47.5, 'Hello there.'), row(48.2, 49.0, 'Mr.', .73), row(49.0, 49.9, 'Gunn, I presume?', .93), row(50.9, 52.9, 'So, uh, what can I do for you?')]
@@ -43,7 +43,7 @@ READINGS = {'context': [{'start': 84.4, 'end': 88.3, 'text': 'Be careful, Ray.',
 
 
 class NameTests(unittest.TestCase):
-    """Ray Gunn: context (large-v3) and large-v2 read "Ray", only the rescue pass read "Rey"; the file says "Ray" elsewhere."""
+    """Sample Trailer: context (large-v3) and large-v2 read "Ray", only the rescue pass read "Rey"; the file says "Ray" elsewhere."""
 
     def test_a_name_that_one_pass_wrote_differently_from_two_families_and_the_file_is_written_as_they_read_it(self):
         done, changes = harmonize_names_by_readings(NAMES, READINGS)
@@ -69,7 +69,7 @@ class NameTests(unittest.TestCase):
 
 
 class NotANameTests(unittest.TestCase):
-    """WIFE AND DOG (dev job 154): "Daddy" and "Hell" were copied as names ("Och vad hittade han i helvetet, Daddy?"); the older text said "pappa"."""
+    """DIALOGUE_SAMPLE AND DOG (regression case): "Daddy" and "Hell" were copied as names ("Och vad hittade han i helvetet, Daddy?"); the older text said "pappa"."""
 
     def test_daddy_and_hell_are_not_names(self):
         rows = [{'source': 'Eventually, found himself in hell.'}, {'source': 'And what did he find in Hell, Daddy?'}]
@@ -81,7 +81,7 @@ class NotANameTests(unittest.TestCase):
         self.assertEqual(sorted(word for words in forms.values() for word in words), ['Gunn', 'Ray'])
 
 
-# WIFE AND DOG (dev job 154): the long pass wrote "digging, and" before a pause; the short pass, Whisper large-v2 and Qwen3-ASR heard no "and" (and neither did a
+# DIALOGUE_SAMPLE AND DOG (regression case): the long pass wrote "digging, and" before a pause; the short pass, Whisper large-v2 and Qwen3-ASR heard no "and" (and neither did a
 # clean reading of the clip with large-v3 or large-v2).
 LONG_PASS = [{'start': 25.69, 'end': 31.2, 'text': 'He kept digging and digging, and', 'confidence': .672}, {'start': 32.36, 'end': 36.9, 'text': 'eventually found himself in hell.', 'confidence': .737}]
 SHORT_PASS = [{'start': 25.64, 'end': 30.37, 'text': 'He kept digging and digging.', 'confidence': .913}, {'start': 32.0, 'end': 36.91, 'text': 'Eventually, he found himself in hell.', 'confidence': .73}]

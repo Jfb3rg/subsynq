@@ -87,7 +87,7 @@ class ChooseReadingsTests(unittest.TestCase):
                                                                  'candidates': [first, second]}))
 
     def test_a_flawed_current_wording_is_replaced_by_the_better_supported_reading(self):
-        # Real cue, Man of War (dev job 49): three passes read "The way you make it your life ..."
+        # Real cue, Sample Gamma (regression case): three passes read "The way you make it your life ..."
         rows = [row(0, 'War is a monster.'),
                 row(1, 'way you make it your life all right lights on me this',
                     [alt('The way you make it your life. All right, lights on me.', 3, 2)]),
@@ -114,7 +114,7 @@ class ChooseReadingsTests(unittest.TestCase):
         self.assertEqual(result[0]['source'], 'His name is Stanislav Koniev.')
 
     def test_a_minimal_repair_is_allowed_even_when_the_passes_are_split(self):
-        # German dub, dev job 48: Whisper v3 and Qwen read "nicht", only Whisper v2 read "Nichte".
+        # German dub, regression case: Whisper v3 and Qwen read "nicht", only Whisper v2 read "Nichte".
         rows = [row(0, 'Meine nicht. Ich und ihr Vater, wir sind zusammen in den Teams.',
                     [alt('Meine Nichte. Ich und ihr Vater, wir sind zusammen in den Teams.', 1, 2)])]
         result, _ = judge.choose_readings(rows, answering((0, True, 'B')), 'm')
@@ -133,7 +133,7 @@ class ChooseReadingsTests(unittest.TestCase):
         self.assertEqual(result[0]['source'], 'Run! on, you niggas! Run!')
 
     def test_words_that_belong_to_the_neighbouring_cue_are_not_taken_over(self):
-        # Real cues 21-22, Man of War: a Qwen clip that began early repeated the end of the previous line.
+        # Real cues 21-22, Sample Gamma: a Qwen clip that began early repeated the end of the previous line.
         rows = [row(0, "is what's left simple people we're trying to live their lives"),
                 row(1, 'trying to survive', [alt('Trying to live their lives, trying to survive.', 2, 1)]),
                 row(2, 'War is a monster.')]

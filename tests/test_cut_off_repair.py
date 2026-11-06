@@ -9,7 +9,7 @@ sys.path.insert(0, '/ai')
 sys.path.insert(0, '/app')
 import worker
 
-# Unraid job 76 (Z Nation 4x03, Main 0.8.366): row 209 "Yeah, well, I've been led blindly" is continued in lower case by row 210, so it counts as cut
+# regression case(Example Series 4x03, Main 0.8.366): row 209 "Yeah, well, I've been led blindly" is continued in lower case by row 210, so it counts as cut
 # off; the final review first named "Ja, men jag har blivit led blind" (not Swedish) and the file shipped it as a doubtful line without any repair.
 SOURCES = ['This is a complete sentence.'] * 20 + ["Yeah, well, I've been led blindly", 'blindly by enough military intelligence.'] + \
           ['This is a complete sentence.'] * 38

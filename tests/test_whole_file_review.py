@@ -21,7 +21,7 @@ def flag_for(row):
 
 
 class WholeFileReviewTests(unittest.TestCase):
-    """Yukon Men, a 44-minute episode (899 cues), was stopped twice at a block with 3 flagged cues of 12 after 12 of 75 blocks: the rest was never judged.
+    """Wildlife Sample, a 44-minute episode (899 cues), was stopped twice at a block with 3 flagged cues of 12 after 12 of 75 blocks: the rest was never judged.
     A Swedish file is now reviewed in full and its flags are counted against the whole file."""
 
     def setUp(self):
@@ -208,7 +208,7 @@ class FlowTests(unittest.TestCase):
 
 
 class ClusterTests(unittest.TestCase):
-    """Yukon Men, the delivered subtitle: cues 702-718 were each translated as the neighbouring line ("We think we're within a couple of miles of them." became
+    """Wildlife Sample, the delivered subtitle: cues 702-718 were each translated as the neighbouring line ("We think we're within a couple of miles of them." became
     "Det här snöfallet hjälper oss se deras spår."). 36 flagged of 899 stayed under the file-wide limit and the shifted stretch was written. A cluster of flagged
     cues in one block (three of twelve, the old block rule) is repaired by translating the block afresh, or the file is refused."""
 
@@ -290,7 +290,7 @@ class ClusterTests(unittest.TestCase):
         self.assertEqual(set(seen['translate'][0][1]), {10, 11, 12})
         self.assertEqual(saved['status'], 'unusable')
 
-    def test_sigma_clean_fragment_is_not_falsely_labelled_a_rejected_translation(self):
+    def test_sampleeta_clean_fragment_is_not_falsely_labelled_a_rejected_translation(self):
         before = {30: 'Jag har skapat det lite i taget.', 31: 'Härifrån får du se efter det...',
                   32: 'Du, i livet...', 33: 'Man kan inte ta ett enda steg till.',
                   34: 'Jag hanterar mycket damm.', 35: 'Men det har aldrig slutat vara en mor.',
@@ -319,7 +319,7 @@ class ClusterTests(unittest.TestCase):
 
 class ApprovalsTests(unittest.TestCase):
     """A normal reviewer event (an invalid answer, then the block split in halves) used to cost the whole file its approvals: the retry then translated
-    every cue again (Yukon Men: 25 batches instead of 2, about 10 minutes on a rented GPU)."""
+    every cue again (Wildlife Sample: 25 batches instead of 2, about 10 minutes on a rented GPU)."""
 
     def test_an_invalid_answer_and_its_split_do_not_cancel_the_approvals_of_the_rest(self):
         source = rows(6)

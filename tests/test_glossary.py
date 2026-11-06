@@ -8,7 +8,7 @@ sys.path.insert(0, '/ai')
 sys.path.insert(0, '/app')
 from glossary import apply_glossary, load_glossary
 
-# Yukon Men (dev job 146): the Alaskan snowmobile is "snowgo". large-v3 wrote it four ways; Qwen3-ASR heard "Snowgo" and "snowgos" in the audio.
+# Wildlife Sample (regression case): the Alaskan snowmobile is "snowgo". large-v3 wrote it four ways; Qwen3-ASR heard "Snowgo" and "snowgos" in the audio.
 ENTRIES = [{'heard': 'snow goat', 'write': 'snowgo'}, {'heard': 'snow goats', 'write': 'snowgos'}, {'heard': 'snow goal', 'write': 'snowgo'},
            {'heard': 'snow ghosts', 'write': 'snowgos'}]
 

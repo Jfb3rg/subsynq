@@ -13,7 +13,7 @@ def words(*items):
     return [{'word': f' {word}', 'start': start, 'end': end, 'probability': p} for word, start, end, p in items]
 
 
-# The real tight reread of row 441 in Unraid job 72 (Stuart Fails to Save the Universe S01E01, Main 0.8.364).
+# The real tight reread of row 441 in regression case(Example Series S01E01, Main 0.8.364).
 PRECISION = {'name': 'precision', 'language': 'en', 'confidence': .85,
              'text': 'hard on yourself. Most people underestimate the mighty force that is geology.',
              'words': words(('hard', 1049.78, 1049.98, .62), ('on', 1049.98, 1050.08, 1.0), ('yourself.', 1050.08, 1050.32, 1.0),

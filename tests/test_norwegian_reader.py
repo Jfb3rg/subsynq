@@ -10,23 +10,23 @@ import norwegian_reader
 import worker
 from asr_windows import _INDEPENDENT_FAMILIES, _family, reading_alternatives
 
-# The language probes of the real jobs (dev 202 Agnes mot verden, 203 Glemselens øy, 201 MAN OF WAR, 135 a Danish trailer)
-AGNES = [{'language': 'no', 'probability': .935, 'speech_seconds': 9.1}, {'language': 'no', 'probability': .953, 'speech_seconds': 11.0},
+# The language probes of the real jobs (dev 202 SamplePerson mot verden, 203 Nordic Sample, 201 SAMPLE GAMMA, 135 a Danish trailer)
+SAMPLEPERSON = [{'language': 'no', 'probability': .935, 'speech_seconds': 9.1}, {'language': 'no', 'probability': .953, 'speech_seconds': 11.0},
          {'language': 'no', 'probability': .937, 'speech_seconds': 8.2}]
-GLEMSEL = [{'language': 'no', 'probability': .936, 'speech_seconds': 6.0}, {'language': 'nn', 'probability': .613, 'speech_seconds': 5.1},
+NORDIC_SAMPLE = [{'language': 'no', 'probability': .936, 'speech_seconds': 6.0}, {'language': 'nn', 'probability': .613, 'speech_seconds': 5.1},
            {'language': 'no', 'probability': .942, 'speech_seconds': 7.4}]
 
 
 class DecisionTests(unittest.TestCase):
     def test_norwegian_files_are_read(self):
-        self.assertTrue(norwegian_reader.decide(AGNES)[0])
-        self.assertTrue(norwegian_reader.decide(GLEMSEL)[0])
+        self.assertTrue(norwegian_reader.decide(SAMPLEPERSON)[0])
+        self.assertTrue(norwegian_reader.decide(NORDIC_SAMPLE)[0])
 
     def test_other_languages_and_too_little_speech_are_not(self):
         english = [{'language': 'en', 'probability': .99, 'speech_seconds': 9}] * 3
         danish = [{'language': 'da', 'probability': .9, 'speech_seconds': 9}] * 3
-        mixed = [AGNES[0], {'language': 'en', 'probability': .99, 'speech_seconds': 9}, {'language': 'sv', 'probability': .9, 'speech_seconds': 9}]
-        for readings in (english, danish, mixed, AGNES[:1], [dict(item, speech_seconds=.5) for item in AGNES], []):
+        mixed = [SAMPLEPERSON[0], {'language': 'en', 'probability': .99, 'speech_seconds': 9}, {'language': 'sv', 'probability': .9, 'speech_seconds': 9}]
+        for readings in (english, danish, mixed, SAMPLEPERSON[:1], [dict(item, speech_seconds=.5) for item in SAMPLEPERSON], []):
             self.assertFalse(norwegian_reader.decide(readings)[0], readings)
 
     def test_the_repository_can_be_switched_off(self):
@@ -45,7 +45,7 @@ class PackTests(unittest.TestCase):
         self.assertIn('nb-whisper', _INDEPENDENT_FAMILIES)
 
     def test_its_reading_becomes_a_supported_candidate(self):
-        # Agnes (job 202) row 33: the file has the short pass at 0.18; rescue, large-v2 and NB-Whisper read "Finn det du elsker."
+        # SamplePerson (job 202) row 33: the file has the short pass at 0.18; rescue, large-v2 and NB-Whisper read "Finn det du elsker."
         row = {'start': 112.88, 'end': 114.4, 'text': 'Finn deg du elsker.', 'confidence': .18}
         readings = {'precision': [row], 'rescue': [{'start': 112.61, 'end': 114.23, 'text': 'Finn det du elsker.'}],
                     'v2': [{'start': 113.02, 'end': 114.62, 'text': 'Finn det du elsker.'}],
@@ -54,7 +54,7 @@ class PackTests(unittest.TestCase):
         self.assertEqual((candidates[0]['text'], candidates[0]['support']), ('Finn det du elsker.', 3))
 
     def test_a_swap_is_found_when_the_readings_hold_extra_words_at_the_start(self):
-        # Agnes mot verden (dev job 209): the long pass "hjemme", large-v2 and NB-Whisper "gjemt" with "har seriøst" in front
+        # SamplePerson mot verden (regression case): the long pass "hjemme", large-v2 and NB-Whisper "gjemt" with "har seriøst" in front
         from asr_windows import settle_v2_words_with_qwen, _single_word_swap
         row = {'start': 94.28, 'end': 98.8, 'text': 'en kilo heroin hjemme der, og så ber du meg om å bare være her.'}
         v2 = [{'start': 93.98, 'end': 98.96, 'text': 'har seriøst en kilo heroin gjemt der, og så ber du meg om å bare være her.'}]
@@ -86,7 +86,7 @@ class FakeModels:
 
 
 class WorkerTests(unittest.TestCase):
-    def run_it(self, *, enabled=True, present=True, readings=AGNES, read=None, remote=None):
+    def run_it(self, *, enabled=True, present=True, readings=SAMPLEPERSON, read=None, remote=None):
         job = {'id': 5, 'swedish_reader': {'readings': readings}}
         models = FakeModels(remote)
         with patch.object(worker.model_manager, 'enabled_packs', return_value={norwegian_reader.PACK_ID} if enabled else set()), \

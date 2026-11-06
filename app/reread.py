@@ -359,7 +359,7 @@ def clipped_prefix_evidence(row, candidate, readings):
     return dict(removed_prefix=old[:ops[0][2]], clip_start=edge, witnesses=witnesses)
 
 
-CONTEXT_WINDOWS = ((2.0, 1.0), (6.0, 3.0))   # seconds before/after the row: Unraid job 64 row 411, large-v3 heard "On three" only with >= 2 s before
+CONTEXT_WINDOWS = ((2.0, 1.0), (6.0, 3.0))   # seconds before/after the row: regression caserow 411, large-v3 heard "On three" only with >= 2 s before
 
 
 def words_inside(words, start, end, *, margin=.15):

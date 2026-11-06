@@ -13,7 +13,7 @@ from asr_windows import plan_tail_confirmation, restore_confirmed_tail, split_co
 class ConfirmedTailTests(unittest.TestCase):
     def anchor_case(self):
         root = Path('/diagnostic') if str(__file__) == '/test.py' else Path(__file__).parent
-        return json.loads((root/'fixtures/godzilla-tail-335.json').read_text())['selected_anchor_case']
+        return json.loads((root/'fixtures/tail-confirmation.json').read_text())['selected_anchor_case']
 
     def test_final_selection_can_recover_the_originally_planned_tail_anchor(self):
         data = self.anchor_case(); before = copy.deepcopy(data)
@@ -45,7 +45,7 @@ class ConfirmedTailTests(unittest.TestCase):
 
     def test_real_japanese_tail_is_a_clause_without_western_word_spaces(self):
         root = Path('/diagnostic') if str(__file__) == '/test.py' else Path(__file__).parent
-        saved = json.loads((root/'fixtures/godzilla-tail-335.json').read_text())
+        saved = json.loads((root/'fixtures/tail-confirmation.json').read_text())
         before = copy.deepcopy(saved)
         result = restore_confirmed_tail(saved['base'], saved['probes'])
         self.assertEqual(result[:-1], saved['base'])
@@ -55,7 +55,7 @@ class ConfirmedTailTests(unittest.TestCase):
 
     def test_space_free_tail_does_not_remove_acoustic_requirements(self):
         root = Path('/diagnostic') if str(__file__) == '/test.py' else Path(__file__).parent
-        saved = json.loads((root/'fixtures/godzilla-tail-335.json').read_text())
+        saved = json.loads((root/'fixtures/tail-confirmation.json').read_text())
         for change in ('speech', 'confidence', 'words', 'word_text', 'independent', 'time'):
             probe = copy.deepcopy(saved['probes'][0])
             cue = probe['segments'][-1]

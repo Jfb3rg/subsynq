@@ -344,7 +344,7 @@ class WorkerTranslationTests(unittest.TestCase):
                 for index in range(4)]
         with patch.object(worker, 'call_ollama', return_value=response):
             with self.assertRaisesRegex(worker.SourceQualityError, 'Källtranskriberingen'):
-                worker.assess_source_quality(rows, 'HOPE tyska.mp4')
+                worker.assess_source_quality(rows, 'SAMPLE_ALPHA tyska.mp4')
 
     def test_short_german_source_rejects_hope_like_broken_cluster(self):
         rows = [
@@ -363,7 +363,7 @@ class WorkerTranslationTests(unittest.TestCase):
         ]
         with patch.object(worker, 'call_ollama', side_effect=responses) as model:
             with self.assertRaisesRegex(worker.SourceQualityError, '3 av 6'):
-                worker.assess_source_quality(rows, 'HOPE tyska.mp4')
+                worker.assess_source_quality(rows, 'SAMPLE_ALPHA tyska.mp4')
         self.assertEqual(model.call_count, 2)
 
     def test_short_source_audit_tolerates_one_bad_row(self):

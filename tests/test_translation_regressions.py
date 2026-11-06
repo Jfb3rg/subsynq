@@ -16,7 +16,7 @@ def row(row_id, source, sv, start=None):
 
 
 class FileConsistencyTests(unittest.TestCase):
-    """Unraid job 63 (Z Nation 4x03), approved with "Söndag maj.", "BUD/S" for "bud" and the Norwegian "likegyldigt"."""
+    """regression case(Example Series 4x03), approved with "Söndag maj.", "BUD/S" for "bud" and the Norwegian "likegyldigt"."""
 
     def ids(self, rows):
         return [(flag['id'], flag['category']) for flag in file_consistency_flags(rows)]
@@ -49,7 +49,7 @@ class FileConsistencyTests(unittest.TestCase):
 
 
 class CompoundUntranslatedTests(unittest.TestCase):
-    """Unraid job 65 (Stuart) failed: the reviewer rightly said "entanglement" was left in "kvantentanglementgrej"."""
+    """regression case(SampleSeries) failed: the reviewer rightly said "entanglement" was left in "kvantentanglementgrej"."""
 
     SAMPLE = [row(80, 'Anyway, they invented some kind of quantum entanglement thing,', 'Hur som helst, de uppfann någon slags kvantentanglementgrej,')]
 
@@ -71,7 +71,7 @@ class CompoundUntranslatedTests(unittest.TestCase):
 
 
 class FinalAttemptRereadTests(unittest.TestCase):
-    """Unraid job 64 (Z Nation 4x02): "Yes, sir, I'm three." was first doubted by the final review and never read again."""
+    """regression case(Example Series 4x02): "Yes, sir, I'm three." was first doubted by the final review and never read again."""
 
     def setUp(self):
         folder = tempfile.TemporaryDirectory()

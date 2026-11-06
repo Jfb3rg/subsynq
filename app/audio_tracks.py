@@ -1,7 +1,7 @@
 """Which embedded audio track the AI listens to.
 
 A film often carries several audio tracks (original, dubs, commentary). The pipeline used to read the first
-one blindly: the Man of War trailer has a German dub as track 0 and the English original as track 1, and the
+one blindly: the Sample Gamma trailer has a German dub as track 0 and the English original as track 1, and the
 dub's misheard words ("Meine nicht" for "Meine Nichte") failed the run. Swedish is preferred (it needs no
 translation), then English; the language tag is only a hint and is checked against the audio, and an explicit
 choice always wins.

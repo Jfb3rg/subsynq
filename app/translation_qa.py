@@ -186,7 +186,7 @@ def capitalizes_common_nouns(texts):
     return middle >= 30 and capitalised >= .15 * middle and german >= .08 * words
 
 
-# Words a subtitle writes with a capital letter in the middle of a sentence that are NOT names: forms of address and places of belief. WIFE AND DOG: the translator was
+# Words a subtitle writes with a capital letter in the middle of a sentence that are NOT names: forms of address and places of belief. DIALOGUE_SAMPLE AND DOG: the translator was
 # told to copy "Daddy" and "Hell" as names, so "Och vad hittade han i helvetet, Daddy?" kept "Daddy" where the older text said "pappa".
 NOT_NAMES = frozenset({
     'daddy', 'dad', 'mommy', 'mom', 'mama', 'mummy', 'papa', 'pops', 'mother', 'father', 'grandma', 'grandpa', 'granny', 'grandmother', 'grandfather',
@@ -266,7 +266,7 @@ def swedish_rows_to_keep(batch, languages):
 
 
 # --- Review findings the text itself refutes --------------------------------------------------------------------------
-# Real jobs 43 and 44 (dev 2026-10-15, gemma4:26b reviewing): one such finding fails a whole job (it starts a repair that
+# regression caseand 44 (dev 2026-10-15, gemma4:26b reviewing): one such finding fails a whole job (it starts a repair that
 # can make a good line worse, and any finding left after the repair stops the subtitle).
 
 _TARGET_SUBJECT = r'(?:översättningen|måltexten|målspråket|målraden|målet)'
@@ -329,13 +329,13 @@ def is_address_choice(flag, source, target):
 
 
 # The final gate (after the one repair and the second translation attempt): a few findings that remain do not stop the subtitle, they are
-# written to a report and shown in the GUI; at `doubtful_limit` rows or more the file is still refused. Real jobs 2026-10-20: FRANCE on a 24 GB
+# written to a report and shown in the GUI; at `doubtful_limit` rows or more the file is still refused. regression case: FRANCE on a 24 GB
 # card had ONE finding in 53 rows (a misheard word), the whole subtitle was withheld.
 DOUBTFUL_SHARE = .05
 DOUBTFUL_MINIMUM = 2
 # Only a finding that the translation cannot fix may be kept and reported: a source cut off in the middle of a sentence, or a source too damaged to
 # translate. A finding that says the translation itself is wrong (meaning, grammar, untranslated, transliteration, ...) is never kept (user 2026-10-22:
-# "undertexten är skit ... bara för att den gick igenom": 17 of the 19 rows kept in Yukon Men were of that kind).
+# "undertexten är skit ... bara för att den gick igenom": 17 of the 19 rows kept in Wildlife Sample were of that kind).
 SOFT_FLAG_CATEGORIES = ('fragment', 'source_uncertain')
 
 
@@ -348,7 +348,7 @@ _DANGLING = {'of', 'the', 'a', 'an', 'to', 'and', 'but', 'or', 'that', 'in', 'on
 def source_is_cut_off(rows, index):
     """True when the SOURCE row itself is cut off in the middle of a sentence: it starts in lower case right after a row that did not end its sentence, or it
     does not end its sentence and is a stump of at most three words, ends in a comma or a dash, ends in a word that cannot end a sentence ("get the out of"), or
-    is continued in lower case by the next row. A translation cannot repair such a row (Yukon Men: "Get", "cut and difficult", "the water plant are ready to
+    is continued in lower case by the next row. A translation cannot repair such a row (Wildlife Sample: "Get", "cut and difficult", "the water plant are ready to
     explode."), so a finding on it is reported, never a reason to refuse the file."""
     text = str(rows[index].get('source', '')).strip()
     if not text:
@@ -413,14 +413,14 @@ _CORRECTION = re.compile(
 def is_self_contradiction(flag, target):
     """A finding that names a word as wrong and then gives the very same word as the right one.
 
-    Real jobs 57, 60, 61, 62, 63 (Nelly Rapp): "Ordfel i 'stjärt'. Det korrekta ordet är 'stjärt'..." about "Men vems stjärt?", and
+    regression case(Nelly Rapp): "Ordfel i 'stjärt'. Det korrekta ordet är 'stjärt'..." about "Men vems stjärt?", and
     FRANCE (job 71): "Ordet 'Civila' är felstavat; det korrekta ordet är 'Civila'...". The claimed error and the claimed fix are identical
     letter by letter (capitals count: 'sverige' -> 'Sverige' is a real finding), the word stands in the row as written, and the reason
     does not add another problem ("samt", "dessutom"...): there is nothing to repair and nothing to establish, so it is removed."""
     reason = str(flag.get('reason', ''))
     if _ALSO_WORDS.search(reason):
         return False
-    # Ray Gunn (dev job 275): "det ska vara 'kastar jag ut dig' eller 'kastar jag dig ut', inte 'kastar jag ut dig'" about a correct line, and
+    # Sample Trailer (regression case): "det ska vara 'kastar jag ut dig' eller 'kastar jag dig ut', inte 'kastar jag ut dig'" about a correct line, and
     # "… bör hela frasen vara 'kastar jag ut dig genom fönstret'", the flagged words themselves: three repairs kept the line and the file was refused.
     refused = [quoted.strip(' .,;:') for quoted in _NOT_QUOTED.findall(reason)]
     quote = str(flag.get('target_quote') or '').strip(' .,;:')
@@ -431,12 +431,12 @@ def is_self_contradiction(flag, target):
         if fix and _stands_in(fix, target) and (fix in wrong or fix == quote):
             return True
         fixes.append(fix)
-        # "ska vara 'X' eller 'Y'": an alternative the line does not hold is a real proposal (dev job 89: "… eller 'från att släden skulle sjunka'").
+        # "ska vara 'X' eller 'Y'": an alternative the line does not hold is a real proposal (regression case: "… eller 'från att släden skulle sjunka'").
         alternatives = _ALTERNATIVES.match(reason[match.end():]).group(0)
         fixes.extend(alternative.strip(' .,;:') for alternative in _QUOTED.findall(alternatives))
-    # Every correction the remark proposes already stands in the line word for word (Ray Gunn, dev job 300: "det ska vara 'kastar jag ut dig'
+    # Every correction the remark proposes already stands in the line word for word (Sample Trailer, regression case: "det ska vara 'kastar jag ut dig'
     # … det korrekta vore 'kastar jag ut dig genom fönstret'" about exactly that line): there is nothing to repair. Whole words only:
-    # "ska vara 'mot Ukraina'" about "mot Ukrainas" is a real finding (dev job 180).
+    # "ska vara 'mot Ukraina'" about "mot Ukrainas" is a real finding (regression case).
     return bool(fixes) and all(fix and _stands_in(fix, target) for fix in fixes)
 
 
@@ -452,7 +452,7 @@ _HE_WORDS = re.compile(r"['\"‘“(]\s*(?:hans|han|honom)\s*['\"’”)]|\b(?:h
 def is_plural_you_misread(flag, source, target):
     """A finding that reads Swedish "er/ert/era" (your, plural: German euer/eure/euch/ihr) as German "er" (he) and calls it "hans".
 
-    ANOTHER GERMAN TANK STORY (dev job 197): "Euer Panzer steht auf meinem Hof." -> "Er stridsvagn står på min gård." is right, but the reviewer
+    ANOTHER GERMAN TANK STORY (regression case): "Euer Panzer steht auf meinem Hof." -> "Er stridsvagn står på min gård." is right, but the reviewer
     flagged it six times ("Subjektet har ändrats från 'er/ert' till 'hans' (er)"; "'Euer' betyder 'er' (plural), inte 'hans'"), every repair kept
     the correct word and the whole file was refused. When the source holds German plural-you, the flagged Swedish text holds er/ert/era/ni and
     no form of han, and the reason is about "han/hans", the finding cannot be right and is removed."""
@@ -466,7 +466,7 @@ def is_plural_you_misread(flag, source, target):
 
 def asks_dying_to_become_killing(flag, source, target):
     """A finding that wants "för att dö" turned into "för att döda" where the source says the dying itself (死ぬために, made to die): the verified
-    rule in swedish_context_flags forbids exactly that change. Godzilla (dev job 296): the review asked for "döda", the repair obeyed, the rule then
+    rule in swedish_context_flags forbids exactly that change. SampleFilm (regression case): the review asked for "döda", the repair obeyed, the rule then
     refused "döda", and the right "dö" was among the refused wordings, so the file was refused."""
     return (flag.get('category') == 'meaning' and bool(_FOR_DYING.search(str(source)))
             and bool(re.search(r'\bför\s+att\s+(?:(?:bara|enbart|endast)\s+)?dö\b', str(target), re.IGNORECASE))
@@ -478,7 +478,7 @@ _OPENER_WORDS = {'well', 'ja', 'tja', 'jo', 'väl', 'nå', 'alltså', 'jaha', 'j
 
 
 def asks_well_not_to_be_ja(flag, source, target):
-    """A finding whose only complaint is that an opening "Well," became Swedish "Ja,". Stuart (Unraid job 72, row 460): "Well, my dear, have you
+    """A finding whose only complaint is that an opening "Well," became Swedish "Ja,". SampleSeries (regression caserow 460): "Well, my dear, have you
     changed your mind?" -> "Ja, min kära, har du ändrat dig?" is natural Swedish (an opening "Ja," does not agree with anything, like "Ja, vad har vi
     för val?"), the phrase repair rightly kept it four times and the file was refused. 47 saved rows translate an opening "Well," with "Ja,"; the
     remark is set aside only when every word it quotes is one of the opener words, so a remark about anything else in the line still counts."""
@@ -556,7 +556,7 @@ def non_latin_flags(rows, target_key='sv'):
     return flags
 
 
-# Imperial units in a Swedish subtitle are written as metric ones. Yukon Men (dev job 121) kept "40 yards", "15 fot", "200 gallon" and "90 miles", and wrote
+# Imperial units in a Swedish subtitle are written as metric ones. Wildlife Sample (regression case) kept "40 yards", "15 fot", "200 gallon" and "90 miles", and wrote
 # "ett par mil" for "a couple of miles" (a Swedish mil is 10 km). unit -> (pattern in the source, metric unit, factor, words that must not stay in the Swedish)
 _NUMBER_WORDS = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12,
                  'fifteen': 15, 'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60, 'hundred': 100, 'couple': 2}
@@ -568,7 +568,7 @@ IMPERIAL_UNITS = {
     'gallons': (r'gallons?', 'liter', 3.785, ('gallon', 'gallons')),
     'ounces': (r'(?:ounces?|oz)', 'gram', 28.35, ('ounce', 'ounces', 'oz')),
     'pounds_weight': (r'lbs?', 'kilo', .4536, ('lb', 'lbs')),
-    'cords': (r'cords?', 'kubikmeter', 3.62, ('cord', 'cords')),     # firewood: 10 cords became "cirka 3,5 kubikmeter" in the delivered Yukon Men (about 36)
+    'cords': (r'cords?', 'kubikmeter', 3.62, ('cord', 'cords')),     # firewood: 10 cords became "cirka 3,5 kubikmeter" in the delivered Wildlife Sample (about 36)
 }
 _NUMBER = r'(\d+(?:[.,]\d+)?|' + '|'.join(_NUMBER_WORDS) + r')'
 
@@ -634,14 +634,14 @@ SWEDISH_MEANING_RULE = (
     'Keep a nickname or form of address the same through the whole file (if Chief is kept as a name, keep Chief everywhere). ')
 
 
-# Norwegian/Danish "må ikke" forbids ("must not"); Swedish "måste inte" means "need not" (Agnes mot verden, dev jobs 123 and 202:
+# Norwegian/Danish "må ikke" forbids ("must not"); Swedish "måste inte" means "need not" (SamplePerson mot verden, regression caseand 202:
 # "så må du ikke ta telefonen" -> "så måste du inte svara i telefonen").
 _MAA_IKKE = re.compile(r"\bmå(?:tte)?\s+(?:\w+\s+){0,2}?ikke\b", re.IGNORECASE)
 _NEED_NOT = re.compile(r"\b(?:måste|behöver)\s+(?:\w+\s+){0,2}?inte\b", re.IGNORECASE)
-# Norwegian "Glowland din er så kul." (your Glowland) became "Glowland, din är så cool." (Glemselens øy, dev job 205): the possessive after the noun
+# Norwegian "Glowland din er så kul." (your Glowland) became "Glowland, din är så cool." (Nordic Sample, regression case): the possessive after the noun
 # was read as a pronoun of its own.
 _POSTPOSED_POSSESSIVE = re.compile(r"\b(\w+)\s+(min|din|sin|vår|mitt|ditt|sitt|vårt|mine|dine|sine|våre)\s+(?:er|var|blir|ble)\b", re.IGNORECASE)
-# FORTITUDE (dev job 218): "Prime Minister, I believe…" became "Minister, jag tror…", and "We'll need tanks, airplanes, ships, men." kept "tanks".
+# NORTHFIELD (regression case): "Prime Minister, I believe…" became "Minister, jag tror…", and "We'll need tanks, airplanes, ships, men." kept "tanks".
 _PRIME_MINISTER = re.compile(r"\bprime[\s-]+ministers?\b", re.IGNORECASE)
 _HEAD_OF_GOVERNMENT = re.compile(r"premiärminist|statsminist", re.IGNORECASE)
 _TANK_SOURCE = re.compile(r"(?<!think )(?<!fish )(?<!gas )(?<!fuel )(?<!water )(?<!oil )(?<!septic )(?<!propane )(?<!oxygen )(?<!storage )"
@@ -649,7 +649,7 @@ _TANK_SOURCE = re.compile(r"(?<!think )(?<!fish )(?<!gas )(?<!fuel )(?<!water )(
 _MILITARY = re.compile(r"\b(?:army|armies|soldiers?|troops?|airplanes?|planes?|aircraft|ships?|artillery|infantry|battles?|war|wars|armou?r\w*|"
                        r"panzers?|divisions?|guns?|invasion|invade\w*|attack\w*|military|regiments?|battalions?)\b", re.IGNORECASE)
 _BUDS_SOURCE = re.compile(r"\b(?:since|through|after|from|during)\s+bud'?s\b", re.IGNORECASE)
-# A modal verb + a passive -s form + a particle + an object: "Han ska precis kilas fast dörren." (MAN OF WAR, dev jobs 152-195) means HE is wedged.
+# A modal verb + a passive -s form + a particle + an object: "Han ska precis kilas fast dörren." (SAMPLE GAMMA, regression case) means HE is wedged.
 _PASSIVE_WITH_OBJECT = re.compile(
     r"\b(?:ska|skall|kan|måste|vill|skulle|bör|får|kommer\s+att|tänker)\s+(?:precis\s+|just\s+|nog\s+|bara\s+|snart\s+)?"
     r"(\w{2,}?)as\s+(fast|upp|ner|in|ut|av|på|bort|igen|till|sönder|omkull)\s+(den|det|dem|\w+(?:en|et|na))\b", re.IGNORECASE)
@@ -775,7 +775,7 @@ def swedish_context_flags(rows, target_key='sv'):
         forbids, need_not = _MAA_IKKE.search(source), _NEED_NOT.search(target)
         if forbids and need_not:
             findings.append((forbids.group(), need_not.group(), '"må ikke" på norska/danska är ett förbud: "får inte", inte "måste inte"/"behöver inte".'))
-        # MAN OF WAR (dev jobs 150-195): "since Bud's" (the SEAL training) became "sedan Bud's tid", as if Bud were a person.
+        # SAMPLE GAMMA (regression case): "since Bud's" (the SEAL training) became "sedan Bud's tid", as if Bud were a person.
         buds = _BUDS_SOURCE.search(source)
         if buds and 'BUD/S' not in target:
             findings.append((buds.group(), target, "Bud's/buds efter since/through är BUD/S, Navy SEAL-utbildningen; skriv BUD/S, inte ett namn."))
@@ -806,7 +806,7 @@ def swedish_context_flags(rows, target_key='sv'):
             findings.append((dying.group(), killing.group(),
                              'Att dö är inte att döda: källan anger döende, inte att orsaka någon annans död. Bevara handling och aktör.'))
         for english, swedish in ENGLISH_EXONYMS.items():
-            # MAN OF WAR (dev job 170): "attack on Ukraine" became "attack mot Ukraine"; Swedish writes Ukraina.
+            # SAMPLE GAMMA (regression case): "attack on Ukraine" became "attack mot Ukraine"; Swedish writes Ukraina.
             kept = re.search(rf'\b{english}\b', target)
             if kept and re.search(rf'\b{english}\b', source) and not re.search(rf'\b{swedish}\b', target):
                 findings.append((english, kept.group(), f'{english} heter {swedish} på svenska.'))
@@ -870,7 +870,7 @@ def deterministic_flags(rows, target_key='sv'):
             + swedish_context_flags(rows, target_key) + swedish_grammar_flags(rows) + file_consistency_flags(rows))
 
 
-# Unraid job 63 (Z Nation 4x03): "It's whatever." -> "Det är likegyldigt." (Norwegian). Only words that are not Swedish in any form.
+# regression case(Example Series 4x03): "It's whatever." -> "Det är likegyldigt." (Norwegian). Only words that are not Swedish in any form.
 _SCANDINAVIAN_WORDS = re.compile(r"\b(?:likegyldig\w*|ikke|jeg|hvorfor|hvordan|hvad|kanskje|også|veldig|takk)\b", re.IGNORECASE)
 
 
@@ -886,7 +886,7 @@ def _close_to(name, text, minimum=.75):
 
 
 def file_consistency_flags(rows):
-    """Unraid job 63 (Z Nation 4x03): "Sun May." -> "Söndag maj." although the file kept "Including Red and Sun May." as the name; "Did you
+    """regression case(Example Series 4x03): "Sun May." -> "Söndag maj." although the file kept "Including Red and Sun May." as the name; "Did you
     forget about that, bud?" -> "BUD/S"; a Norwegian word. A name is flagged only on a row that is nothing but names ("Sun May.", "Red?"),
     when the file itself keeps that name unchanged in another row's Swedish and this row's Swedish has neither it nor a near spelling of it.
     A name inside a sentence is left alone: "Ray Mountains" is rightly "Raybergen", "France" "Frankrike" (replay over 242 saved files)."""
@@ -922,7 +922,7 @@ def file_consistency_flags(rows):
 
 
 def repair_kept_names(rows, flags, target_key='sv'):
-    """Unraid jobs 70/73 (Z Nation 4x03/4x02, Main 0.8.364): "Red." -> "Röd." and "Sun May." -> "Sol i maj." were flagged by file_consistency_flags,
+    """regression case(Example Series 4x03/4x02, Main 0.8.364): "Red." -> "Röd." and "Sun May." -> "Sol i maj." were flagged by file_consistency_flags,
     but the phrase repair never sees a reviewer's reason (it once copied a calque), took Red for the colour and changed nothing in four rounds;
     those rows were all that refused both files. A flagged row whose every word is a name the file keeps unchanged elsewhere gets its source
     text back as is. A row with any other word ("Hey, Red!") is left to the model; a change that the check still flags is not made."""
@@ -949,10 +949,10 @@ def repair_kept_names(rows, flags, target_key='sv'):
     return result, changes
 
 
-# "Okej, jag ringer dig efter jag blir våldtagen." (Agnes, dev job 246): "efter" before a clause needs "att". Only subject pronouns that cannot
+# "Okej, jag ringer dig efter jag blir våldtagen." (SamplePerson, regression case): "efter" before a clause needs "att". Only subject pronouns that cannot
 # be the object of the preposition "efter" ("efter de senaste åren", "efter dem", "efter det" are left alone).
 _EFTER_CLAUSE = re.compile(r"\befter\s+(?:jag|du|han|hon|vi|ni|man)\s+\w+", re.IGNORECASE)
-# "The Allies are gonna attack Hitler." -> "Allierade kommer att anfalla Hitler." (FORTITUDE, dev job 248).
+# "The Allies are gonna attack Hitler." -> "Allierade kommer att anfalla Hitler." (NORTHFIELD, regression case).
 _BARE_ALLIES = re.compile(r"(?<![\w])(?<!de )(?<!De )(?<!DE )(?<!våra )(?<!Våra )(?<!alla )(?<!Alla )allierade\b", re.IGNORECASE)
 
 

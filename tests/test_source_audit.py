@@ -171,7 +171,7 @@ class SourceAuditTests(unittest.TestCase):
 
 
 class LanguageMismatchEvidenceTests(unittest.TestCase):
-    """Real job 40 (dev 0.8.246): a good German transcript was rejected because the reviewer set language_mismatch
+    """regression case(dev 0.8.246): a good German transcript was rejected because the reviewer set language_mismatch
     to true while its own reason said the text was German and matched the file name."""
 
     GERMAN = [{'id': index, 'source': text} for index, text in enumerate(
@@ -199,13 +199,13 @@ class LanguageMismatchEvidenceTests(unittest.TestCase):
 
     def test_the_wrong_script_keeps_the_claim_alive_even_when_the_speech_was_confirmed(self):
         with self.assertRaises(worker.SourceQualityError):
-            self.assess(self.KOREAN, 'HOPE tyska.mp4', 'de')
+            self.assess(self.KOREAN, 'SAMPLE_ALPHA tyska.mp4', 'de')
 
     def test_languages_with_their_own_script_must_match_it(self):
-        self.assertTrue(self.assess(self.TAMIL, 'Sigma tamil.mp4', 'ta'))
-        self.assertTrue(self.assess(self.KOREAN, 'HOPE koreansk.mp4', 'ko'))
+        self.assertTrue(self.assess(self.TAMIL, 'SampleEta tamil.mp4', 'ta'))
+        self.assertTrue(self.assess(self.KOREAN, 'SAMPLE_ALPHA koreansk.mp4', 'ko'))
         with self.assertRaises(worker.SourceQualityError):
-            self.assess(self.GERMAN, 'Sigma tamil.mp4', 'ta')
+            self.assess(self.GERMAN, 'SampleEta tamil.mp4', 'ta')
 
     def test_no_claim_means_nothing_changes(self):
         self.assertTrue(self.assess(self.GERMAN, 'EIN TALENT German.mp4', 'de', mismatch=False))

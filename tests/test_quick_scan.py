@@ -22,10 +22,10 @@ class QuickScanTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.tv = Path(folder.name) / 'tv'
         for season in ('Season 1', 'Season 2'):
-            (self.tv / 'Z Nation' / season).mkdir(parents=True)
+            (self.tv / 'Example Series' / season).mkdir(parents=True)
             for episode in (1, 2):
-                (self.tv / 'Z Nation' / season / f'Z.Nation.S0{season[-1]}E0{episode}.mkv').write_bytes(b'video')
-        for directory in (self.tv / 'Z Nation' / 'Season 1', self.tv / 'Z Nation' / 'Season 2', self.tv / 'Z Nation', self.tv):
+                (self.tv / 'Example Series' / season / f'Example.Series.S0{season[-1]}E0{episode}.mkv').write_bytes(b'video')
+        for directory in (self.tv / 'Example Series' / 'Season 1', self.tv / 'Example Series' / 'Season 2', self.tv / 'Example Series', self.tv):
             os.utime(directory, (1_700_000_000, 1_700_000_000))   # created long ago, as a real library is
         self.probed = []
 
@@ -49,40 +49,40 @@ class QuickScanTests(unittest.TestCase):
     def test_a_new_episode_reads_only_its_folder_and_inspects_only_that_file(self):
         first, state = self.scan()
         self.probed.clear()
-        (self.tv / 'Z Nation' / 'Season 2' / 'Z.Nation.S02E03.mkv').write_bytes(b'new')
+        (self.tv / 'Example Series' / 'Season 2' / 'Example.Series.S02E03.mkv').write_bytes(b'new')
         again, quick = self.scan(previous=first, directories=state['directories'])
-        self.assertEqual(self.probed, ['Z.Nation.S02E03.mkv'])
+        self.assertEqual(self.probed, ['Example.Series.S02E03.mkv'])
         self.assertEqual(quick['listed'], 1)
-        self.assertEqual([item['name'] for item in again][-1], 'Z.Nation.S02E03.mkv')
+        self.assertEqual([item['name'] for item in again][-1], 'Example.Series.S02E03.mkv')
         self.assertEqual(len(again), 5)
 
     def test_a_new_season_folder_is_found_through_the_series_folder(self):
         first, state = self.scan()
-        (self.tv / 'Z Nation' / 'Season 3').mkdir()
-        (self.tv / 'Z Nation' / 'Season 3' / 'Z.Nation.S03E01.mkv').write_bytes(b'new')
+        (self.tv / 'Example Series' / 'Season 3').mkdir()
+        (self.tv / 'Example Series' / 'Season 3' / 'Example.Series.S03E01.mkv').write_bytes(b'new')
         self.probed.clear()
         again, quick = self.scan(previous=first, directories=state['directories'])
-        self.assertEqual(self.probed, ['Z.Nation.S03E01.mkv'])
+        self.assertEqual(self.probed, ['Example.Series.S03E01.mkv'])
         self.assertEqual(quick['listed'], 2)                     # the series folder and the new season
 
     def test_a_written_subtitle_is_seen_without_opening_the_video(self):
         first, state = self.scan()
-        (self.tv / 'Z Nation' / 'Season 1' / 'Z.Nation.S01E01.ai.sv.srt').write_text('1\n', encoding='utf-8')
+        (self.tv / 'Example Series' / 'Season 1' / 'Example.Series.S01E01.ai.sv.srt').write_text('1\n', encoding='utf-8')
         self.probed.clear()
         again, _ = self.scan(previous=first, directories=state['directories'])
         self.assertEqual(self.probed, [])
-        self.assertTrue(next(i for i in again if i['name'] == 'Z.Nation.S01E01.mkv')['ai_sv_exists'])
+        self.assertTrue(next(i for i in again if i['name'] == 'Example.Series.S01E01.mkv')['ai_sv_exists'])
 
     def test_a_replaced_or_removed_file_is_noticed(self):
         first, state = self.scan()
-        target = self.tv / 'Z Nation' / 'Season 1' / 'Z.Nation.S01E02.mkv'
+        target = self.tv / 'Example Series' / 'Season 1' / 'Example.Series.S01E02.mkv'
         target.unlink()
         target.write_bytes(b'a better copy')                    # removed and written again, as Sonarr does on an upgrade
-        (self.tv / 'Z Nation' / 'Season 2' / 'Z.Nation.S02E01.mkv').unlink()
+        (self.tv / 'Example Series' / 'Season 2' / 'Example.Series.S02E01.mkv').unlink()
         self.probed.clear()
         again, _ = self.scan(previous=first, directories=state['directories'])
-        self.assertEqual(self.probed, ['Z.Nation.S01E02.mkv'])
-        self.assertNotIn('Z.Nation.S02E01.mkv', [item['name'] for item in again])
+        self.assertEqual(self.probed, ['Example.Series.S01E02.mkv'])
+        self.assertNotIn('Example.Series.S02E01.mkv', [item['name'] for item in again])
 
     def test_the_scan_buttons_list_every_folder_but_open_no_unchanged_file(self):
         first, _ = self.scan()
@@ -93,9 +93,9 @@ class QuickScanTests(unittest.TestCase):
         self.assertEqual(full['reused'], 4)
 
     def test_a_folder_changed_just_now_is_read_again_next_time(self):
-        (self.tv / 'Z Nation' / 'Season 1' / 'Z.Nation.S01E03.mkv').write_bytes(b'new')    # changed this very moment
+        (self.tv / 'Example Series' / 'Season 1' / 'Example.Series.S01E03.mkv').write_bytes(b'new')    # changed this very moment
         first, state = self.scan()
-        self.assertEqual(state['directories'][str(self.tv / 'Z Nation' / 'Season 1')]['mtime_ns'], -1)
+        self.assertEqual(state['directories'][str(self.tv / 'Example Series' / 'Season 1')]['mtime_ns'], -1)
         _, quick = self.scan(previous=first, directories=state['directories'])
         self.assertEqual(quick['listed'], 1)
 
@@ -103,7 +103,7 @@ class QuickScanTests(unittest.TestCase):
         first, state = self.scan()
         first[0]['probe'] = {'status': 'error'}
         self.probed.clear()
-        os.utime(self.tv / 'Z Nation' / 'Season 1', ns=(1, 1))   # make the folder count as changed
+        os.utime(self.tv / 'Example Series' / 'Season 1', ns=(1, 1))   # make the folder count as changed
         self.scan(previous=first, directories=state['directories'])
         self.assertIn(first[0]['name'], self.probed)
 
@@ -118,7 +118,7 @@ class WebhookAddsToLibraryTests(unittest.TestCase):
         roots = {'movie': str(base / 'movies'), 'episode': str(base / 'tv'), 'media': str(base / 'extra')}
         for root in roots.values():
             Path(root).mkdir()
-        self.episode = base / 'tv' / 'Z Nation' / 'Season 4' / 'Z.Nation.S04E05.mkv'
+        self.episode = base / 'tv' / 'Example Series' / 'Season 4' / 'Example.Series.S04E05.mkv'
         self.episode.parent.mkdir(parents=True)
         self.episode.write_bytes(b'video')
         for patcher in (mock.patch.object(server, 'CONFIG', base), mock.patch.object(server, 'DATABASE', base / 'subsynq.db'),
@@ -140,7 +140,7 @@ class WebhookAddsToLibraryTests(unittest.TestCase):
     def test_the_reported_episode_is_added_after_the_movies_with_its_episode_code(self):
         item = server.add_media_to_library(self.episode)
         self.assertEqual((item['kind'], item['episode_code']), ('episode', 'S04E05'))
-        self.assertEqual([i['name'] for i in self.stored('library_scan')['items']], ['A.mkv', 'Z.Nation.S04E05.mkv'])
+        self.assertEqual([i['name'] for i in self.stored('library_scan')['items']], ['A.mkv', 'Example.Series.S04E05.mkv'])
         self.assertNotIn(str(self.episode.parent), self.stored('library_directories'))   # the next quick scan reads the folder again
         server.add_media_to_library(self.episode)
         self.assertEqual(len(self.stored('library_scan')['items']), 2)                    # reported twice, stored once

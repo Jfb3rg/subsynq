@@ -168,7 +168,7 @@ class AsrWindowTests(unittest.TestCase):
         self.assertTrue(all(cue['end'] - cue['start'] <= 7 for cue in cues))
 
     def test_word_group_near_the_duration_cap_is_kept_not_silently_dropped(self):
-        # Real KING trailer bug: a run of high-confidence words (all >.5
+        # Real SAMPLE_BETA trailer bug: a run of high-confidence words (all >.5
         # probability, well over the .25 floor) has a raw span of 6.98s,
         # just under the 7s cap that stops the group from growing further.
         # Padding both ends by .08s used to push the *displayed* span to
@@ -376,7 +376,7 @@ class AsrWindowTests(unittest.TestCase):
                          [{'start': 74.0, 'end': 90.0}])
 
     def test_confirmation_window_is_planned_for_a_candidate_before_the_first_line(self):
-        # Real KING trailer numbers: a rescued phrase before the only known
+        # Real SAMPLE_BETA trailer numbers: a rescued phrase before the only known
         # line had no "before" neighbour, so the old code refused to even
         # plan a confirmation re-read for it.
         base = [{'start': 11.62, 'end': 17.51,
@@ -737,7 +737,7 @@ class AsrWindowTests(unittest.TestCase):
         self.assertLess(sum(row['end'] - row['start'] for row in windows), 30)
 
     def test_rescue_windows_cover_a_bounded_gap_before_the_first_line(self):
-        # A real short trailer (KING): the only two confirmed lines start at
+        # A real short trailer (SAMPLE_BETA): the only two confirmed lines start at
         # 11.62s with nothing detected before it, even though independent
         # speech detection found real voice activity at 5.3s and 7.6s. The
         # old code only ever looked between two already-found lines, so a
@@ -1507,7 +1507,7 @@ class AsrWindowTests(unittest.TestCase):
 
 
 class TrimSmallOverlapsTests(unittest.TestCase):
-    """Real job 42 (dev 0.8.246): rows ending 28.42 and starting 28.40 failed the whole job."""
+    """regression case(dev 0.8.246): rows ending 28.42 and starting 28.40 failed the whole job."""
 
     def rows(self, *spans):
         return [{'start': start, 'end': end, 'text': f'rad {index}'} for index, (start, end) in enumerate(spans)]

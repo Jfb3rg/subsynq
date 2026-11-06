@@ -114,19 +114,19 @@ class SourceRereadTests(unittest.TestCase):
             with self.assertRaises(worker.BrokenSourceRows):
                 worker.assess_source_with_reread({'id': 1, 'source_choices': choices}, sample)
 
-    """The user, 2026-10-27 (Godzilla: music under the speech): read unclear rows again, then report what is still unclear; refuse only
+    """The user, 2026-10-27 (SampleFilm: music under the speech): read unclear rows again, then report what is still unclear; refuse only
     when more than a third of the rows are unclear."""
 
     def run_audit(self, verdicts, reread_changes=(), count=14, reread_records=()):
         calls = iter(verdicts)
-        job = {'id': 223, 'media_path': '/extra/Godzilla.mp4'}
+        job = {'id': 223, 'media_path': '/extra/SampleFilm.mp4'}
         def read_again(job, *args):
             job['reread_rows'] = list(reread_records)
             return list(reread_changes)
         with patch.object(worker, '_audit_source_chunk', side_effect=lambda *args, **kwargs: next(calls)), \
                 patch.object(worker, 'reread_flagged_rows', side_effect=read_again) as reread, \
                 patch.object(worker, 'update_job'):
-            result = worker.assess_source_with_reread(job, rows(count), 'Godzilla.mp4')
+            result = worker.assess_source_with_reread(job, rows(count), 'SampleFilm.mp4')
         return result, job, reread
 
     def test_a_clean_source_is_not_read_again(self):
@@ -169,7 +169,7 @@ class SourceRereadTests(unittest.TestCase):
         self.assertEqual(result, [2])
         self.assertEqual(reread.call_args.args[2], [2])
 
-    def test_godzilla_four_unclear_rows_of_fourteen_are_kept_and_reported(self):
+    def test_samplefilm_four_unclear_rows_of_fourteen_are_kept_and_reported(self):
         verdicts = [([4, 5, 8, 12], False, 'Osammanhängande fraser.'), ([4, 5, 8, 12], False, 'Osammanhängande fraser.')]
         result, job, reread = self.run_audit(verdicts)
         self.assertEqual(result, [4, 5, 8, 12])

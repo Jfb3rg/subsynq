@@ -1,6 +1,6 @@
 """Speech that a dubbed version of the same mix kept unchanged is background, not dialogue.
 
-MAN OF WAR (dev jobs 49, 150, 152, 165): two stereo tracks, German dub and English original, with the same music and effects underneath
+SAMPLE GAMMA (regression case): two stereo tracks, German dub and English original, with the same music and effects underneath
 (the German track lies 72.6 ms behind, correlation 0.70-0.90). From 26.25 to 27.5 s the two tracks are identical (correlation 1.00, the
 English-minus-German signal 25-30 dB below the English): the shout five readers heard as "Come on, you niggas / dickhead / idiot / chicken /
 liars" is in the effects bed, the dubbing studio did not translate it, and in the isolated English dialogue three readers hear only "What?".
@@ -11,14 +11,14 @@ import numpy as np
 
 RATE = 16000
 BLOCK_SECONDS = .25
-MINIMUM_CORRELATION = .6       # MAN OF WAR: 0.70-0.90 at three places; unrelated tracks lie near 0
+MINIMUM_CORRELATION = .6       # SAMPLE GAMMA: 0.70-0.90 at three places; unrelated tracks lie near 0
 MAXIMUM_LAG_SECONDS = 2.0
 BED_LEVEL_DB = -15.0           # a row's median own level at or below this is the shared bed (dialogue rows: 0 to -8 dB)
 OWN_BLOCK_DB = -10.0           # a block above this holds sound of the chosen track alone
 MINIMUM_ROW_BLOCKS = 2         # half a second at least: shorter rows are not judged
 MAXIMUM_SPEECH_RATE = 6.0      # words per second (asr_windows.MAXIMUM_SPEECH_RATE)
-MINIMUM_DIALOGUE_SHARE = .5    # a dub replaces the dialogue: most rows must differ (MAN OF WAR: 27 of 29). Two copies of the SAME language
-                               # (Stuart Fails to Save the Universe: correlation 1.00, no lag) differ nowhere and must never lose a row.
+MINIMUM_DIALOGUE_SHARE = .5    # a dub replaces the dialogue: most rows must differ (SAMPLE GAMMA: 27 of 29). Two copies of the SAME language
+                               # (Example Series: correlation 1.00, no lag) differ nowhere and must never lose a row.
 
 
 def find_lag(chosen, other, *, rate=RATE, maximum_lag=MAXIMUM_LAG_SECONDS):
@@ -112,11 +112,11 @@ def own_stretches(row, levels, *, own_block=OWN_BLOCK_DB, block=BLOCK_SECONDS):
 
 def overfull_rows(rows, levels, readings, *, bed_level=BED_LEVEL_DB, maximum_rate=MAXIMUM_SPEECH_RATE, margin=.5, minimum_confidence=.5):
     """(rows, changes): a row that lies mostly in the shared bed (median at or below `bed_level`) but whose words cannot be spoken in the little
-    time it holds the chosen track's own sound (more than `maximum_rate` words per second) was heard into the background, not said. MAN OF WAR
-    (dev jobs 152-170): "the f**k did I do that?" (27.61-29.03 s, the short pass alone, confidence 0.23) has 0.25 s of English-only sound, at
+    time it holds the chosen track's own sound (more than `maximum_rate` words per second) was heard into the background, not said. SAMPLE GAMMA
+    (regression case): "the f**k did I do that?" (27.61-29.03 s, the short pass alone, confidence 0.23) has 0.25 s of English-only sound, at
     27.5 s, where Whisper large-v2 heard "Run!" (27.46-27.82 s, also in the isolated English) and Qwen "One."; the user hears "Run".
     The row takes the text of another reading that lies within the own sound (`margin`: two blocks, Whisper starts a word early), is confident
-    enough and fits it; without one the row stays as it was (APOCALYPSE Z, dev job 185: the radio line "Sí, aquí Core." is kept unchanged
+    enough and fits it; without one the row stays as it was (SAMPLE EPSILON, regression case: the radio line "Sí, aquí Core." is kept unchanged
     by the German dub and has 0.25 s of own sound, but every reader hears it: removing it lost a real line). (Until 0.8.309 such a row was
     removed.) Every change is returned with its measurements."""
     result, changes = [], []

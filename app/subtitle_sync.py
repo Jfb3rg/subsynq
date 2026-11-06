@@ -1,7 +1,7 @@
 """Does a downloaded subtitle belong to THIS file? Its cue times are compared with where the file's own audio has speech.
 
 Calibrated 2026-11-04 on the user's library (Silero VAD, centre channel for 5.1/7.1). Six 90 s windows: own subtitle accepted for 18 of
-20 films, another film's for 0 of 40, but Godzilla vs. Kong (little dialogue) found too few cues per window. Ten windows, 20 other films:
+20 films, another film's for 0 of 40, but Example Film (little dialogue) found too few cues per window. Ten windows, 20 other films:
 own subtitles 3-9 windows agree and margin 0.09-0.31; other films' at most 2 windows and margin at most 0.08 -- each measure separates
 on its own and both must hold, see `verdict`. Plain loudness (ffmpeg silencedetect) could not tell them apart: music and effects fill
 the dialogue band; a wider ±120 s baseline separated worse (another film reached 0.26) and is not used.

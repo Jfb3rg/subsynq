@@ -100,7 +100,7 @@ class InteriorRereadTests(unittest.TestCase):
 
     def test_saved_real_readings_need_independent_word_alignment(self):
         root = Path('/diagnostic') if str(__file__) == '/test.py' else Path(__file__).parent
-        sample = json.loads((root/'fixtures/wife-reread-308.json').read_text())
+        sample = json.loads((root/'fixtures/interior-insertion.json').read_text())
         self.assertFalse(agreed_replacement(sample['row']['source'], sample['readings'])[1]['same_words'])
         self.assertIsNone(confirmed_interior_insertion(sample['row'], sample['readings'])[0])
         self.assertEqual(sample['independent_alignment']['text'], sample['readings'][2]['text'])

@@ -11,7 +11,7 @@ import worker
 from source_judge import complete_cut_off_rows
 from asr_windows import plan_doubtful_row_windows
 
-# Yukon Men S01E01 (dev job 146): the six lines whose audio was read again with Whisper large-v2 and Qwen3-ASR (2026-10-23) and the readers' answers.
+# Wildlife Sample S01E01 (regression case): the six lines whose audio was read again with Whisper large-v2 and Qwen3-ASR (2026-10-23) and the readers' answers.
 # Qwen heard "Snowgo could freeze up" and "snowgos"; large-v2 heard "Let's get the f*** out of here!". Two of the six stood ABOVE the old 0.6 limit.
 KNOWN = [
     {'start': 97.224, 'end': 98.4, 'text': "Let's get the out of", 'confidence': 0.667},
@@ -80,9 +80,9 @@ def completion_rows(texts, alternatives):
 
 
 class CompletionTests(unittest.TestCase):
-    """Yukon Men (job 146, readers: large-v3, large-v2, Qwen3-ASR): a row cut off in the middle of a sentence is completed with words another reader heard."""
+    """Wildlife Sample (job 146, readers: large-v3, large-v2, Qwen3-ASR): a row cut off in the middle of a sentence is completed with words another reader heard."""
 
-    def timed_agnes(self, next_start=27.59):
+    def timed_sampleperson(self, next_start=27.59):
         rows = completion_rows(['Kan jeg levere en gang i måneden,', 'så kjenner jeg meg som Netflix-modell for noe.'],
             {0: [('Kan jeg levere en gang i måneden, og så kjøper en sånn', 2)]})
         rows[0].update(start=26.02, end=27.59)
@@ -90,14 +90,14 @@ class CompletionTests(unittest.TestCase):
         rows[0]['alternatives'][0]['completion_span'] = {'start': 26.06, 'end': 28.48}
         return rows
 
-    def test_actual_agnes_completion_must_not_take_the_next_cues_time(self):
-        rows = self.timed_agnes()
+    def test_actual_sampleperson_completion_must_not_take_the_next_cues_time(self):
+        rows = self.timed_sampleperson()
         self.assertEqual(complete_cut_off_rows(rows), (rows, []))
 
     def test_the_text_chooser_cannot_reinstate_a_refused_completion(self):
         import json
         for next_start, permitted in ((27.59, False), (29., True)):
-            rows = self.timed_agnes(next_start)
+            rows = self.timed_sampleperson(next_start)
             rows[0]['alternatives'][0]['support'] = 3
             call = lambda _: {'response': json.dumps({'rows': [{'id': 0, 'a_has_error': True, 'choice': 'B'}]})}
             done, decisions = source_judge.choose_readings(rows, call, 'test')
@@ -108,7 +108,7 @@ class CompletionTests(unittest.TestCase):
                 self.assertEqual(done[0]['source'], rows[0]['source'])
 
     def test_a_completion_in_a_free_gap_uses_its_measured_end(self):
-        rows = self.timed_agnes(29.)
+        rows = self.timed_sampleperson(29.)
         done, changes = complete_cut_off_rows(rows)
         self.assertEqual(done[0]['end'], 28.48)
         self.assertEqual(done[0]['start'], 26.02)
@@ -120,13 +120,13 @@ class CompletionTests(unittest.TestCase):
         for span in ({'start': 26.06, 'end': float('nan')}, {'start': True, 'end': 28.48},
                      {'start': 25., 'end': 28.48}, {'start': 26.06, 'end': 35.},
                      {'start': 28.48, 'end': 26.06}):
-            rows = self.timed_agnes(40.)
+            rows = self.timed_sampleperson(40.)
             rows[0]['alternatives'][0]['completion_span'] = span
             self.assertEqual(complete_cut_off_rows(rows), (rows, []))
 
     def test_completion_span_includes_all_readings_with_the_same_words(self):
         from asr_windows import reading_alternatives
-        rows = self.timed_agnes()
+        rows = self.timed_sampleperson()
         text = rows[0]['alternatives'][0]['text']
         alternatives = reading_alternatives([{'start': 26.02, 'end': 27.59, 'text': rows[0]['source'], 'confidence': .4}],
             {'precision': [{'start': 26.06, 'end': 27.5, 'text': text}],

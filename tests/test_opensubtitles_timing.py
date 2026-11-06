@@ -57,7 +57,7 @@ class NfoIdentityTests(unittest.TestCase):
         self.base = Path(folder.name)
 
     def test_a_film_is_identified_by_movie_nfo(self):
-        film = self.base / 'Godzilla vs. Kong (2021)' / 'Godzilla vs. Kong (2021) Remux-2160p.mkv'
+        film = self.base / 'Example Film (2021)' / 'Example Film (2021) Remux-2160p.mkv'
         film.parent.mkdir()
         film.write_bytes(b'x')
         (film.parent / 'movie.nfo').write_text('<movie><uniqueid type="tmdb" default="true">399566</uniqueid>'
@@ -66,10 +66,10 @@ class NfoIdentityTests(unittest.TestCase):
         self.assertEqual(os_.identity_params(os_.nfo_identity(film)), {'imdb_id': 5034838})
 
     def test_an_episode_takes_season_and_episode_from_its_own_nfo_and_the_id_from_tvshow_nfo(self):
-        episode = self.base / 'Z Nation' / 'Season 4' / 'Z.Nation.4x02.mkv'
+        episode = self.base / 'Example Series' / 'Season 4' / 'Example.Series.4x02.mkv'
         episode.parent.mkdir(parents=True)
         episode.write_bytes(b'x')
-        (self.base / 'Z Nation' / 'tvshow.nfo').write_text('<tvshow><uniqueid type="imdb">tt3843168</uniqueid></tvshow>', encoding='utf-8')
+        (self.base / 'Example Series' / 'tvshow.nfo').write_text('<tvshow><uniqueid type="imdb">tt3843168</uniqueid></tvshow>', encoding='utf-8')
         episode.with_suffix('.nfo').write_text('<episodedetails><season>4</season><episode>2</episode>'
                                                '<uniqueid type="tvdb">6304575</uniqueid></episodedetails>', encoding='utf-8')
         identity = os_.nfo_identity(episode)
@@ -95,19 +95,19 @@ class CandidateTests(unittest.TestCase):
                                'feature_details': {'parent_imdb_id': parent, 'season_number': season, 'episode_number': 2}}}
 
     def test_only_this_episode_and_the_closest_version_first(self):
-        results = [self.result('Z.Nation.S04E02.720p.HDTV', downloads=500), self.result('Z.Nation.S04E02.1080p.BluRay', downloads=3),
-                   self.result('Z.Nation.S03E02.1080p.BluRay', season=3), self.result('Other.Show.S04E02', parent=1),
-                   self.result('Z.Nation.S04E02.AI', ai=True)]
-        chosen = os_.timing_candidates(results, self.IDENTITY, 'Z.Nation.4x02.ITA.ENG.1080p.BDMux.DD5.1.x264.mkv')
-        self.assertEqual([c['release'] for c in chosen], ['Z.Nation.S04E02.1080p.BluRay', 'Z.Nation.S04E02.720p.HDTV'])
+        results = [self.result('Example.Series.S04E02.720p.HDTV', downloads=500), self.result('Example.Series.S04E02.1080p.BluRay', downloads=3),
+                   self.result('Example.Series.S03E02.1080p.BluRay', season=3), self.result('Other.Show.S04E02', parent=1),
+                   self.result('Example.Series.S04E02.AI', ai=True)]
+        chosen = os_.timing_candidates(results, self.IDENTITY, 'Example.Series.4x02.ITA.ENG.1080p.BDMux.DD5.1.x264.mkv')
+        self.assertEqual([c['release'] for c in chosen], ['Example.Series.S04E02.1080p.BluRay', 'Example.Series.S04E02.720p.HDTV'])
 
 
 class OpenSubtitlesRowTests(unittest.TestCase):
-    """The user (2026-11-04): Z Nation 4x02 got its subtitle from OpenSubtitles but stayed red; such a row gets its own colour."""
+    """The user (2026-11-04): Example Series 4x02 got its subtitle from OpenSubtitles but stayed red; such a row gets its own colour."""
 
     @staticmethod
     def item(**extra):
-        return {'path': '/tv/Z Nation/Season 4/Z.Nation.4x02.mkv', 'name': 'Z.Nation.4x02.mkv', 'kind': 'episode', 'size_bytes': 1,
+        return {'path': '/tv/Example Series/Season 4/Example.Series.4x02.mkv', 'name': 'Example.Series.4x02.mkv', 'kind': 'episode', 'size_bytes': 1,
                 'ai_sv_exists': False, 'embedded_sv_exists': False, 'opensub_sv_exists': True, 'probe': {}, **extra}
 
     def test_the_row_is_not_red_shows_the_source_and_still_offers_the_ai_subtitle(self):

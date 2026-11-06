@@ -65,7 +65,7 @@ class Base(unittest.TestCase):
 
     def enable(self, **extra):
         return os_.save_settings(self.config, enabled=True, automatic=extra.pop('automatic', False), api_key='KEY12345',
-                                 username=extra.pop('username', 'johan'), password='pw')
+                                 username=extra.pop('username', 'testuser'), password='pw')
 
 
 class MatchingTests(Base):
@@ -156,7 +156,7 @@ class SettingsTests(Base):
         self.enable()
         os_.save_settings(self.config, enabled=True, automatic=True)
         settings = os_.load_settings(self.config)
-        self.assertEqual((settings['api_key'], settings['username'], settings['password'], settings['automatic']), ('KEY12345', 'johan', 'pw', True))
+        self.assertEqual((settings['api_key'], settings['username'], settings['password'], settings['automatic']), ('KEY12345', 'testuser', 'pw', True))
         os_.forget_settings(self.config)
         self.assertFalse(os_.load_settings(self.config)['enabled'])
         with self.assertRaises(ValueError):
@@ -166,7 +166,7 @@ class SettingsTests(Base):
         self.enable()
         card = os_.render_card(os_.load_settings(self.config), 'tok')
         self.assertNotIn('KEY12345', card)
-        self.assertNotIn('johan', card)
+        self.assertNotIn('testuser', card)
         self.assertIn('/settings/opensubtitles', card)
 
 

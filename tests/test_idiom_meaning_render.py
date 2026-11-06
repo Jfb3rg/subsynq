@@ -58,7 +58,7 @@ class MeaningRenderTests(unittest.TestCase):
         model.assert_not_called()
 
     def test_a_render_that_only_repeats_the_flagged_line_keeps_the_repairs_own_edit(self):
-        """Real job 48 (dev, RTX 5090): "Meine nicht." -> the repair proposed "Inte min." but the renderer answered
+        """regression case(dev, RTX 5090): "Meine nicht." -> the repair proposed "Inte min." but the renderer answered
         "Inte jag." again, so nothing changed and the same finding stopped the file twice."""
         rows = [{'id': 10, 'source': 'Meine nicht.', 'sv': 'Inte jag.'}]
         flags = [{'id': 10, 'category': 'meaning', 'source_quote': 'Meine nicht.', 'target_quote': 'Inte jag.'}]
@@ -70,7 +70,7 @@ class MeaningRenderTests(unittest.TestCase):
         self.assertEqual(result[0]['edits'], [{'before': 'Inte jag.', 'after': 'Inte min.'}])
 
     def test_the_real_job_48_repair_now_changes_the_line(self):
-        """The phase and render answers are the ones stored in dev job 48's quality report."""
+        """The phase and render answers are the ones stored in regression case's quality report."""
         rows = [{'id': 9, 'source': 'Ich brauche jetzt einen Weg, ihn zu verteidigen.', 'sv': 'Jag behöver nu ett sätt att försvara honom.'},
                 {'id': 10, 'source': 'Meine nicht.', 'sv': 'Inte jag.'},
                 {'id': 11, 'source': 'Ich und ihr Vater, äh, wir sind seit Wartes zusammen in den Teams.',

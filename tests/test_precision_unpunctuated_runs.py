@@ -13,7 +13,7 @@ def texts(rows):
     return [row['text'] for row in rows]
 
 
-# Real PLANET 9 readings (job 30): the long pass wrote the stretch in lower case, cut in the middle of sentences.
+# Real SPACE SAMPLE readings (job 30): the long pass wrote the stretch in lower case, cut in the middle of sentences.
 LONG_FIRST = [
     cue(10.0, 11.8, 'No signal.'),
     cue(29.6, 33.4, "we've intercepted a transmission from earth negative the signal"),
@@ -116,7 +116,7 @@ class UnpunctuatedRunTests(unittest.TestCase):
     def test_a_replacement_that_overlaps_the_next_cue_a_little_is_cut_there(self):
         long = LONG_FIRST[:-1] + [cue(48.2, 49.0, 'Wait.')]
         result = prefer_precision_for_unpunctuated_runs(long, SHORT_FIRST, SECOND_OPINION)
-        # The sentence that would end at 48.3 s runs 0.1 s into the cue that starts at 48.2 s: it is used and ends there (0.8.310; APOCALYPSE Z
+        # The sentence that would end at 48.3 s runs 0.1 s into the cue that starts at 48.2 s: it is used and ends there (0.8.310; SAMPLE EPSILON
         # job 185 kept "Move away and keep" / "walking." because of such an overlap).
         self.assertIn('And yet, the message is addressed to us.', texts(result))
         used = next(row for row in result if row['text'] == 'And yet, the message is addressed to us.')
@@ -140,7 +140,7 @@ class UnpunctuatedRunTests(unittest.TestCase):
                          ['We have been waiting.', 'For you.', 'It is time.', 'To leave.'])
 
     def test_one_cue_that_only_gains_a_full_stop_is_left_alone(self):
-        # A lone "Jarbon" must not move in time (real job 12) just because the short pass added a full stop.
+        # A lone "Jarbon" must not move in time (regression case) just because the short pass added a full stop.
         long = [cue(50.5, 51.6, 'Jarbon')]
         short = [cue(51.2, 51.6, 'Jarbon.')]
         self.assertEqual(prefer_precision_for_unpunctuated_runs(long, short), long)

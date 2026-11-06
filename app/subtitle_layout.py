@@ -1,6 +1,6 @@
 """Line layout of a written subtitle: at most two lines of at most 42 characters, as Swedish television and streaming services show them.
 
-Z Nation 4x03 (Unraid job 76, Main 0.8.366) was written one line per cue, 89 of 479 lines longer than 42 characters and the longest 107: on a 65-inch
+Example Series 4x03 (regression caseMain 0.8.366) was written one line per cue, 89 of 479 lines longer than 42 characters and the longest 107: on a 65-inch
 television a line reached from edge to edge. Only line breaks and, for a cue that does not fit two lines, a split into consecutive cues are added;
 no word is changed, added or dropped, and the review never sees the layout."""
 import re
@@ -72,7 +72,7 @@ MAXIMUM_JOINED_SECONDS = 7.0
 
 def join_fragments(cues, max_line=MAX_LINE):
     """[(start, end, text)] with a cue that ends inside a sentence joined to the next one when that continues it in lower case right after (at most
-    MAXIMUM_JOIN_GAP later) and the two fit one cue of two lines (Z Nation 4x02, Unraid job 74: "Den" / "större bilden som gör dig" / "precis den
+    MAXIMUM_JOIN_GAP later) and the two fit one cue of two lines (Example Series 4x02, regression case: "Den" / "större bilden som gör dig" / "precis den
     farligaste mannen på jorden, …" came as three cues). The words stay as they are; only the cue boundary between them goes."""
     result = []
     for start, end, text in cues:

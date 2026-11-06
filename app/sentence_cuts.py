@@ -1,6 +1,6 @@
 """Move a row boundary that falls inside a sentence to a sentence end in the same two rows, timed by Whisper's own words.
 
-Z Nation 4x02 (Unraid jobs 64/73/74): about 8 % of the rows begin in the middle of a sentence ("Of here? How could I possibly" / "expect you to
+Example Series 4x02 (regression case): about 8 % of the rows begin in the middle of a sentence ("Of here? How could I possibly" / "expect you to
 understand? Can you back me up here?"), because both Whisper passes cut at pauses. Only the boundary moves: the number of rows, every word and its
 order stay; the new boundary is the end of the last word and the start of the next one in a Whisper pass of this job (profile_evidence)."""
 import re

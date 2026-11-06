@@ -51,7 +51,7 @@ class SideTrackTests(unittest.TestCase):
 
 
 class ChooseTrackTests(unittest.TestCase):
-    def test_man_of_war_german_dub_first_untagged_picks_the_english_original(self):
+    def test_sample_gamma_german_dub_first_untagged_picks_the_english_original(self):
         # The real file: two stereo AAC tracks, both tagged und; track 0 sounds German, track 1 English.
         tracks = [track(0), track(1)]
         choice = choose_audio_track(tracks, listener({0: 'de', 1: 'en'}))
@@ -181,7 +181,7 @@ class PreferenceOrderTests(unittest.TestCase):
         choice = choose_audio_track(tracks, listener({}))
         self.assertEqual((choice['index'], choice['method']), (0, 'first'))
 
-    def test_the_real_stuart_fails_to_save_the_universe_tracks_pick_english_over_default_french(self):
+    def test_the_real_sampleseries_fails_to_save_the_universe_tracks_pick_english_over_default_french(self):
         tracks = [track(1, 'fre', 'French', default=True), track(2, 'eng', 'English (US)')]
         choice = choose_audio_track(tracks, listener({1: 'fr', 2: 'en'}))
         self.assertEqual((choice['index'], choice['method']), (2, 'tag'))

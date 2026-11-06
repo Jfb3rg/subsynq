@@ -10,7 +10,7 @@ def cue(start, end, text, confidence=.9):
 
 
 class FullerReadingTests(unittest.TestCase):
-    """Real job 18 (Ray Gunn): the 90 s context pass squeezed sentences into run-on cues and
+    """regression case(Sample Trailer): the 90 s context pass squeezed sentences into run-on cues and
     dropped whole ones; the 30 s pass heard them. Only an independent reading that holds the
     same words PLUS more may win, and nothing is invented."""
 

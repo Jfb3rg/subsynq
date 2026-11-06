@@ -40,8 +40,8 @@ class DecisionTests(unittest.TestCase):
             self.assertTrue(swedish_reader.decide(readings)[0], name)
         others = {'TRANSFERVINDUE (danska, job 127: KB-Whisper valdes av misstag)': windows(('da', .93, 12), ('sv', .73, 14), ('sv', .85, 5)),
                   'Dobbeltfejl (danska)': windows(('da', .99, 8), ('da', .94, 13), ('da', .98, 11)),
-                  'Agnes mot verden (norska)': windows(('no', .94, 15), ('no', .95, 13), ('no', .94, 7)),
-                  'Glemselens øy (norska)': windows(('no', .94, 15), ('nn', .61, 2), ('no', .94, 15))}
+                  'SamplePerson mot verden (norska)': windows(('no', .94, 15), ('no', .95, 13), ('no', .94, 7)),
+                  'Nordic Sample (norska)': windows(('no', .94, 15), ('nn', .61, 2), ('no', .94, 15))}
         for name, readings in others.items():
             self.assertFalse(swedish_reader.decide(readings)[0], name)
 

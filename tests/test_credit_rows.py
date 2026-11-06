@@ -14,7 +14,7 @@ def cue(start, end, text):
 
 class CreditRowTests(unittest.TestCase):
     def test_the_real_credit_lines_standing_alone_are_removed(self):
-        # Last Samurai Standing (job 126, 108.9 s), a Norwegian film (job 25, 149.2 s), Lou (jobs 32, 33, 70, 78.6 s)
+        # Action Sample (job 126, 108.9 s), a Norwegian film (job 25, 149.2 s), SampleTrailer (jobs 32, 33, 70, 78.6 s)
         for text, start in (('Teksting av', 108.9), ('Teksting av Nicolai Winther', 149.2), ("Sous-titrage ST'", 78.6)):
             rows = [cue(start - 20, start - 18, 'Stop it!'), cue(start, start + 1.1, text)]
             kept, removed = drop_credit_rows(rows)

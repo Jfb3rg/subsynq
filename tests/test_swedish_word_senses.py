@@ -138,7 +138,7 @@ class SwedishWordSenseTests(unittest.TestCase):
         self.assertIsNone(source_grammar_notes('殺すためだけに作られた兵器です'))
         self.assertIsNone(source_grammar_notes('This weapon kills people.'))
 
-    def test_real_yukon_animal_forms_need_swedish_terms(self):
+    def test_real_wildlife_sample_animal_forms_need_swedish_terms(self):
         examples = [('These caribou', 'Dessa karibuer'),
                     ('A single caribou', 'En enda karibu'),
                     ('a caribou herd', 'en karibuhjord'),
@@ -248,7 +248,7 @@ class SwedishWordSenseTests(unittest.TestCase):
 
 class ExonymTests(unittest.TestCase):
     def test_an_english_country_name_kept_in_swedish_is_flagged(self):
-        # MAN OF WAR (dev job 170)
+        # SAMPLE GAMMA (regression case)
         rows = [{'id': 2, 'source': 'Russia overnight launched its long-anticipated attack on Ukraine.',
                  'sv': 'Ryssland inledde under natten sin länge emotsedda attack mot Ukraine.'}]
         flags = swedish_context_flags(rows)
@@ -262,7 +262,7 @@ class ExonymTests(unittest.TestCase):
 
 
 class PluralYouTests(unittest.TestCase):
-    """ANOTHER GERMAN TANK STORY (dev jobs 171-197): "Euer Panzer steht auf meinem Hof." -> "Er stridsvagn står på min gård." refused the file."""
+    """ANOTHER GERMAN TANK STORY (regression case): "Euer Panzer steht auf meinem Hof." -> "Er stridsvagn står på min gård." refused the file."""
 
     def flag(self, reason, target_quote='Er stridsvagn'):
         return {'id': 29, 'category': 'meaning', 'source_quote': 'Euer Panzer', 'target_quote': target_quote, 'reason': reason}
@@ -310,7 +310,7 @@ class ManOfWarTranslationTests(unittest.TestCase):
 
 class NorwegianPossessiveTests(unittest.TestCase):
     def test_a_postposed_possessive_read_as_a_pronoun_is_flagged(self):
-        # Glemselens øy (dev job 205)
+        # Nordic Sample (regression case)
         rows = [{'id': 9, 'source': 'Glowland din er så kul.', 'sv': 'Glowland, din är så cool.'}]
         self.assertEqual([flag['target_quote'] for flag in swedish_context_flags(rows)], ['Glowland, din'])
         for fine in ('Din Glowland är så cool.', 'Glowland är så cool.'):
@@ -325,7 +325,7 @@ class NorwegianPossessiveTests(unittest.TestCase):
 
 class NorwegianFalseFriendTests(unittest.TestCase):
     def test_maa_ikke_is_a_prohibition(self):
-        # Agnes mot verden (dev job 202)
+        # SamplePerson mot verden (regression case)
         rows = [{'id': 21, 'source': 'Hvis jeg ringer deg, så må du ikke ta telefonen.', 'sv': 'Om jag ringer dig, så måste du inte svara i telefonen.'}]
         self.assertEqual([flag['target_quote'] for flag in swedish_context_flags(rows)], ['måste du inte'])
         rows[0]['sv'] = 'Om jag ringer dig, får du inte svara.'
@@ -335,7 +335,7 @@ class NorwegianFalseFriendTests(unittest.TestCase):
 
 
 class TitleAndMilitaryWordTests(unittest.TestCase):
-    """FORTITUDE (dev job 218): both errors passed the review."""
+    """NORTHFIELD (regression case): both errors passed the review."""
 
     def test_prime_minister_must_not_become_minister(self):
         rows = [row('Prime Minister, I believe we need to create an entire American army',
@@ -372,7 +372,7 @@ class EfterAndAlliesTests(unittest.TestCase):
         return [flag['target_quote'] for flag in swedish_grammar_flags([row(source, target)])]
 
     def test_efter_before_a_clause_needs_att(self):
-        # Agnes mot verden (dev jobs 123 and 246)
+        # SamplePerson mot verden (regression caseand 246)
         self.assertEqual(self.grammar('Ok, jeg ringer deg etter jeg blir voldtatt.', 'Okej, jag ringer dig efter jag blir våldtagen.'),
                          ['efter jag blir'])
         for fine in ('Okej, jag ringer dig efter att jag har blivit våldtagen.', 'Han kom efter de senaste åren.',
@@ -380,7 +380,7 @@ class EfterAndAlliesTests(unittest.TestCase):
             self.assertEqual(self.grammar('x', fine), [], fine)
 
     def test_the_allies_take_the_article(self):
-        # FORTITUDE (dev jobs 218, 221 and 248)
+        # NORTHFIELD (regression caseand 248)
         source = 'The Allies are gonna attack Hitler.'
         self.assertEqual(self.grammar(source, 'Allierade kommer att anfalla Hitler.'), ['Allierade'])
         for fine in ('De allierade kommer att anfalla Hitler.', 'Våra allierade kommer att anfalla Hitler.'):

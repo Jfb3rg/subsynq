@@ -9,7 +9,7 @@ def timed(*items, profile='precision'):
     return [{'profile': profile, 'words': [{'text': f' {w}', 'start': a, 'end': b} for w, a, b in items]}]
 
 
-# Unraid job 73 (Z Nation 4x02, Main 0.8.364), rows 12/13 and the large-v3 words around their boundary.
+# regression case(Example Series 4x02, Main 0.8.364), rows 12/13 and the large-v3 words around their boundary.
 ROWS = [{'id': 12, 'start': 138.83, 'end': 139.89, 'source': 'Of here, how could I possibly'},
         {'id': 13, 'start': 139.89, 'end': 143.97, 'source': 'expect you to understand? Can you back me up here, please? Tell her what is this about.'}]
 EVIDENCE = timed(('possibly', 139.5, 139.89), ('expect', 139.89, 140.2), ('you', 140.2, 140.3), ('to', 140.3, 140.4),
@@ -59,7 +59,7 @@ class SentenceCutTests(unittest.TestCase):
 
 
 
-# Unraid job 73 (Z Nation 4x02), rows 276/277 ("… He" / "already had the" / "immunity, and you …") and Whisper's words around the boundary.
+# regression case(Example Series 4x02), rows 276/277 ("… He" / "already had the" / "immunity, and you …") and Whisper's words around the boundary.
 IMMUNITY = [{'id': 277, 'start': 1037.44, 'end': 1037.96, 'source': 'already had the'},
             {'id': 278, 'start': 1037.96, 'end': 1043.6, 'source': 'immunity, and you because you were in a coma. What about you? Well,'}]
 IMMUNITY_WORDS = timed(('the', 1037.8, 1037.96), ('immunity,', 1037.96, 1038.6), ('and', 1038.7, 1038.9), ('you', 1038.9, 1039.0))

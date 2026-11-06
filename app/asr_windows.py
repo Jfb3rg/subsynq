@@ -479,15 +479,15 @@ def refine_starts(cues, spans, *, lead=START_LEAD, minimum_change=.1, maximum_ch
                   minimum_rate_words=3):
     """Delay a cue that starts BEFORE the voice does to where the voice begins (minus `lead`): (cues, how many were changed, the shifts).
 
-    Whisper's first word of a sentence starts early after a pause: on Yukon Men S01E01 (44 min, 899 cues) the cue starts lay a median 0.45 s before
+    Whisper's first word of a sentence starts early after a pause: on Wildlife Sample S01E01 (44 min, 899 cues) the cue starts lay a median 0.45 s before
     the onset of the speech (voice detection with no padding), the same all through the file, and cutting the audio later proved the first word still
     intact 0.4 s after the cue start (STATUS natt 47). `spans` are the voiced stretches [(start, end), ...] in seconds. Only a delay is made: a cue that
     starts inside a voiced stretch (several cues in one breath), or whose next voiced stretch begins more than `maximum_change` later, is left alone,
     and a cue is never shortened below `minimum_duration`.
 
-    The voice detection lags behind the speech wherever music or noise lies under it (WIFE AND DOG: "And what did he find in Hell, Daddy?" spoken from
-    45.1 s, the detector found a voice from 45.6 s; MAN OF WAR: "They stormed the orphanage." from 30.6 s, found from 31.4 s), and on a fast line even
-    Yukon Men: of the seven fastest shifted cues a clean reading of the audio puts the first word 0.13 to 0.6 s BEFORE the moved start in six ("Did you guys
+    The voice detection lags behind the speech wherever music or noise lies under it (DIALOGUE_SAMPLE AND DOG: "And what did he find in Hell, Daddy?" spoken from
+    45.1 s, the detector found a voice from 45.6 s; SAMPLE GAMMA: "They stormed the orphanage." from 30.6 s, found from 31.4 s), and on a fast line even
+    Wildlife Sample: of the seven fastest shifted cues a clean reading of the audio puts the first word 0.13 to 0.6 s BEFORE the moved start in six ("Did you guys
     hear that?" moved to 'guys', "And we're running out of wood." to 'running'), 5 words in 0.51 s. A start is therefore never moved so late that the cue's words
     (`minimum_rate_words` or more) would have to be spoken faster than `maximum_rate` words per second; it is moved as far as that allows. Text without spaces
     between words (Chinese, Japanese) counts as one word and is not limited."""
@@ -600,7 +600,7 @@ def split_qwen_alignment(items, offset=0.0, *, maximum_duration=7,
         if not text or end <= start:
             continue
         if end - start > 1.5:
-            # The forced aligner stretched this word over a silence (real Ray Gunn run: "I" got
+            # The forced aligner stretched this word over a silence (real Sample Trailer run: "I" got
             # 0.0-4.0 s and "like" started at 4.0 s). The word WAS heard, so dropping it loses
             # text ("Like you, gun."); keep it, next to the speech: after a leading silence the
             # word sits at the end of its span, otherwise at the start.
@@ -893,7 +893,7 @@ def reconcile_qwen_segments(primary, qwen_windows, speech_intervals,
 def trim_small_overlaps(segments, *, tolerance=.25):
     """Let a row that runs a few hundredths of a second into the next one end where the next begins.
 
-    Real job 42 (dev 0.8.246, Tamil): the passes agreed on `...விட்ட` (ends 28.42) and `என்ன?` (starts 28.40), and the
+    regression case(dev 0.8.246, Tamil): the passes agreed on `...விட்ட` (ends 28.42) and `என்ன?` (starts 28.40), and the
     whole job failed for 20 ms of overlap. A pass that swaps in a reading takes its own timing, so rows can overlap
     by a hair. Only the earlier row's end moves (the next row's start is anchored by its own words) and only up to
     `tolerance` seconds; anything larger, or a trim that would leave the earlier row empty, is left for the
@@ -962,7 +962,7 @@ def prefer_fuller_reading(merged, other, *, minimum_confidence=.5):
     """Let an independent reading win a passage when it holds the same words plus more.
 
     A long-context pass can squeeze several sentences into one run-on cue and drop whole
-    sentences (real job 18: "Venus Nova's a big star. She's emotional, volatile. She does
+    sentences (regression case: "Venus Nova's a big star. She's emotional, volatile. She does
     things." became "Nova is a big star she's emotional"). `other` is any independent
     reading of the same audio (short-window pass, another overlapping window). Its cues
     replace a group of 1-4 neighbouring cues only when ALL of this holds: it contains at
@@ -1263,7 +1263,7 @@ def prefer_precision_for_unpunctuated_runs(merged, precision, v2=(), corroborati
             if ((lead_extra and before[len(before) - len(lead_extra):] == lead_extra)
                     or (trail_extra and after[:len(trail_extra)] == trail_extra)):
                 continue
-            # A small overlap with a neighbour is the passes' timing, not other speech: the edge is cut at the neighbour (APOCALYPSE Z, dev
+            # A small overlap with a neighbour is the passes' timing, not other speech: the edge is cut at the neighbour (SAMPLE EPSILON, dev
             # job 185: "Move away and keep walking, sir." ends 0.31 s into the long pass's "Do you hear me?" and the split "Move away and keep" /
             # "walking." stayed). A larger overlap still refuses the replacement.
             if result and replacement[0]['start'] < result[-1]['end'] - .05:
@@ -1295,7 +1295,7 @@ def _resegment_block(block, shorter, v2):
     """The short pass's sentences with the long pass's own words, for a block of cues that has no sentence end.
 
     `prefer_precision_for_unpunctuated_runs` needs the short pass to hold EXACTLY the block's words. Real case (Man of
-    War, dev job 49): the long pass wrote "way between two points is a straight line let's go russia overnight" /
+    War, regression case): the long pass wrote "way between two points is a straight line let's go russia overnight" /
     "launched its long" / "anticipated attack on ukraine he's about to jam the door mike i'm in" / "trouble we need your
     help" (cut in the middle of the sentence, lower case, no full stop) while the short pass heard six proper sentences,
     one word more ("Fastest") and one less ("in") than the long pass, so the exact match never applied. Here the words are
@@ -1373,7 +1373,7 @@ def _assemble_resegmented(block_tokens, tokens, collected, operations, v2):
         else:                                                 # delete / replace: the long pass's words stay
             if tag == 'delete' and 0 < b1 < len(tokens) and tokens[b1 - 1][1] != tokens[b1][1]:
                 # Words only the long pass heard, standing exactly between two of the short pass's sentences, belong to neither: appended to the first
-                # they came out as "He kept digging and digging. and." (WIFE AND DOG, job 154: the long pass wrote "digging, and" before a pause, the short
+                # they came out as "He kept digging and digging. and." (DIALOGUE_SAMPLE AND DOG, job 154: the long pass wrote "digging, and" before a pause, the short
                 # pass, Whisper large-v2 and Qwen3-ASR heard no "and", and neither did a clean reading of the clip). They are kept, and the run is left
                 # as the long pass wrote it, only when another reading has them between the same two neighbours; otherwise they are dropped.
                 around = [_word_key(tokens[b1 - 1][0]), *(_word_key(token) for token in block_tokens[a1:a2]), _word_key(tokens[b1][0])]
@@ -1473,7 +1473,7 @@ def drop_misplaced_duplicate_cues(merged, precision, strict_speech, *, minimum_s
 def drop_unconfirmed_repeated_starts(merged, precision, *, minimum_words=4, maximum_gap=.3):
     """Remove a cue that only repeats the first words of the cue before it, when the short pass hears them once.
 
-    Whisper's long pass sometimes starts a sentence again where a window ends (Yukon Men 34:15: "the hunting party
+    Whisper's long pass sometimes starts a sentence again where a window ends (Wildlife Sample 34:15: "the hunting party
     approaches the area where the caribou herd" and, 0.0 s later, "the hunting party approaches the area"). The extra
     cue makes the translation one line too long for 18 lines. Only an exact repeat of the opening words of the longer
     cue before it, in the same breath, with `minimum_words` or more words, and heard once by the short pass is removed;
@@ -1599,7 +1599,7 @@ def remove_adjacent_phrase_overlap(base, v3_rows, v2_rows, *, minimum_words=4, s
                     or any(word not in _normalized(kept).split() for word in left.get('confirmed_source_words') or [])):
                 continue
             rows[index] = {**left, 'text': kept, 'end': start}
-            # The right row no longer starts the sentence: "We're Trying to live their lives" (MAN OF WAR, dev job 262) keeps no capital after the
+            # The right row no longer starts the sentence: "We're Trying to live their lives" (SAMPLE GAMMA, regression case) keeps no capital after the
             # moved lead (except "I" and words written in capitals throughout, such as names and acronyms).
             rest = right['text']
             first = rest.split(' ', 1)[0]
@@ -1620,7 +1620,7 @@ _TITLE_ROWS = frozenset({'mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'mister', 'her
 
 def join_title_rows(merged, *, maximum_gap=.5, maximum_length=7.0):
     """A row that holds only a title ("Mr.") is joined to the row that follows it when that starts within `maximum_gap` seconds with a capital letter ("Gunn, I presume?").
-    Every pass put a break after "Mr." in Ray Gunn (48.2-49.0 and 49.0-49.9 s, no pause between them), so the subtitle showed "Herr" alone for a second.
+    Every pass put a break after "Mr." in Sample Trailer (48.2-49.0 and 49.0-49.9 s, no pause between them), so the subtitle showed "Herr" alone for a second.
     Returns (rows, joined)."""
     rows = [dict(row) for row in merged]
     result, joined = [], []
@@ -1648,7 +1648,7 @@ def join_title_rows(merged, *, maximum_gap=.5, maximum_length=7.0):
 
 def harmonize_names_by_readings(merged, readings, *, minimum_families=2, minimum_elsewhere=2):
     """A name that only ONE pass wrote, in a row where two other model families both read it the same other way that the file spells the name elsewhere, is written
-    as those readings and the file write it. Ray Gunn, "Be careful, Ray.": context (large-v3) and large-v2 read "Ray", only the rescue pass read "Rey", and the file's
+    as those readings and the file write it. Sample Trailer, "Be careful, Ray.": context (large-v3) and large-v2 read "Ray", only the rescue pass read "Rey", and the file's
     other lines say "Ray" twice; the cue took the rescue text, which had no recorded confidence and so was never read again. Everything else in the row must be
     identical, the new spelling must occur at least `minimum_elsewhere` times in the other rows and the old one nowhere else. Returns (rows, changes)."""
     rows = [dict(row) for row in merged]
@@ -1901,7 +1901,7 @@ def restore_multi_pass_agreed_speech(merged, readings, *, minimum_passes=3, vad_
 
     The final cues can miss real lines in music-heavy audio: voice-activity filtering fails them as unsupported
     although the short pass, the no-VAD rescue, the quiet-gap pass and Whisper v2 all read the same words
-    (HOPE: "...저희 집에 있다니까요" in five passes, "Tristan" in Lou in three). A cluster is added only when at
+    (SAMPLE_ALPHA: "...저희 집에 있다니까요" in five passes, "Tristan" in SampleTrailer in three). A cluster is added only when at
     least `minimum_passes` distinct passes agree, one of them voice-activity filtered (a no-VAD pass alone is what
     hallucinates in music), the readings are not a stock phrase, a lone word is confident, and the cue would not
     overlap a final cue. The text is the reading closest to all the others, and the passes must agree on it
@@ -1932,7 +1932,7 @@ def restore_family_voted_speech(merged, readings, *, minimum_families=FAMILY_VOT
     """Add speech that no final cue covers when at least two MODEL FAMILIES read it alike, however the others read it.
 
     `restore_multi_pass_agreed_speech` needs three passes, one of them voice-activity filtered, and a high mean agreement over everything that was
-    read there, so one dissenting family ("국회문" from the Whisper v3 passes against "괴물" from v2 and Qwen) leaves a real line out. On the HOPE trailer
+    read there, so one dissenting family ("국회문" from the Whisper v3 passes against "괴물" from v2 and Qwen) leaves a real line out. On the SAMPLE_ALPHA trailer
     (burned-in English subtitles as the witness: 14 spoken lines) the final transcript held 5 of them; the passes had read 9 more. Here every family
     casts ONE vote (its own best reading), the largest group of families whose readings agree (`minimum_agreement`, mean similarity) wins, and its
     medoid is the text; the families outside the group are outvoted. No voice-activity pass is required: that rule exists because a no-VAD pass alone
@@ -1982,10 +1982,10 @@ def restore_family_voted_speech(merged, readings, *, minimum_families=FAMILY_VOT
 
 def _most_heard_reading(cluster, families, chosen_text, *, minimum_similarity=.5):
     """(name, reading) with the wording that more of `families` heard exactly than any other wording of the same words as `chosen_text`, or
-    None. A medoid ties between two readings and then takes the more confident one, which can be a clipped reading: Godzilla (dev job 219) "避"
+    None. A medoid ties between two readings and then takes the more confident one, which can be a clipped reading: SampleFilm (regression case) "避"
     (one v3 pass, confidence 1.0) was added where another v3 pass and large-v2 both heard "退避!" ("Evacuate!"). Only wordings close to the
     chosen text compete (a cluster can hold the next utterance too: Last Samurai "あれは" before "化け物だ"), and a tie in families changes
-    nothing (HOPE "상황실!" from two families against "상황실 상황실" from two)."""
+    nothing (SAMPLE_ALPHA "상황실!" from two families against "상황실 상황실" from two)."""
     heard = {}
     for name, item in cluster:
         text = _normalized(str(item.get('text', '')))
@@ -2005,7 +2005,7 @@ def replace_outvoted_single_readings(merged, readings, *, maximum_confidence=.6,
     """(rows, changes): replace a doubtful row that only one reading heard when at least `minimum_families` model families, two of them other
     than Whisper large-v3 (`_INDEPENDENT_FAMILIES`), heard the same different words at that place.
 
-    Glemselens øy (dev job 216): the long pass alone wrote "Gjent mors" (confidence .43) at 121.6-123.3 s; the no-VAD v3 pass, large-v2 and
+    Nordic Sample (regression case): the long pass alone wrote "Gjent mors" (confidence .43) at 121.6-123.3 s; the no-VAD v3 pass, large-v2 and
     NB-Whisper all read "Vi skal hjem." at 120.3-122.5 s. prefer_consensus_reading never saw them: their span overlaps the row by only 30 % of
     the union (it needs 50 %) and the words share nothing. Here a reading counts when it covers at least `minimum_cover` of the row; the row may
     have no second reading close to its own words (`own_support`), the agreeing readings must say exactly the same words (after normalising),
@@ -2082,7 +2082,7 @@ def _contains(words, part):
 def restore_lead_words(merged, readings, *, skip_indices=(), maximum_lead=2, maximum_gap=1.5, maximum_duration=7.0, minimum_names=2):
     """(rows, changes): put back one or two opening words that the chosen row lost and that other readings have IMMEDIATELY before the row's own
     first words. Unlike restore_agreed_prefixes, the rest of the readings' wording does not have to match the row (the passes cut sentences
-    differently): MAN OF WAR (dev jobs 152-170) "is what's left simple people we're trying to live their lives" (short pass) where the long pass
+    differently): SAMPLE GAMMA (regression case) "is what's left simple people we're trying to live their lives" (short pass) where the long pass
     has "This is what's left." and the rescue pass "this is what's left simple people" (clean large-v2 and Qwen: "This is what's left."). The
     same words must come from at least two different readings, and from two model families including large-v2 or Qwen, unless the row itself
     starts in lower case (visibly cut at its start), when two passes are enough. Nothing the row says is changed; the lead may not repeat the end
@@ -2107,7 +2107,7 @@ def restore_lead_words(merged, readings, *, skip_indices=(), maximum_lead=2, max
                 tokens = _normalized(str(other.get('text', ''))).split()
                 for position in range(1, len(tokens)):
                     # the reading holds the row's first two words, or ends with its first word (the passes cut the sentence there:
-                    # APOCALYPSE Z rescue "putting european authorities" before the row "authorities in a very difficult situation.")
+                    # SAMPLE EPSILON rescue "putting european authorities" before the row "authorities in a very difficult situation.")
                     if tokens[position:position + len(head)] != head and not (position == len(tokens) - 1 and tokens[position] == head[0]):
                         continue
                     for size in range(1, min(maximum_lead, position) + 1):
@@ -2177,7 +2177,7 @@ def restore_lead_words(merged, readings, *, skip_indices=(), maximum_lead=2, max
 def plan_lead_word_probes(merged, readings, duration, *, skip_indices=(), maximum=4):
     """Places where Qwen3-ASR should listen once more because ONE reading heard opening words a visibly cut row (it starts in lower case) lost.
 
-    FORTITUDE (dev jobs 218 and 221): the row "were arrested" was translated "greps."; only the no-VAD rescue pass heard "you were arrested
+    NORTHFIELD (regression caseand 221): the row "were arrested" was translated "greps."; only the no-VAD rescue pass heard "you were arrested
     wearing a woman's skirt", and restore_lead_words rightly needs two readings. Qwen gives that second, independent opinion. Each window
     starts a second before the lead (`start` is the lead's measured time, `clip_start` where the clip begins) and ends half a second after the
     row, so Qwen hears the lead and the row's own words."""
@@ -2269,7 +2269,7 @@ def prefer_consensus_reading(merged, readings, *, minimum_passes=3, vad_passes=(
                              maximum_confidence=.6, contradicted_confidence=.8, margin=.15):
     """Replace the wording of a doubtful cue when the passes clearly read something else.
 
-    A cue's text can come from a single pass that heard it differently from all the others (HOPE: "승리를 받자
+    A cue's text can come from a single pass that heard it differently from all the others (SAMPLE_ALPHA: "승리를 받자
     8명인데요" from the forced re-read, "갑자기 기침이" where the others read "기적이"). The readings of every pass
     that cover the same time as the cue (joined pieces too) and are linked to its wording vote, one vote per model
     family. Only the text changes, never the timing, and only to a reading that covers the same time span as the cue,
@@ -2362,7 +2362,7 @@ def _mixes_scripts(text):
 def prefer_confident_reading(merged, readings, *, maximum_confidence=.4, minimum_confidence=.6, minimum_gain=.25):
     """A cue the merge left at very low confidence takes a clearly more confident reading of the same time.
 
-    The final merge can end on a pass that read the place badly (Sigma, Tamil: "…தண்டmedenmadு முட்ட…" with Latin
+    The final merge can end on a pass that read the place badly (SampleEta, Tamil: "…தண்டmedenmadு முட்ட…" with Latin
     letters in the middle of Tamil, confidence 0.27, while the quiet-gap pass read "ஆனால் தாயாமானது விட்டதே இல்லை."
     at 0.75). A cue with a recorded confidence below `maximum_confidence` (0 means "not recorded", never "bad")
     takes the most confident reading of the passes (joined pieces too) that covers most of the cue's time, is at
@@ -2374,7 +2374,7 @@ def prefer_confident_reading(merged, readings, *, maximum_confidence=.4, minimum
     everything = dict(readings)
     everything.update(span_readings(final, readings))
     def holds_neighbour(other, index):
-        # Glemselens øy (dev job 208): "Reisa!" (0.76 s) took a 3 s reading that also held the whole next cue and became "Ryza, du kommer
+        # Nordic Sample (regression case): "Reisa!" (0.76 s) took a 3 s reading that also held the whole next cue and became "Ryza, du kommer
         # ikke til å tro det!" right before "Du kommer ikke til å tro det!": a reading that covers most of a neighbouring cue AND holds its
         # words would put them in two cues.
         words = _normalized(str(other.get('text', ''))).split()
@@ -2412,7 +2412,7 @@ def plan_consensus_windows(merged, readings, *, minimum_passes=3, vad_passes=('p
     """Short time windows where a further independent reading (Qwen3-ASR) can settle the matter: speech the passes
     agree on that no final cue covers, and doubtful final cues the passes read differently.
 
-    A doubtful cue that fewer than `minimum_passes` passes covered was never eligible above (Man of War, dev job 49:
+    A doubtful cue that fewer than `minimum_passes` passes covered was never eligible above (Sample Gamma, regression case:
     confidence 0.22 and 0.35 with only the short pass and Whisper v2 covering them, so Qwen never listened to the two
     least certain lines of the film). Every cue left at a recorded confidence below `maximum_confidence` that no
     planned window covers therefore gets a window of its own, the least certain first, at most `maximum_doubtful`."""
@@ -2509,7 +2509,7 @@ def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agre
                                                     'end': max(item['end'] for item in spans)}
             if word_families is not None:
                 # How many model families heard each word of the cue (for the judge: a word only one family heard may be dropped, one
-                # that two heard may not; MAN OF WAR "You find me" against "... lights on me this").
+                # that two heard may not; SAMPLE GAMMA "You find me" against "... lights on me this").
                 heard = {}
                 for name, other in members:
                     for word in set(re.findall(r"[^\W\d_]+", str(other.get('text', '')).casefold())):
@@ -2520,7 +2520,7 @@ def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agre
 
 def plan_doubtful_row_windows(merged, *, maximum_confidence=.7, maximum_total=400, minimum_length=1.2, maximum_length=12.0):
     """A window of its own for every final cue the passes left at a recorded confidence below `maximum_confidence` (0.7: "Snow Goat could freeze up" stood at
-    0.618 and "Let's get the out of" at 0.667), the least certain first, at most `maximum_total`. Yukon Men (44 min): 194 cues were below 0.6 and 286 below 0.7,
+    0.618 and "Let's get the out of" at 0.667), the least certain first, at most `maximum_total`. Wildlife Sample (44 min): 194 cues were below 0.6 and 286 below 0.7,
     but only about 35 were ever read a second time (windows capped at 6 to 19 per step), so Qwen heard "Snowgo could freeze up" and "snowgos" where the file says
     "Snow Goat" and nobody asked it, and Whisper large-v2 heard "Let's get the f*** out of here!" where large-v3 left "Let's get the out of"."""
     doubtful = []
@@ -2811,7 +2811,7 @@ def _same_length_reading(row, readings, size):
 
 def _single_word_swap(words, heard, *, minimum_letters=3):
     """(index, word) when `heard` holds the row's `words` with exactly ONE of them changed into another word (of at least `minimum_letters`
-    letters), other words around it unchanged and only extra words at the very start or end, else None. Agnes mot verden (dev job 209): the row
+    letters), other words around it unchanged and only extra words at the very start or end, else None. SamplePerson mot verden (regression case): the row
     "en kilo heroin hjemme der, og så ber du meg om å bare være her." against large-v2's and NB-Whisper's "har seriøst en kilo heroin gjemt der, …"
     gives (3, 'gjemt'): the readings hold two more words at the start, so the older equal-length comparison never saw them."""
     if not words or not heard:
@@ -2832,13 +2832,13 @@ def settle_v2_words_with_qwen(merged, qwen, v2=(), extra=()):
     """(rows, changes) once Qwen3-ASR (another model family) has read the doubtful places.
 
     1. A word reconcile_v2_word_substitutions took from Whisper large-v2 against every large-v3 pass is taken back when Qwen, at the same
-       place of a reading with the same number of words, has the old word or one closer to it: ANOTHER GERMAN TANK STORY (dev jobs 171, 178)
+       place of a reading with the same number of words, has the old word or one closer to it: ANOTHER GERMAN TANK STORY (regression case)
        "Wir werden jetzt alle reich" (three large-v3 passes and Qwen) had become "Wir wären" (large-v2 alone), "War doch ein Klacksum" (large-v3,
        Qwen "Klacks") had become "Klagsohn". The swaps Qwen does not contradict stay (they were mostly right: "gun" -> "Gunn", "the" -> "their").
-    2. A word large-v2 and Qwen BOTH hear, in readings with the same words as the row except that one, replaces the row's word: APOCALYPSE Z
-       (dev jobs 166, 179) "Estamos en la plaza de Paros" (large-v3 alone) where large-v2 and Qwen hear "plaza de toros".
+    2. A word large-v2 and Qwen BOTH hear, in readings with the same words as the row except that one, replaces the row's word: SAMPLE EPSILON
+       (regression case) "Estamos en la plaza de Paros" (large-v3 alone) where large-v2 and Qwen hear "plaza de toros".
     `extra` are the readings of another independent family that count like Qwen's in both rules (NB-Whisper for Norwegian speech, app/norwegian_reader.py:
-    Agnes mot verden "Finn deg du elsker." from the short pass at 0.18, where large-v2 and NB-Whisper hear "Finn det du elsker.")."""
+    SamplePerson mot verden "Finn deg du elsker." from the short pass at 0.18, where large-v2 and NB-Whisper hear "Finn det du elsker.")."""
     qwen = list(qwen or ()) + list(extra or ())
     rows, changes = [dict(row) for row in merged], []
     for row in rows:
@@ -3681,7 +3681,7 @@ def correct_rescue_word_onsets(base, rescue, *, minimum_drift=.5,
 def correct_confirmed_word_onsets(base, rescue, v2, *, skip_indices=(), maximum_disagreement=.5):
     """After all merges and VAD refinement, correct an early start only when rescue AND v2 time every unchanged word.
 
-    A later sentence split can put back the precision pass's early start (FORTITUDE: 8.19 s; the two word-timed readers start at
+    A later sentence split can put back the precision pass's early start (NORTHFIELD: 8.19 s; the two word-timed readers start at
     10.62/10.96 s). VAD misses the quiet first word here. Do not move words/end/neighbours, infer a time from a clip bound, or trust one reader.
     """
     def timed(items):
@@ -4290,7 +4290,7 @@ def reattach_dangling_leads(segments, *, minimum_gap=3.0, maximum_gap=30.0,
     `subjects_before_lowercase_only` is the safe early form: only a lone subject pronoun
     ("I") with no sentence end, followed by a cue that starts in lowercase (so it is a
     continuation, "like you, Gun."). Run it BEFORE the isolated-fragment filters: a lead
-    placed at the wrong time (real job 18: "I" at 124.3 s, spoken just before "like" at
+    placed at the wrong time (regression case: "I" at 124.3 s, spoken just before "like" at
     127.9 s) is otherwise removed as an unsupported lone word and its sentence loses it.
     """
     leads = {

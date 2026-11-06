@@ -13,7 +13,7 @@ from code_switch import plan_checks, apply_checks
 
 class CodeSwitchTests(unittest.TestCase):
     def setUp(self):
-        f = json.loads((Path(__file__).parent / 'fixtures' / 'glemselens-code-switch.json').read_text())
+        f = json.loads((Path(__file__).parent / 'fixtures' / 'nordic-code-switch.json').read_text())
         self.rows, self.qwen, self.records = f['rows'], f['qwen'], f['records']
         self.job = {'norwegian_reader': {'chosen': True}, 'language_policy': {}}
 

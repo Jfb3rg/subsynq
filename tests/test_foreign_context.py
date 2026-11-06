@@ -16,7 +16,7 @@ from reread import foreign_context_plan, foreign_context_reading, foreign_contex
 
 def fixture():
     root = Path('/diagnostic') if str(__file__)=='/test.py' else Path(__file__).parent
-    return json.loads((root/'fixtures/fortitude-language-context.json').read_text())
+    return json.loads((root/'fixtures/multilingual-context.json').read_text())
 
 
 def evaluated(sample, plan):

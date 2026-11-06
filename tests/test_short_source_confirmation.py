@@ -60,7 +60,7 @@ class ShortWordTests(unittest.TestCase):
         for candidate in (dict(b,text='Venimos desde Canarias.'),dict(b,confidence=.69),dict(b,start=19.8)):
             self.assertEqual(confirm_short_word_substitutions([a],[candidate],[v2]), ([a],[]))
 
-    def test_man_of_war_disputed_four_word_reading_is_not_overwritten(self):
+    def test_sample_gamma_disputed_four_word_reading_is_not_overwritten(self):
         a={'start':26.37,'end':27.51,'text':'Come on, you niggas!','confidence':.35}
         others=[dict(a,text='Come on, you liars!',confidence=.9),dict(a,text='Come on, you dickhead!',confidence=.9)]
         self.assertEqual(confirm_short_word_substitutions([a],others,others),([a],[]))

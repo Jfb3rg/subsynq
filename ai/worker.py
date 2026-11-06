@@ -154,7 +154,7 @@ def active_gemma_models():
 
 def shown_model_name(name):
     """The model a request really reaches: on a rented server the home names are aliases of its larger models (gemma3:12b runs as gemma3:27b),
-    so reports and logs name what ran, not the alias (dev jobs 208-219 said 12b while the server's VRAM showed 27b/26b)."""
+    so reports and logs name what ran, not the alias (regression casesaid 12b while the server's VRAM showed 27b/26b)."""
     translation, review = active_gemma_models()
     return {REVIEW_MODEL_NAME: review, MODEL_NAME: translation}.get(name, name)
 
@@ -226,7 +226,7 @@ def reason_copy(candidate, reasons, allowed_texts, *, minimum_words=3):
     """First run of `minimum_words`+ consecutive words a repair shares with a reviewer's remark.
 
     A reviewer's `reason` describes a problem; wording it mentions in passing is not an approved
-    translation (real jobs 17 and 21: "(håll med tittning/lyssning)" was copied into the subtitle
+    translation (regression caseand 21: "(håll med tittning/lyssning)" was copied into the subtitle
     "Håll med tittning."). Word runs that already stand in the source or in the refused target are
     not copies. Returns the phrase, or None.
     """
@@ -379,7 +379,7 @@ class BrokenSourceRows(SourceQualityError):
         self.ids = list(ids)
 
 
-# The user, 2026-10-27 (Godzilla: music under the speech): rows the source audit still calls broken after reading them again are kept with
+# The user, 2026-10-27 (SampleFilm: music under the speech): rows the source audit still calls broken after reading them again are kept with
 # their best reading and reported as doubtful lines; the file is refused only when more than this share of its rows is unclear.
 SOURCE_DOUBTFUL_SHARE = 1 / 3
 
@@ -397,7 +397,7 @@ class TranslationQualityError(SourceQualityError):
     """The SOURCE was fine; the translation failed its final review twice.
 
     A subclass so every existing handler still treats it as a quality failure, but it can be told
-    apart: re-reading the audio cannot repair an idiom the translator got wrong (real jobs 17, 21
+    apart: re-reading the audio cannot repair an idiom the translator got wrong (regression case
     and 23 re-ran the whole ASR with the weaker large-v2 and lost "Get out!", "I like you").
     """
 
@@ -627,7 +627,7 @@ QWEN_HINTED_DOUBTFUL_WINDOWS = 40
 
 def second_opinion_rows(device=None):
     """How many doubtful rows (recorded confidence below .7) get a second and third independent reading (Whisper large-v2, Qwen3-ASR) and a judged choice:
-    every one on a rented or local GPU (up to 400), the 60 least certain on a CPU (time). Yukon Men had 194 doubtful rows and 86 of them no other reading at
+    every one on a rented or local GPU (up to 400), the 60 least certain on a CPU (time). Wildlife Sample had 194 doubtful rows and 86 of them no other reading at
     all; the source judge decided 24 of 135 rows that had alternatives. SUBSYNQ_SECOND_OPINION_ROWS overrides."""
     value = os.environ.get('SUBSYNQ_SECOND_OPINION_ROWS', '').strip()
     if value.isdigit() and int(value) > 0:
@@ -905,7 +905,7 @@ class RemoteCloudWhisperModel:
 
 def reread_whisper(model_name):
     """Whisper for a second reading of a few clips: on the rented server while the job runs there, else on this machine's CPU as before.
-    Unraid job 50 (Z Nation, 2026-11-02): 30 rows were read again with large-v3 and large-v2 loaded on the home CPU although the job ran on a
+    regression case(Example Series, 2026-11-02): 30 rows were read again with large-v3 and large-v2 loaded on the home CPU although the job ran on a
     rented GPU, which looked like the job had fallen back to the CPU and took most of the time. The rented server takes the same options."""
     base = cloud_base_url()
     if base:
@@ -1272,7 +1272,7 @@ def rent_cloud_chain(job, provider, mode):
                 MODEL_JOB.cloud_models = tuple(cloud_models)     # what really runs there (shown on the job)
                 chosen = offer
                 # Where the server really is, kept with the job: a country picked in the plan is a preference, and
-                # a job that landed elsewhere must say so (Sweden was asked for, Bulgaria was rented, dev job 50).
+                # a job that landed elsewhere must say so (Sweden was asked for, Bulgaria was rented, regression case).
                 job['cloud_offer'] = {'gpu': offer.get('gpu'), 'location': offer.get('location'),
                                       'country': offer.get('country'), 'price': price,
                                       'download_cost_per_gb': offer.get('download_cost_per_gb'),
@@ -1525,7 +1525,7 @@ def acquire_cloud_chain(job, provider, mode):
 def unload_cloud_models(base_url, context, models):
     """Make the rented server's Ollama drop its Gemma models from GPU memory. True only when every unload was
     acknowledged. A server kept for the next job must have a free GPU: the next job loads Whisper and Qwen
-    first, and a resident 27b model left them without memory ("CUDA out of memory", real job 28)."""
+    first, and a resident 27b model left them without memory ("CUDA out of memory", regression case)."""
     names = [name for name in dict.fromkeys(models or ()) if name]
     if not names:
         return False
@@ -2167,7 +2167,7 @@ def transcribe(job, media, model, device='cpu', *, focus_intervals=None):
 
 def wide_windows(windows, total, *, padding=12.0, maximum_seconds=60.0):
     """Context windows around short places of interest. Whisper reads a short clip far worse than the same speech
-    with ten seconds of context on each side (the forced-Korean reading of HOPE: "예비 군인을 봤자" from a 12 s
+    with ten seconds of context on each side (the forced-Korean reading of SAMPLE_ALPHA: "예비 군인을 봤자" from a 12 s
     clip, "대비군이라고 봤자" from 20 s), so the places are widened, overlapping ones are merged, and no window is
     longer than `maximum_seconds`."""
     merged = []
@@ -2454,7 +2454,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                        f'{label} · fönster {index + 1} av {len(windows)}')
         combined = merge_window_segments(results)
         if windows_override is None:
-            # An overlapping window can hold words the centre window dropped (real job 18: "Will",
+            # An overlapping window can hold words the centre window dropped (regression case: "Will",
             # "I like you" lost although another window heard them).
             combined = prefer_fuller_window_readings(combined, results)
         return reattach_dangling_leads(combined)
@@ -2686,7 +2686,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                 del v2_model
                 gc.collect()
         if focus_intervals is None:
-            # On a rented server or a local GPU NB-Whisper reads the WHOLE file (a trailer in about a minute): Glemselens øy (dev job 208)
+            # On a rented server or a local GPU NB-Whisper reads the WHOLE file (a trailer in about a minute): Nordic Sample (regression case)
             # had "Bestevennet fra du!" and "minnetermon" in rows it never read. On a CPU it reads the same doubtful places as large-v2.
             whole_file = models.remote is not None or device != 'cpu'
             if whole_file or v2_windows:
@@ -2988,7 +2988,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged = reconcile_corroborated_rephrasings(
         merged, precision_profile, rescue_profile, strict_speech)
     # A lone "I" heard at the wrong time must join the continuation it belongs to BEFORE the
-    # fragment filters below judge it as an unsupported single word (real job 18, "I like you, Gunn").
+    # fragment filters below judge it as an unsupported single word (regression case"I like you, Gunn").
     merged = reattach_dangling_leads(merged, minimum_gap=.6, subjects_before_lowercase_only=True)
     merged = filter_unconfirmed_short_leads(
         merged, [context_profile, precision_profile, rescue_profile], strict_speech)
@@ -3179,9 +3179,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged, qwen_word_changes = settle_v2_words_with_qwen(merged, qwen_reading, v2_profile, nb_profile)
     job['qwen_word_changes'] = qwen_word_changes
     # Runs the long pass wrote without a single sentence end are replaced by the short passes' sentences when
-    # those hold exactly the same words (PLANET 9: "...from the planet" + "ahead how old is it").
+    # those hold exactly the same words (SPACE SAMPLE: "...from the planet" + "ahead how old is it").
     merged = prefer_precision_for_unpunctuated_runs(merged, precision_profile, v2_profile, corroboration=qwen_reading)
-    # The same runs when the short pass hears a word more or less than the long pass (Man of War: "Fastest", "in"):
+    # The same runs when the short pass hears a word more or less than the long pass (Sample Gamma: "Fastest", "in"):
     # its sentence boundaries and punctuation, the long pass's words.
     merged = resegment_unpunctuated_runs(merged, precision_profile, v2_profile, corroboration=qwen_reading)
     merged = drop_misplaced_duplicate_cues(merged, precision_profile, strict_speech)
@@ -3202,9 +3202,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged, outvoted_rows = replace_outvoted_single_readings(merged, consensus_readings)
     if outvoted_rows:
         job['outvoted_rows_replaced'] = outvoted_rows
-    # A pass that swapped in a reading brings its own timing: a hair of overlap must not fail a whole job (real job 42).
+    # A pass that swapped in a reading brings its own timing: a hair of overlap must not fail a whole job (regression case).
     merged = trim_small_overlaps(merged)
-    # Whisper's long pass sometimes opens a sentence again where a window ends; the short pass hears it once (Yukon Men: an extra line shifted 18 translations).
+    # Whisper's long pass sometimes opens a sentence again where a window ends; the short pass hears it once (Wildlife Sample: an extra line shifted 18 translations).
     merged, credit_rows = drop_credit_rows(merged)
     merged, glossary_changes = apply_glossary(merged, load_glossary(CONFIG / 'glossary.json'))
     if glossary_changes:
@@ -3492,7 +3492,7 @@ def prompt_media_name(media_name):
     still sent and remains the authoritative language marker; the code also
     refuses any `language_mismatch` verdict without a hint. The effect on the
     auditor's other judgements (it used to see the title) has NOT been
-    measured against HOPE/KING/Sigma/PLANET 9. Local runs are unchanged."""
+    measured against SAMPLE_ALPHA/SAMPLE_BETA/SampleEta/SPACE SAMPLE. Local runs are unchanged."""
     device = str(getattr(MODEL_JOB, 'device', None) or '')
     return '' if device.startswith('cloud-') else str(media_name)
 
@@ -3622,7 +3622,7 @@ _HINT_SCRIPTS = {'ta': 'Tamil', 'ko': 'Hangul'}
 def credible_language_mismatch(rows, hinted_language, acoustic_language):
     """May a source reviewer's `language_mismatch` verdict stop the job?
 
-    Real job 40 (dev 0.8.246): a perfectly good German transcript was rejected because the reviewer set
+    regression case(dev 0.8.246): a perfectly good German transcript was rejected because the reviewer set
     language_mismatch to true while its own reason said the text was German and consistent with the file name.
     When speech recognition itself heard the file name's language (the probe windows detected it: status
     'confirmed'), a text reader's contrary guess is not evidence. Only a script that cannot belong to that
@@ -3885,7 +3885,7 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
     """Fail before writing when the final translation is pervasively untranslated or transliterated.
 
     `whole_file` reviews EVERY block and collects all flags in `audit` instead of stopping the file at the first block with 3 flagged
-    cues of 12 (Yukon Men, a 44-minute episode, was stopped twice after 12 of 75 blocks, so most of the file was never judged): the caller
+    cues of 12 (Wildlife Sample, a 44-minute episode, was stopped twice after 12 of 75 blocks, so most of the file was never judged): the caller
     counts the flags against the whole file's limit (`doubtful_limit`). Only a file that is pervasively broken still stops early (a quarter
     of at least 36 reviewed cues flagged). `only_ids` limits the review to those cues with their neighbours (each contiguous run is
     reviewed as its own blocks): the re-review after a repair does not need to judge, and so to flag anew, what was already cleared."""
@@ -4098,7 +4098,7 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
                           'with exact source and target quotes.')
     if target_key == 'sv':
         # The translator is told to write metric units (SWEDISH_UNITS_RULE); without this the reviewer flagged "40 yards" -> "37 meter" as a changed value and
-        # the file was refused for following the rule (Yukon Men, job 136, row 755).
+        # the file was refused for following the rule (Wildlife Sample, job 136, row 755).
         request['system'] += (' A distance, length, weight or volume that the source gives in imperial units (miles, yards, feet, inches, gallons, pounds) '
                               'and the Swedish gives as the correct metric value is CORRECT and required: never flag the changed number or unit as a meaning '
                               'defect; flag only a conversion that is wrong.')
@@ -4336,7 +4336,7 @@ def validate_translation_flags(verdict, sample, target_key):
         if flag['category'] == 'untranslated':
             source_words = ' '.join(re.findall(r'[^\W\d_]+', flag['source_quote'].casefold()))
             target_words = ' '.join(re.findall(r'[^\W\d_]+', flag['target_quote'].casefold()))
-            # Unraid job 65 (Stuart): "entanglement" inside "kvantentanglementgrej" is untranslated too; requiring a separate word refused the
+            # regression case(SampleSeries): "entanglement" inside "kvantentanglementgrej" is untranslated too; requiring a separate word refused the
             # correct flag four times and the job failed. One source word of six letters or more inside a longer target word counts.
             inside_compound = (len(source_words) >= 6 and ' ' not in source_words
                                and any(source_words in word and word != source_words for word in target_words.split()))
@@ -4571,7 +4571,7 @@ def render_whole_cue_meanings(job, rows, flags, answer, target_key, target_langu
     def edits_for(item):
         current = original[item['id']][target_key]
         rendered_text = replacements[item['id']]
-        # Real job 48 (dev, RTX 5090): the repair proposed "Inte jag." -> "Inte min." but the renderer, shown only the
+        # regression case(dev, RTX 5090): the repair proposed "Inte jag." -> "Inte min." but the renderer, shown only the
         # vague English meaning, handed back "Inte jag." and the repair changed nothing, so the same finding stopped the
         # file twice. A render that merely repeats the flagged line keeps the repair's own concrete edit.
         proposed = [edit for edit in item['edits']
@@ -4672,7 +4672,7 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
 
 def repair_flagged_translation(job, rows, flags, *, target_key='sv', target_language='Swedish', record=None):
     """Repair the flagged rows (repair_flagged_translation_split); a repaired row that now has a verified defect it did not have before
-    (deterministic_flags: script, units, fixed word senses, grammar rules) goes back to its text before the repair. Godzilla (dev job 296): the
+    (deterministic_flags: script, units, fixed word senses, grammar rules) goes back to its text before the repair. SampleFilm (regression case): the
     repair followed a wrong review and wrote "för att döda" for 死ぬために (to die); the verified rule then refused the file."""
     from numeral_scale import repair_standalone_scales
     rows, scales = repair_standalone_scales(rows, flags, target_key)
@@ -4733,7 +4733,7 @@ def repair_flagged_translation_once(job, rows, flags, *, target_key='sv', target
                          [flag for flag in flags if flag['id'] in batch_ids],
                          target_key=target_key, target_language=target_language, record=record)
         return result
-    # Unraid job 57 (Z Nation 4x02, "Who won't?"): the grammar task wrote "Vem kommer inte göra det?" without seeing any remark, the
+    # regression case(Example Series 4x02, "Who won't?"): the grammar task wrote "Vem kommer inte göra det?" without seeing any remark, the
     # word-count guard refused it there, and the meaning repair below then wrote the same words, which were refused as copied from the
     # remark (the reviewer had suggested them too). Wording found independently is not a copy.
     grammar_proposals = {}
@@ -4742,7 +4742,7 @@ def repair_flagged_translation_once(job, rows, flags, *, target_key='sv', target
                                          target_key=target_key, target_language=target_language, flags=flags, record=record,
                                          proposals=grammar_proposals)
         # The grammar task sees no remark and may not change the word count, so a wrong tense ("Jag önskar att vi hade haft tid" for
-        # "I wish we had time", FORTITUDE job 218: returned unchanged four times and the file was refused) can never be repaired there.
+        # "I wish we had time", NORTHFIELD job 218: returned unchanged four times and the file was refused) can never be repaired there.
         # A row it leaves unchanged goes on to the ordinary repair below, which reads the remark (and refuses wording copied from it);
         # the independent final review still judges the result.
         before = {row['id']: row[target_key] for row in rows if row['id'] in ids}
@@ -4835,7 +4835,7 @@ def repair_flagged_translation_once(job, rows, flags, *, target_key='sv', target
                   if (phrase := reason_copy(item[target_key], reasons_by_id.get(row['id'], []),
                                             [row.get('source', ''), row.get(target_key, ''),
                                              grammar_proposals.get(row['id'], '')]))]
-        # Unraid job 58 (Z Nation 4x03): told only about the latest refused wording, the repair went back and forth between
+        # regression case(Example Series 4x03): told only about the latest refused wording, the repair went back and forth between
         # "mitt första" and "min första" for four rounds. A wording refused before is asked for again once, like a copy. Keeping
         # the current line unchanged stays allowed the first time a row is flagged (a remark can be wrong); once the same row has
         # been refused in an earlier round too, keeping it is a repeat as well.
@@ -4856,7 +4856,7 @@ def repair_flagged_translation_once(job, rows, flags, *, target_key='sv', target
                     'copied': [{'id': row_id, 'phrase': phrase} for row_id, phrase in copied]})
         if attempt:
             # A reviewer's remark can name the RIGHT fix too ("det borde vara 'den här branschen'",
-            # real job 25), so a second copy is accepted and noted; the independent re-review judges it.
+            # regression case), so a second copy is accepted and noted; the independent re-review judges it.
             if record is not None:
                 record({'stage': 'copied_reason_accepted',
                         'copied': [{'id': row_id, 'phrase': phrase} for row_id, phrase in copied]})
@@ -4892,7 +4892,7 @@ def save_doubtful_report(job, media, rows):
 
 def cluster_windows(flags, rows, size=12):
     """The review's own blocks (12 cues, two shared with the next) that still hold a cluster of flagged cues: as many as the old block rule stopped a
-    file at (`max(2, (cues + 3) // 4)`, three of twelve). A cluster is a broken stretch (Yukon Men: cues 702-718, each translated as its neighbour's
+    file at (`max(2, (cues + 3) // 4)`, three of twelve). A cluster is a broken stretch (Wildlife Sample: cues 702-718, each translated as its neighbour's
     line, got through a file-wide count of 36 flagged of 899) and is repaired or refused, never counted away."""
     flagged = {flag['id'] for flag in flags}
     order = [row['id'] for row in rows]
@@ -5011,7 +5011,7 @@ def review_and_save_translation(job, rows, *, target_key='sv', target_language='
             with their neighbours reviewed again), before the file is refused: a refused 44-minute episode costs an hour of rented GPU.
 
             A finding on a cut-off row that says the TRANSLATION is wrong is repaired once like any other before it is reported (user's rule,
-            0.8.291). Unraid jobs 75/76 (Main 0.8.366): "Ja, men jag har blivit led blind" and "reaktorjärndräkt", first named by the final
+            0.8.291). regression case(Main 0.8.366): "Ja, men jag har blivit led blind" and "reaktorjärndräkt", first named by the final
             review, were never sent to a repair, because hard_flags leaves cut-off rows out, and shipped as doubtful lines."""
             tried = {flag['id'] for flag in repair_flags}
             for _ in range(EXTRA_REPAIR_ROUNDS):
@@ -5228,7 +5228,7 @@ def translate_via_english(job, rows, *, refused=None):
 
     A language with its own script (Tamil, Korean ...) often carries English words written in that script ("audience" in Tamil
     letters); Gemma read straight into Swedish turned such a word into "advokaterna", while the same row into English came out right
-    (benchmark 2026-10-17, Sigma). The English wording is only a step: the returned rows keep the ORIGINAL source, so the review
+    (benchmark 2026-10-17, SampleEta). The English wording is only a step: the returned rows keep the ORIGINAL source, so the review
     that follows still judges the Swedish against what was said, never against the English."""
     english = translate(job, rows, target_key='en', target_language='English')
     pivot = [{**row, 'source': item['en']} for row, item in zip(rows, english)]
@@ -5274,7 +5274,7 @@ def reread_language(job, rows):
     policy = job.get('language_policy') or {}
     if policy.get('effective_language'):
         return policy['effective_language']
-    # A language pack was chosen because the file's speech probes heard that language (Glemselens øy, dev job 265: unforced, large-v2 and
+    # A language pack was chosen because the file's speech probes heard that language (Nordic Sample, regression case: unforced, large-v2 and
     # Qwen read the Norwegian "Jeg er Joe." as English "Yeah, Joe." and replaced it).
     if (job.get('norwegian_reader') or {}).get('chosen'):
         return 'no'
@@ -5562,7 +5562,7 @@ def reread_foreign_context(job, media, rows, records):
 
 
 def context_readings(job, media, rows, ids):
-    """Unraid job 64 (Z Nation 4x02, row 411 "Yes, sir, I'm three."): read tightly, the readers disagreed (large-v3 "Yes, sir", large-v2
+    """regression case(Example Series 4x02, row 411 "Yes, sir, I'm three."): read tightly, the readers disagreed (large-v3 "Yes, sir", large-v2
     "I'm three", Qwen "On three"); with 2 s or more of the audio before it large-v3 heard "Yes, sir. On three?" every time (word probability
     0.70-0.97). Each row is read again in CONTEXT_WINDOWS with large-v3 and large-v2, keeping only the words timed inside the row.
     {row id: [{'name': 'context' | 'v2', 'text', 'confidence', 'window'}]}"""
@@ -5608,8 +5608,8 @@ def judge_conflicting_rows(job, rows, records, readings, *, call=None):
     """Rows whose readers heard different words: the language model chooses among the wordings the readers heard (never its own text) and
     the source judge's guards apply (app/source_judge.py). A choice is applied only when the judge says the current wording has an error,
     EVERY model family that read the place heard the chosen wording at least once (at least two families) and more families stand behind it
-    than behind the current one. Replay over 40 disputed rows of 18 saved files: with two families of three allowed, Agnes "Jeg må bli
-    lyktig." became the equally invented "liktet"; only all-family wordings remain (Z Nation row 411 "Yes, sir. On three."). Returns the changed ids."""
+    than behind the current one. Replay over 40 disputed rows of 18 saved files: with two families of three allowed, SamplePerson "Jeg må bli
+    lyktig." became the equally invented "liktet"; only all-family wordings remain (Example Series row 411 "Yes, sir. On three."). Returns the changed ids."""
     from asr_windows import _family
     by_id = {row['id']: row for row in rows}
     judged = [dict(row) for row in rows]
@@ -5695,7 +5695,7 @@ def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, jud
         continuation = (confirmed_continuation(rows[index - 1], row, readings[row['id']])
                         if text is None and index and record['decision'] != 'för få modellfamiljer läste stället' else None)
         if continuation:
-            # Stuart (Unraid job 72, rows 440/441): the first word of this row closes the previous row's sentence; both rows change.
+            # SampleSeries (regression caserows 440/441): the first word of this row closes the previous row's sentence; both rows change.
             left = rows[index - 1]
             new_left, new_right = continuation['rows']
             record.update(decision='radgränsen flyttad efter bekräftad fortsättning', candidate=new_right['source'],
@@ -5799,7 +5799,7 @@ def translate_and_review(job, rows, *, announce=lambda stage: None):
     job['reread_rows'] = []
     # Unpunctuated rows are given punctuation first, so that sentence fragments are not translated as sentences.
     restore_source_punctuation(rows, punctuation_call)
-    # Z Nation 4x02 (Unraid jobs 64/73/74): a boundary inside a sentence moves to a sentence end of the same two rows, timed by Whisper's words.
+    # Example Series 4x02 (regression case): a boundary inside a sentence moves to a sentence end of the same two rows, timed by Whisper's words.
     cut_words = job.pop('_sentence_cut_words', None)
     if cut_words:
         moved, job['sentence_cuts'] = move_cuts_to_sentence_ends(rows, cut_words)
@@ -5852,7 +5852,7 @@ def translate_and_review(job, rows, *, announce=lambda stage: None):
 
 
 def reread_after_final_attempt(job, rows, translated, error, *, announce=lambda stage: None):
-    """Unraid job 64 (Z Nation 4x02): "Yes, sir, I'm three." was first doubted by the FINAL review, so the audio behind it was never read again
+    """regression case(Example Series 4x02): "Yes, sir, I'm three." was first doubted by the FINAL review, so the audio behind it was never read again
     (that happens only between the attempts), although another pass heard "On three?". The rows that refuse the file and were not read again
     yet are read now with the same rules (reread_flagged_rows: two model families must agree); only rows whose source then changed are
     translated again, and the whole file is reviewed once more with the same final review. Nothing changed: the file is refused as before."""
@@ -6297,7 +6297,7 @@ def write_srt(job, media, rows, *, target_key='sv'):
     if output.exists():
         raise FileExistsError(f'En {suffix} finns redan; SubSynq skriver aldrig över den automatiskt.')
     chunks = []
-    # At most two lines of 42 characters (Z Nation 4x03, Unraid job 76: one line per cue, up to 107 characters, edge to edge on a 65-inch TV).
+    # At most two lines of 42 characters (Example Series 4x03, regression case: one line per cue, up to 107 characters, edge to edge on a 65-inch TV).
     cues = layout_cues([(row['start'], row['end'], row.get(target_key, row.get('sv', ''))) for row in rows])
     for number, (start, end, text) in enumerate(cues, 1):
         chunks.append(f"{number}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{text}\n")

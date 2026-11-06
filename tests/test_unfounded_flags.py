@@ -17,7 +17,7 @@ def row(row_id, source, sv):
     return {'id': row_id, 'start': row_id, 'end': row_id + 1, 'source': source, 'sv': sv}
 
 
-# Real findings of dev jobs 43 (Ein Talent fürs Morden) and 44 (Man of War), gemma4:26b reviewing.
+# Real findings of regression case(Sample Delta) and 44 (Sample Gamma), gemma4:26b reviewing.
 SIE = [
     (row(3, 'Ich weiß, wer Sie sind.', 'Jag vet vem ni är.'),
      flag(3, "Övergång från formellt 'Sie' till informellt 'du' ändrar tonen i samtalet.", 'grammar')),
@@ -108,7 +108,7 @@ class AddressChoiceTests(unittest.TestCase):
         self.assertFalse(is_address_choice(finding, 'dass Sie sich in einen Mörder hineinversetzen', 'att du kan sätta dig in i en Mörder'))
 
 
-# Real findings: Nelly Rapp (dev jobs 57, 60, 61, 62, 63) and FRANCE (job 71). The reviewer calls a word wrong and then names the same word as right.
+# Real findings: Nelly Rapp (regression case) and FRANCE (job 71). The reviewer calls a word wrong and then names the same word as right.
 SELF_CONTRADICTING = [
     (row(22, 'Men vems stjärt?', 'Men vems stjärt?'),
      flag(22, "Ordfel i 'stjärt'. Det korrekta ordet är 'stjärt' (vilket redan finns i källan), men i målspråket är det stavat fel eller så är det en "
@@ -247,7 +247,7 @@ class ReviewIgnoresUnfoundedFindingsTests(unittest.TestCase):
 
 
 class RayGunnSelfContradictionTests(unittest.TestCase):
-    """Ray Gunn (dev job 275): a correct line was flagged with a fix identical to what it already says, and the file was refused."""
+    """Sample Trailer (regression case): a correct line was flagged with a fix identical to what it already says, and the file was refused."""
     TARGET = 'Säg mig vem som anlitade dig, annars kastar jag ut dig genom fönstret.'
 
     def test_should_be_x_not_x_is_a_contradiction(self):
@@ -271,7 +271,7 @@ class VerifiedRuleOverReviewTests(unittest.TestCase):
     SOURCE = '死ぬためだけに作られた兵器です'
 
     def test_a_review_asking_dying_to_become_killing_is_set_aside(self):
-        # Godzilla (dev jobs 245 and 296)
+        # SampleFilm (regression caseand 296)
         from translation_qa import asks_dying_to_become_killing
         flag = {'id': 11, 'category': 'meaning', 'target_quote': 'för att dö',
                 'reason': 'Källtexten beskriver ett vapen skapat för att man ska dö (att döda), men översättningen säger att vapnet ska dö.'}

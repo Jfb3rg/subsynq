@@ -11,7 +11,7 @@ SWEDEN = dict(BULGARIA, id='2', price=.3915, machine_id=45668, country='SE', loc
 
 
 class RentedServerLocationTests(unittest.TestCase):
-    """Dev job 50: Sweden was chosen in the plan, no Swedish server was free, Bulgaria was rented and nothing on
+    """regression case: Sweden was chosen in the plan, no Swedish server was free, Bulgaria was rented and nothing on
     the job said so."""
 
     def rent(self, offers, *, country=None, machine=None):

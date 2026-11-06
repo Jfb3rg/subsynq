@@ -8,7 +8,7 @@ from asr_windows import correct_confirmed_word_onsets
 
 class ConfirmedOnsetTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = json.loads(Path(__file__).with_name('fixtures').joinpath('fortitude-confirmed-onset.json').read_text())
+        self.fixture = json.loads(Path(__file__).with_name('fixtures').joinpath('confirmed-onset.json').read_text())
 
     def run_onset(self):
         return correct_confirmed_word_onsets(self.fixture['final'], self.fixture['rescue'], self.fixture['v2'])

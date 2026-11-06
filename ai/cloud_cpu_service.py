@@ -65,7 +65,7 @@ ALLOWED_OPTIONS = {
 }
 
 # KB-Whisper reads Swedish (app/swedish_reader.py) and NB-Whisper is the extra Norwegian reader (app/norwegian_reader.py), same repository names;
-# each is downloaded by faster-whisper on its first request. Without NB-Whisper here the rented server refused it (dev jobs 205, 206).
+# each is downloaded by faster-whisper on its first request. Without NB-Whisper here the rented server refused it (regression case).
 ALLOWED_WHISPER_MODELS = ("large-v3", "large-v2", "KBLab/kb-whisper-large", "NbAiLab/nb-whisper-large")
 
 # At most ONE Whisper model is resident, as in the local worker: asking for

@@ -14,9 +14,9 @@ KOREAN = ['나는 돌아올 거야.', '이건 내 이야기야.', '어디 가는
 CHINESE = ['我会回来的，别担心。', '这是我的故事，你听我说。', '你要去哪里呢，告诉我。']
 JAPANESE = ['私は必ず戻ってきます。', 'これは私の物語です。', 'どこへ行くのですか。', '明日の朝に会いましょう。']
 
-# Real KING trailer (dev job 64): what Whisper wrote in three neighbouring cues; the border between the first two cuts through "समंदर | है".
-KING = ['मेरे दुश्मन समझ रहे थे मैं, अब कभी लोटके ना होगा, एक गुम्रामी का समुदर', 'है, उसमें ही जाके दूखा, बागी मेरी कहानी है,', 'सारी दुनिया को जो सुनाओ,']
-KING_RUN = 'मेरे दुश्मन समझ रहे थे मैं अब कभी लौट के ना आऊँगा एक गुमनामी का समुद्र है उसमें ही जाके डूब जाएँगे अब बागी मेरी कहानी है सारी दुनिया को जो सुनाओ'
+# Real SAMPLE_BETA trailer (regression case): what Whisper wrote in three neighbouring cues; the border between the first two cuts through "समंदर | है".
+SAMPLE_BETA = ['मेरे दुश्मन समझ रहे थे मैं, अब कभी लोटके ना होगा, एक गुम्रामी का समुदर', 'है, उसमें ही जाके दूखा, बागी मेरी कहानी है,', 'सारी दुनिया को जो सुनाओ,']
+SAMPLE_BETA_RUN = 'मेरे दुश्मन समझ रहे थे मैं अब कभी लौट के ना आऊँगा एक गुमनामी का समुद्र है उसमें ही जाके डूब जाएँगे अब बागी मेरी कहानी है सारी दुनिया को जो सुनाओ'
 
 
 def cues(texts, gap=.5):
@@ -106,11 +106,11 @@ class RunTests(unittest.TestCase):
 
 class DistributeTests(unittest.TestCase):
     def test_the_real_king_run_is_cut_into_the_same_three_cues_without_losing_a_word(self):
-        pieces = reader_plan.distribute(KING, KING_RUN, 'Devanagari')
+        pieces = reader_plan.distribute(SAMPLE_BETA, SAMPLE_BETA_RUN, 'Devanagari')
         self.assertTrue(pieces[0].endswith('समुद्र'), pieces[0])
         self.assertTrue(pieces[1].startswith('है उसमें'), pieces[1])
         self.assertEqual(pieces[2], 'सारी दुनिया को जो सुनाओ')
-        self.assertEqual(' '.join(pieces).split(), KING_RUN.split(), 'every word of the run ends up in a cue, in order')
+        self.assertEqual(' '.join(pieces).split(), SAMPLE_BETA_RUN.split(), 'every word of the run ends up in a cue, in order')
 
     def test_a_word_qwen_adds_follows_the_word_before_it_and_a_leading_one_goes_to_the_first_cue(self):
         pieces = reader_plan.distribute(['एक दो तीन', 'चार पांच'], 'शून्य एक दो तीन नया चार पांच', 'Devanagari')
@@ -138,15 +138,15 @@ class DistributeTests(unittest.TestCase):
 
 class ApplyTests(unittest.TestCase):
     def test_qwens_words_replace_whispers_and_every_cue_keeps_whispers_timing(self):
-        original = cues(KING)
-        result, record, run_record = reader_plan.apply_readings(original, [[0, 1, 2]], [KING_RUN], 'Devanagari')
+        original = cues(SAMPLE_BETA)
+        result, record, run_record = reader_plan.apply_readings(original, [[0, 1, 2]], [SAMPLE_BETA_RUN], 'Devanagari')
         self.assertEqual(len(run_record), 1)
         self.assertTrue(run_record[0]['accepted'])
         for before, after in zip(original, result):
             self.assertEqual((after['start'], after['end'], after['confidence']), (before['start'], before['end'], before['confidence']))
         self.assertEqual(result[2]['text'], 'सारी दुनिया को जो सुनाओ')
         self.assertEqual([row['used'] for row in record], [True, True, True])
-        self.assertEqual(original[0]['text'], KING[0], 'the input is not changed')
+        self.assertEqual(original[0]['text'], SAMPLE_BETA[0], 'the input is not changed')
 
     def test_a_refused_run_keeps_every_cue_and_says_why(self):
         result, record, run_record = reader_plan.apply_readings(cues(HINDI[:2]), [[0, 1]], ['I will come back and tell my story'], 'Devanagari')
@@ -201,8 +201,8 @@ def run_step(items, models, enabled=True, setting='on'):
 
 class WorkerStepTests(unittest.TestCase):
     def test_each_run_is_read_once_with_the_language_clue_and_the_words_are_cut_into_the_cues(self):
-        models = FakeModels([KING_RUN])
-        (merged, replaced), job = run_step(cues(KING), models)
+        models = FakeModels([SAMPLE_BETA_RUN])
+        (merged, replaced), job = run_step(cues(SAMPLE_BETA), models)
         self.assertEqual(models.calls, [('Hindi',)], 'three neighbouring cues are one clip, one request')
         self.assertEqual(replaced, {0, 1, 2})
         self.assertEqual(merged[2]['text'], 'सारी दुनिया को जो सुनाओ')
@@ -210,8 +210,8 @@ class WorkerStepTests(unittest.TestCase):
         plan = job['reader_plan']
         self.assertTrue(plan['chosen'])
         self.assertEqual((plan['replaced'], plan['kept'], plan['language']), (3, 0, 'Hindi'))
-        self.assertEqual(plan['rows'][0]['whisper'], KING[0])
-        self.assertEqual(plan['runs'][0]['qwen'], KING_RUN)
+        self.assertEqual(plan['rows'][0]['whisper'], SAMPLE_BETA[0])
+        self.assertEqual(plan['runs'][0]['qwen'], SAMPLE_BETA_RUN)
 
     def test_a_pause_makes_a_second_request(self):
         items = cues(HINDI[:2]) + [{'start': 30.0, 'end': 32.5, 'text': HINDI[2], 'confidence': .5}]
@@ -222,10 +222,10 @@ class WorkerStepTests(unittest.TestCase):
         self.assertEqual(len(job['reader_plan']['runs']), 2)
 
     def test_switched_off_the_step_never_asks_qwen_and_the_job_keeps_whispers_text(self):
-        models = FakeModels([KING_RUN])
-        (merged, replaced), job = run_step(cues(KING), models, setting='')
+        models = FakeModels([SAMPLE_BETA_RUN])
+        (merged, replaced), job = run_step(cues(SAMPLE_BETA), models, setting='')
         self.assertEqual((replaced, models.calls), (set(), []))
-        self.assertEqual([cue['text'] for cue in merged], KING)
+        self.assertEqual([cue['text'] for cue in merged], SAMPLE_BETA)
         self.assertFalse(job['reader_plan']['chosen'])
         self.assertIn('avstängd', job['reader_plan']['reason'])
 

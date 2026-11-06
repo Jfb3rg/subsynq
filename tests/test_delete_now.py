@@ -21,7 +21,7 @@ class DeleteNowTests(unittest.TestCase):
         self.root.mkdir()
         self.database = Path(folder.name) / 'subsynq.db'
         initialize_jobs(self.database)
-        self.media = self.root / 'Z.Nation.S04E02.mkv'
+        self.media = self.root / 'Example.Series.S04E02.mkv'
         self.media.write_bytes(b'video')
         self.subtitle = self.media.with_suffix('.ai.sv.srt')
         self.subtitle.write_text('1\n00:00:01,000 --> 00:00:02,000\nHej\n', encoding='utf-8')
@@ -69,7 +69,7 @@ class DeleteNowTests(unittest.TestCase):
 
 
 class RereadOnTheRentedServerTests(unittest.TestCase):
-    """Unraid job 50 (Z Nation): rereads loaded Whisper on the home CPU although the job ran on a rented GPU."""
+    """regression case(Example Series): rereads loaded Whisper on the home CPU although the job ran on a rented GPU."""
 
     def test_the_rented_server_reads_again_when_the_job_runs_there(self):
         saved = worker.TRANSLATE_URL
@@ -94,8 +94,8 @@ class VisibleDeleteButtonTests(unittest.TestCase):
     """The user (2026-11-02): a small button on every file with an AI subtitle, not hidden behind the job details."""
 
     def item(self, **extra):
-        return {'path': '/tv/Z Nation/Z.Nation.S04E02.mkv', 'name': 'Z.Nation.S04E02.mkv', 'kind': 'episode', 'ai_sv_exists': True,
-                'ai_sv_path': '/tv/Z Nation/Z.Nation.S04E02.ai.sv.srt', 'size_bytes': 1000, 'embedded_sv_exists': False, 'probe': {}, **extra}
+        return {'path': '/tv/Example Series/Example.Series.S04E02.mkv', 'name': 'Example.Series.S04E02.mkv', 'kind': 'episode', 'ai_sv_exists': True,
+                'ai_sv_path': '/tv/Example Series/Example.Series.S04E02.ai.sv.srt', 'size_bytes': 1000, 'embedded_sv_exists': False, 'probe': {}, **extra}
 
     def test_the_row_shows_one_delete_button_next_to_the_actions(self):
         import server

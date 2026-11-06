@@ -74,7 +74,7 @@ class HarmonizeTests(unittest.TestCase):
         self.assertEqual(KB[1]['source'], 'Hekla är en vampyr.', 'the input rows are not changed')
 
     def test_the_real_nelly_rapp_readings_settle_it(self):
-        """Dev job 57 (KB-Whisper) and the large-v3 reading of just those rows, as they came out: row 9's own reading has no name at all."""
+        """regression case(KB-Whisper) and the large-v3 reading of just those rows, as they came out: row 9's own reading has no name at all."""
         texts = rows('Häckla är tillbaka.', 'Hekla är en vampyr.', 'Med krafter farligare än vi någonsin skådat.',
                      'Nu tror man att Hekla vill hitta porten till underjorden.', 'Om vi ska ha en chans mot Ekla måste vi ha silverkorset.', 'Stjärten.', 'Skärten. Måste det vara.')
         witness = {0: 'Häcklar är tillbaka.', 1: 'Jag är glad att jag är tillbaka.', 2: 'Pyr är kraften farligare än vi någonsin skådat.',

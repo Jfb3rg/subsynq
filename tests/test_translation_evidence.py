@@ -235,7 +235,7 @@ class TranslationEvidenceTests(unittest.TestCase):
                 self.assertEqual(result, [row])
 
     def test_meaning_repair_without_grammar_flags_has_no_extra_rewrite(self):
-        # Real Ray Gunn replay: the unsolicited grammar pass changed photos to photons.
+        # Real Sample Trailer replay: the unsolicited grammar pass changed photos to photons.
         rows = [{'id': 0, 'start': 0, 'end': 2, 'source': 'photos are like this business',
                  'sv': 'foton är som det här'}]
         responses = [
@@ -383,7 +383,7 @@ class UntranslatedQuoteTests(unittest.TestCase):
         rendering.start()
         self.addCleanup(rendering.stop)
 
-    """Real job 17: the reviewer correctly saw that `gun` stayed untranslated but quoted the
+    """regression case: the reviewer correctly saw that `gun` stayed untranslated but quoted the
     whole line as source_quote, which the validator rejects -- twice, because the retry never
     said which rule was broken. The validator stays exactly as strict; only the guidance changed."""
 
@@ -460,7 +460,7 @@ class RepairWordingTests(unittest.TestCase):
         rendering.start()
         self.addCleanup(rendering.stop)
 
-    """Real job 17: the reviewer's reason said '(håll med tittning/lyssning)' and the repair copied
+    """regression case: the reviewer's reason said '(håll med tittning/lyssning)' and the repair copied
     that calque, which the next review flagged again."""
 
     ROWS = [{'id': 0, 'start': 0, 'end': 1, 'source': 'Will you be making a statement?',

@@ -10,7 +10,7 @@ sys.path.insert(0, '/app')
 import worker
 from asr_windows import drop_unconfirmed_repeated_starts
 
-# Yukon Men S01E01 (dev jobs 84, 89, 104): the long pass wrote the start of the sentence twice; the short pass heard it once.
+# Wildlife Sample S01E01 (regression case): the long pass wrote the start of the sentence twice; the short pass heard it once.
 LONG_PASS = [
     {'start': 2050.82, 'end': 2053.18, 'text': 'While James works to process 10 cords of wood,', 'confidence': .88},
     {'start': 2054.06, 'end': 2055.30, 'text': 'the hunting party approaches the area where the caribou herd', 'confidence': .96},

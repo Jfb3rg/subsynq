@@ -1,5 +1,5 @@
 {
-  "provenance": "Actual full CPU ASR, Dev 0.8.330, dev-Nr8khC (908.535 s); selected original audio stream 0; unchanged texts/times from trace",
+  "provenance": "Anonymized regression data; not a verified full-media transcript.",
   "final": [
     {
       "start": 7.208,
@@ -295,13 +295,13 @@
     {
       "start": 133.47,
       "end": 134.37,
-      "text": "Fortitude.",
+      "text": "Northfield.",
       "confidence": 0.9545826315879822
     },
     {
       "start": 134.46,
       "end": 136.78,
-      "text": "Yes, fortitude.",
+      "text": "Yes, northfield.",
       "confidence": 0.8832147121429443
     },
     {

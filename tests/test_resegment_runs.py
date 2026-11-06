@@ -9,7 +9,7 @@ def cue(start, end, text, confidence=.9):
     return {'start': start, 'end': end, 'text': text, 'confidence': confidence}
 
 
-# Real cues of Man of War (dev job 49, English track): the 90 s pass cut the first sentences in the middle, in lower
+# Real cues of Sample Gamma (regression caseEnglish track): the 90 s pass cut the first sentences in the middle, in lower
 # case and without a full stop; the 30 s pass heard six proper sentences ("Fastest" more, "in" less).
 LONG = [cue(13.9, 19.7, 'way between two points is a straight line let\'s go russia overnight', .915),
         cue(19.7, 20.9, 'launched its long', .986),
@@ -24,7 +24,7 @@ SHORT = [cue(13.5, 16.1, 'Fastest way between two points is a straight line.', .
 
 
 class ResegmentTests(unittest.TestCase):
-    def test_the_real_man_of_war_run_gets_the_short_passes_sentences_with_the_long_passes_words(self):
+    def test_the_real_sample_gamma_run_gets_the_short_passes_sentences_with_the_long_passes_words(self):
         result = resegment_unpunctuated_runs(LONG, SHORT)
         self.assertEqual([row['text'] for row in result], [
             'Fastest way between two points is a straight line.', "Let's go.",
@@ -62,7 +62,7 @@ class ResegmentTests(unittest.TestCase):
         self.assertEqual(resegment_unpunctuated_runs(LONG, other), LONG)
 
     def test_a_run_is_never_merged_into_fewer_cues(self):
-        # Real cues of the Tamil trailer (dev job 42): one short-pass cue held two long-pass cues.
+        # Real cues of the Tamil trailer (regression case): one short-pass cue held two long-pass cues.
         long = [cue(26.3, 28.3, 'கோடி கோடியா சம்பாரிக்கலாம்'), cue(28.3, 28.7, 'ஏமிரம்')]
         short = [cue(26.4, 28.1, 'கோடி கோடியா சம்பாரிக்கலாம். ஏமிரம்.')]
         self.assertEqual(resegment_unpunctuated_runs(long, short), long)

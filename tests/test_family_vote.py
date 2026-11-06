@@ -16,10 +16,10 @@ def readings(raw):
     return {name: [cue(*item) for item in items] for name, items in raw.items()}
 
 
-# Real HOPE readings (dev job 69, 0.8.276). The burned-in English subtitles say what was spoken:
+# Real SAMPLE_ALPHA readings (regression case.8.276). The burned-in English subtitles say what was spoken:
 # 21 s "My God…", 22.5 "Dispatch. Dispatch.", 48 "That's when all hell broke loose.", 51 "Chief." and 52.5 "Chief?",
 # 57 "The monster is at my house.", 66 "It's not a species we're familiar with.", 75 "Monster or not, that's just not right!"
-HOPE = readings({
+SAMPLE_ALPHA = readings({
     'context': [(24.45, 25.17, '상왕 씨.', .30), (25.25, 29.31, '죄다 삿불 끈다고 빠져나가서 그 사람들이 모자랄 테니까.', .58), (58.10, 58.80, '그러니까요.', .53)],
     'precision': [(22.00, 25.23, '상황실 상황실', .67), (57.54, 58.78, '저희 집에 있다니까요', .16), (67.76, 69.36, '우리가 아는 척은 아닙니다.', .53)],
     'rescue': [(19.84, 21.36, '세상에', .84), (23.08, 25.18, '상황실 상황실', .61), (56.42, 58.90, '국회문 절집에 있다니 깨워.', .57),
@@ -47,10 +47,10 @@ def near(rows, start):
 
 class HopeTests(unittest.TestCase):
     def test_the_older_rule_leaves_all_of_these_lines_out(self):
-        self.assertEqual(restore_multi_pass_agreed_speech(FINAL, HOPE), FINAL)
+        self.assertEqual(restore_multi_pass_agreed_speech(FINAL, SAMPLE_ALPHA), FINAL)
 
     def test_two_families_reading_a_line_alike_bring_it_back_without_a_voice_filtered_pass(self):
-        result = restore_family_voted_speech(FINAL, HOPE)
+        result = restore_family_voted_speech(FINAL, SAMPLE_ALPHA)
         self.assertEqual(result[:2], FINAL[:2], 'the existing cues are untouched')
         new = added(result)
         self.assertEqual(len(new), 8, [row['text'] for row in new])
@@ -59,25 +59,25 @@ class HopeTests(unittest.TestCase):
 
     def test_the_outvoted_family_does_not_decide_the_words(self):
         """Whisper v3 read "국회문" twice; v2 and Qwen read "괴물": the monster line is what the subtitles say."""
-        line = near(added(restore_family_voted_speech(FINAL, HOPE)), 56.4)[0]
+        line = near(added(restore_family_voted_speech(FINAL, SAMPLE_ALPHA)), 56.4)[0]
         self.assertIn('괴물', line['text'])
         self.assertNotIn('국회', line['text'])
         self.assertLess(abs(line['start'] - 56.4), .6, 'timing comes from the passes, not from the clip window')
 
     def test_demanding_an_independent_family_keeps_only_what_v2_or_qwen_confirms(self):
-        new = added(restore_family_voted_speech(FINAL, HOPE, independent_families=True))
+        new = added(restore_family_voted_speech(FINAL, SAMPLE_ALPHA, independent_families=True))
         self.assertEqual(sorted(round(row['start']) for row in new), [24, 56, 67, 74])
         self.assertTrue(all('괴물' in row['text'] or '상황실' in row['text'] or '우리가' in row['text'] for row in new))
 
     def test_three_families_are_a_stricter_vote(self):
-        new = added(restore_family_voted_speech(FINAL, HOPE, minimum_families=3))
+        new = added(restore_family_voted_speech(FINAL, SAMPLE_ALPHA, minimum_families=3))
         self.assertEqual(sorted(round(row['start']) for row in new), [24, 56, 67])
 
     def test_a_stricter_agreement_leaves_the_loosest_matches_out(self):
-        loose = len(added(restore_family_voted_speech(FINAL, HOPE, minimum_agreement=.6)))
-        strict = len(added(restore_family_voted_speech(FINAL, HOPE, minimum_agreement=.85)))
+        loose = len(added(restore_family_voted_speech(FINAL, SAMPLE_ALPHA, minimum_agreement=.6)))
+        strict = len(added(restore_family_voted_speech(FINAL, SAMPLE_ALPHA, minimum_agreement=.85)))
         self.assertGreater(loose, strict)
-        self.assertEqual(sorted(round(row['start']) for row in added(restore_family_voted_speech(FINAL, HOPE, minimum_agreement=.85))), [22, 74])
+        self.assertEqual(sorted(round(row['start']) for row in added(restore_family_voted_speech(FINAL, SAMPLE_ALPHA, minimum_agreement=.85))), [22, 74])
 
 
 class GuardTests(unittest.TestCase):
@@ -112,7 +112,7 @@ class GuardTests(unittest.TestCase):
 
     def test_the_input_is_not_changed_and_an_empty_input_is_fine(self):
         before = [dict(row) for row in FINAL]
-        restore_family_voted_speech(FINAL, HOPE)
+        restore_family_voted_speech(FINAL, SAMPLE_ALPHA)
         self.assertEqual(FINAL, before)
         self.assertEqual(restore_family_voted_speech([], {}), [])
         self.assertEqual(restore_family_voted_speech(FINAL, {}), FINAL)

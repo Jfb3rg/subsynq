@@ -12,7 +12,7 @@ from translation_qa import (FOREIGN_VETO_MARKERS, UNTRANSLATED_MARKERS, dominant
 
 class TranslationQaTests(unittest.TestCase):
     def test_reads_explicit_language_marker_from_filename(self):
-        self.assertEqual(filename_language_hint('HOPE Official Trailer (2026) tyska.mp4'), 'de')
+        self.assertEqual(filename_language_hint('SAMPLE_ALPHA Official Trailer (2026) tyska.mp4'), 'de')
         self.assertEqual(filename_language_hint('Film Deutsch 1080p.mkv'), 'de')
         self.assertEqual(whisper_language_label('de'), 'tyska')
 

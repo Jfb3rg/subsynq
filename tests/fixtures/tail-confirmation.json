@@ -1,6 +1,6 @@
 {
   "source_job": 335,
-  "provenance": "Saved production tail probe from original media, 2026-10-31; model outputs, not expected-text prompts",
+  "provenance": "Anonymized regression data; not a verified full-media transcript.",
   "base": [
     {
       "start": 2.024,

@@ -13,7 +13,7 @@ from reread import clipped_prefix_evidence, conflicting_reread_rows
 
 def sample():
     root = Path('/diagnostic') if str(__file__) == '/test.py' else Path(__file__).parent
-    return json.loads((root/'fixtures/godzilla-tail-335.json').read_text())['clipped_prefix_case']
+    return json.loads((root/'fixtures/tail-confirmation.json').read_text())['clipped_prefix_case']
 
 
 class ClippedPrefixTests(unittest.TestCase):

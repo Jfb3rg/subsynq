@@ -1,6 +1,6 @@
 """A word list the user keeps for what the speech recognition keeps mishearing: /config/glossary.json, a list of {"heard": "snow goat", "write": "snowgo"}.
 
-Yukon Men (dev job 146): Whisper large-v3 wrote "Snow Goat", "snow goal", "snow goats" and "snow ghosts" for the Alaskan snowmobile, "snowgo"; Qwen3-ASR heard
+Wildlife Sample (regression case): Whisper large-v3 wrote "Snow Goat", "snow goal", "snow goats" and "snow ghosts" for the Alaskan snowmobile, "snowgo"; Qwen3-ASR heard
 "Snowgo could freeze up" and "snowgos" in the audio. The file holds no built-in entries: what the user writes there is applied to the source text, whole words
 only, before anything is translated."""
 import json

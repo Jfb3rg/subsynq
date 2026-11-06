@@ -1,6 +1,6 @@
 """A language model chooses between the readings the ASR passes heard of a doubtful line.
 
-Voting between passes cannot settle every place: in the Man of War German dub two of three engines read "Meine
+Voting between passes cannot settle every place: in the Sample Gamma German dub two of three engines read "Meine
 nicht" where the line is "Meine Nichte", and in the English track the cue "way you make it your life all right
 lights on me this" had a cleaner reading from three other passes that a vote margin held back. A model that knows the
 language can tell which wording is a plausible line of dialogue in context. It only ever CHOOSES between wordings the
@@ -149,7 +149,7 @@ def repeats_neighbour(chosen, current, previous, following, *, shortest=2):
                         return True
                     if not at_end and other[:size] == words[-size:] and not any(v[-size:] == words[-size:] for v in own_forms):
                         return True
-    # Words the choice ADDS that the neighbouring line already holds, anywhere in it: Agnes mot verden (dev job 213) took NB-Whisper's
+    # Words the choice ADDS that the neighbouring line already holds, anywhere in it: SamplePerson mot verden (regression case) took NB-Whisper's
     # "Det er ikke rart når de to mest populære bøkene er Bibelen og" right before "i tre siste runde av årene er Bibelen", so
     # "Bibelen" stood in two lines.
     words = _words(chosen)
@@ -239,11 +239,11 @@ def acceptable_choice(current, chosen, support=1, current_support=1, previous=''
     if repeats_neighbour(chosen, current, previous, following):
         return False
     # A choice that only DROPS words is never a "minimal repair": it needs more model families behind it than the current wording.
-    # MAN OF WAR job 170: "You find me a tour guide yet?" (both large-v3 passes and large-v2) -> "Find me a tour guide yet?" (Qwen only),
+    # SAMPLE GAMMA job 170: "You find me a tour guide yet?" (both large-v3 passes and large-v2) -> "Find me a tour guide yet?" (Qwen only),
     # supports 3 against 3 and the judge itself saying the current wording had no error. Replay of 181 applied choices: 33 such removals, almost
     # all harmful ("Du behöver" -> "behöver", "Je ne supporte plus" -> "Je supporte plus", "C'est" -> "'est", "in OK shape" -> "in shape").
     # With `word_families` (how many model families heard each word of the current wording) it may drop words that at most one family heard:
-    # MAN OF WAR job 180, "... lights on me this" (the long pass alone) -> "... lights on me." -- but never "You" (both large-v3 passes and large-v2).
+    # SAMPLE GAMMA job 180, "... lights on me this" (the long pass alone) -> "... lights on me." -- but never "You" (both large-v3 passes and large-v2).
     if len(chosen_words) < len(current_words) and _is_subsequence(chosen_words, current_words):
         removed = set(current_words) - set(chosen_words)
         lonely = bool(word_families) and all(word_families.get(word, 0) <= 1 for word in removed)
@@ -350,7 +350,7 @@ def choose_readings(rows, call, model, *, batch_size=12, require_error_flag=Fals
 
     The model also says whether the current wording has an error (`a_has_error`, kept in each decision). A choice
     is applied when it passes `acceptable_choice`; with `require_error_flag` it must also be flagged. The guards are
-    what protects the transcript: on dev job 49 a 12B model called the garbled line "way you make it your life all
+    what protects the transcript: on regression casea 12B model called the garbled line "way you make it your life all
     right lights on me this" fine and so the flag alone would have kept it, while on 11 stored traces (English,
     German, Tamil) the guards alone refused every harmful pick that came up (dropped words, a neighbour's words, a
     stutter, a rewrite only one engine heard) and let through only fixes."""

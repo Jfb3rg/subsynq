@@ -11,7 +11,7 @@ import dub_bed
 import worker
 
 RATE = dub_bed.RATE
-LAG = 1161          # MAN OF WAR: the German dub lies 72.6 ms behind the English track
+LAG = 1161          # SAMPLE GAMMA: the German dub lies 72.6 ms behind the English track
 
 
 def tracks(seconds=20.0, dialogue=((2.0, 5.0), (8.0, 9.5)), shout=(12.0, 13.5), seed=1):
@@ -63,8 +63,8 @@ class BedRowTests(unittest.TestCase):
         self.assertLess(removed[0]['median_db'], -15)
         self.assertAlmostEqual(share, 2 / 3)
 
-    def test_the_measured_man_of_war_rows(self):
-        # medians measured on the real file (dev job 152): dialogue 0 to -8 dB, the shout -27.4 dB, "the f**k did I do that?" -16.6 dB with
+    def test_the_measured_sample_gamma_rows(self):
+        # medians measured on the real file (regression case): dialogue 0 to -8 dB, the shout -27.4 dB, "the f**k did I do that?" -16.6 dB with
         # one English-only block ("What?" at 27.5 s): only rows with NO English-only block go
         def blocks(start, values):
             return [(start + .25 * index, value) for index, value in enumerate(values)]
@@ -77,7 +77,7 @@ class BedRowTests(unittest.TestCase):
         self.assertEqual(len(kept), 3)
 
     def test_two_copies_of_the_same_language_never_lose_a_row(self):
-        # Stuart Fails to Save the Universe: two identical tracks (correlation 1.00, no lag); every row "is in both"
+        # Example Series: two identical tracks (correlation 1.00, no lag); every row "is in both"
         english, _ = tracks()
         levels = dub_bed.block_levels(english, english.copy(), 0)
         kept, removed, share = dub_bed.bed_rows(ROWS, levels)
@@ -90,7 +90,7 @@ class BedRowTests(unittest.TestCase):
 
 
 class OverfullRowTests(unittest.TestCase):
-    """MAN OF WAR (dev job 170): "the f**k did I do that?" (27.61-29.03 s, short pass only, confidence 0.23) lies in the shared bed except one
+    """SAMPLE GAMMA (regression case): "the f**k did I do that?" (27.61-29.03 s, short pass only, confidence 0.23) lies in the shared bed except one
     quarter second of English-only sound at 27.75 s; Whisper large-v2 heard "Run!" at 27.46-27.82 s and the user hears "Run"."""
     LEVELS = [(27.5, -16.5), (27.75, -4.8), (28.0, -18.0), (28.25, -17.0), (28.5, -16.6), (28.75, -16.0)]
     ROW = {'start': 27.61, 'end': 29.03, 'text': 'the f**k did I do that?', 'confidence': .23}
@@ -104,7 +104,7 @@ class OverfullRowTests(unittest.TestCase):
         self.assertEqual((changes[0]['replaced_by'], changes[0]['own_seconds']), ('Run!', .25))
 
     def test_without_a_fitting_reading_the_row_stays(self):
-        # APOCALYPSE Z (dev job 185): "Sí, aquí Core." was removed although every reader hears it
+        # SAMPLE EPSILON (regression case): "Sí, aquí Core." was removed although every reader hears it
         rows, changes = dub_bed.overfull_rows([self.ROW], self.LEVELS, {'precision': [self.ROW]})
         self.assertEqual(rows, [self.ROW])
         self.assertTrue(changes[0]['kept'])
