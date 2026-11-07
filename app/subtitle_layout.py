@@ -115,3 +115,47 @@ def layout_cue(start, end, text, max_line=MAX_LINE):
     # Too short to split: the best two lines, even if longer than max_line.
     cut = min(range(1, len(words)), key=lambda c: (abs(len(' '.join(words[:c])) - len(' '.join(words[c:]))), c)) if len(words) > 1 else None
     return [(start, end, text if cut is None else ' '.join(words[:cut]) + '\n' + ' '.join(words[cut:]))]
+
+
+_TIMING = re.compile(r'^\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*$')
+
+
+def _seconds(h, m, s, ms):
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms.ljust(3, '0')) / 1000
+
+
+def _timestamp(seconds):
+    millis = round(max(0.0, float(seconds)) * 1000)
+    hours, millis = divmod(millis, 3600000)
+    minutes, millis = divmod(millis, 60000)
+    secs, millis = divmod(millis, 1000)
+    return f'{hours:02}:{minutes:02}:{secs:02},{millis:03}'
+
+
+def parse_srt(text):
+    """[(start, end, text)] of a plain SRT file, the cue's lines joined with spaces; None when any block is not a numbered, timed cue."""
+    cues = []
+    for block in re.split(r'\n\s*\n', str(text).replace('\r\n', '\n').strip()):
+        lines = block.split('\n')
+        timing = _TIMING.match(lines[1]) if len(lines) >= 3 and lines[0].strip().isdigit() else None
+        if not timing:
+            return None
+        values = timing.groups()
+        cues.append((_seconds(*values[:4]), _seconds(*values[4:]), ' '.join(line.strip() for line in lines[2:] if line.strip())))
+    return cues
+
+
+def format_srt(cues):
+    return '\n'.join(f'{number}\n{_timestamp(start)} --> {_timestamp(end)}\n{text}\n' for number, (start, end, text) in enumerate(cues, 1))
+
+
+def relayout_srt(text, max_line=MAX_LINE):
+    """The file laid out like a newly written subtitle (layout_cues), or None when it cannot be read as SRT or already has no line longer
+    than max_line. Every word stays, in order; only line breaks, the joining of a sentence's fragments and the splitting of a cue change."""
+    cues = parse_srt(text)
+    if not cues or all(len(line) <= max_line for line in str(text).replace('\r\n', '\n').split('\n')):
+        return None
+    laid_out = layout_cues(cues, max_line)
+    if ' '.join(t for _, _, t in laid_out).split() != ' '.join(t for _, _, t in cues).split():
+        return None
+    return format_srt(laid_out)

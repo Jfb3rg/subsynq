@@ -2452,6 +2452,26 @@ def plan_consensus_windows(merged, readings, *, minimum_passes=3, vad_passes=('p
     return windows + [window for _, window in doubtful[:maximum_doubtful]]
 
 
+def _words_with_apostrophes(text):
+    return re.findall(r"[\w']+", str(text).casefold().replace('’', "'"))
+
+
+def _one_word_rescue(text, members, confidence):
+    """The short-window rescue pass (alone or its pieces joined) heard the cue's words but one, more confidently. Its own family is the cue's,
+    so the family mean hides it ("Yes, sir, I'm three." against "Yes, sir! On three?", 0.72/0.78: the cue was never doubted and shipped
+    wrong). Such a cue becomes doubtful: the other wording goes to the existing checks, which still need their own evidence to change it.
+    Replay over the saved jobs: 20 of 10 800 rows."""
+    own = _words_with_apostrophes(text)
+    if len(own) < 2:
+        return False
+    for name, other in members:
+        words = _words_with_apostrophes(other.get('text', ''))
+        if (_base_name(name) == 'rescue' and len(words) == len(own) and sum(a != b for a, b in zip(words, own)) == 1
+                and float(other.get('confidence', 0)) >= confidence + .05):
+            return True
+    return False
+
+
 def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agreement=.85, maximum_candidates=5,
                          agreement=.8, word_families=None):
     """Per doubtful final cue, the other wordings the passes heard of the same time, for a judge to choose between.
@@ -2479,7 +2499,8 @@ def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agre
         if not members:
             continue
         confidence = float(row.get('confidence', 0))
-        if not (0 < confidence < maximum_confidence or _mean_agreement(text, members) < minimum_agreement):
+        if not (0 < confidence < maximum_confidence or _mean_agreement(text, members) < minimum_agreement
+                or _one_word_rescue(text, members, confidence)):
             continue
 
         def support_of(wording):

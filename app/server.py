@@ -34,7 +34,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.372"
+VERSION = "0.8.373"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1620,7 +1620,7 @@ class Handler(BaseHTTPRequestHandler):
                              '/settings/media', '/settings/webhook-token', '/settings/language',
                              '/cloud-cost', '/cloud-key', '/cloud-key/remove', '/cloud-refresh',
                              '/cloud-offer', '/jobs/start', '/jobs/retry', '/jobs/delete', '/jobs/restart', '/jobs/cancel',
-                             '/cleanup/trash', '/cleanup/restore', '/cleanup/empty', '/cleanup/retention',
+                             '/cleanup/trash', '/cleanup/restore', '/cleanup/empty', '/cleanup/retention', '/cleanup/rewrap',
                              '/jobs/bulk', '/models/remove', '/models/update', '/models/pack', '/login', '/settings/security',
                              '/api/client-timing', '/cloud/session/start', '/cloud/session/stop',
                              '/settings/opensubtitles', '/jobs/opensubtitles'):
@@ -1894,10 +1894,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
-        if self.path in ('/cleanup/trash', '/cleanup/restore', '/cleanup/empty', '/cleanup/retention'):
+        if self.path in ('/cleanup/trash', '/cleanup/restore', '/cleanup/empty', '/cleanup/retention', '/cleanup/rewrap'):
             trash_dir = CONFIG / 'trash'
             try:
-                if self.path == '/cleanup/trash':
+                if self.path == '/cleanup/rewrap':
+                    scan = subtitle_cleanup.load_scan(CONFIG)
+                    chosen = [item['path'] for item in scan['items'] if item.get('kind') == 'ai']
+                    if not chosen:
+                        raise ValueError('Inga AI-undertexter hittades; skanna först.')
+                    batch, changed, unchanged, failed = subtitle_cleanup.rewrap_files(chosen, CLEANUP_ROOTS, trash_dir)
+                    for failed_path, reason in failed:
+                        logging.warning('AI-undertext formades inte om: %s (%s)', failed_path, reason)
+                    logging.info('Städa undertexter: %d AI-undertexter formades om (original i %s), %d redan rätt, %d misslyckades',
+                                 changed, batch, unchanged, len(failed))
+                    location = f'/cleanup?rewrapped={changed}&failed={len(failed)}'
+                elif self.path == '/cleanup/trash':
                     scan = subtitle_cleanup.load_scan(CONFIG)
                     if form.get('mode', [''])[0] == 'filtered':
                         chosen = [item['path'] for item in subtitle_cleanup.apply_filters(
@@ -2663,7 +2674,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 ui_lang = data["ui_language"]
                 notice = ""
-                for key in ("moved", "restored", "emptied", "retention"):
+                for key in ("moved", "restored", "emptied", "retention", "rewrapped"):
                     if key in query:
                         notice = t(f"cleanup_notice_{key}", ui_lang).format(n=query[key][0][:9])
                         extra = query.get("failed", query.get("skipped", ["0"]))[0][:9]

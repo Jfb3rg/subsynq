@@ -10,6 +10,11 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.373
+
+- Ny knapp under Städa undertexter: "Bryt om långa rader" ger befintliga AI-undertexter högst två rader à 42 tecken, som nya undertexter. Inga ord ändras; originalet läggs först i papperskorgen och kan återställas.
+- En replik där en noggrannare avlyssning hörde ett annat ord, säkrare, räknas nu som osäker och kontrolleras, i stället för att gå igenom oprövad.
+
 ## 0.8.372
 
 - En hyrd molnserver som inte gick att stänga glöms inte längre: SubSynq försöker igen varje minut (och när arbetaren startar) tills leverantören bekräftar att den är stängd, och visar en varning under tiden i stället för att säga att den är stängd.

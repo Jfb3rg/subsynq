@@ -82,6 +82,21 @@ class CleanupRouteTests(unittest.TestCase):
         self.assertEqual(subtitle_cleanup.list_trash(self.config / "trash"), [])
         self.assertFalse(self.srt.exists())
 
+    def test_the_rewrap_button_lays_out_only_ai_subtitles_and_restore_brings_the_original_back(self):
+        long = ("1\n00:00:10,000 --> 00:00:14,000\nHan kommer att hitta vad än det var som slet sönder hennes ansikte "
+                "och slukade hennes själ.\n")
+        ai = self.root / "Film" / "Film.ai.sv.srt"
+        ai.write_text(long, encoding="utf-8")
+        self.srt.write_text(long, encoding="utf-8")
+        subtitle_cleanup.save_scan(self.config, subtitle_cleanup.scan_srt([self.root]))
+        status, location = self.post("/cleanup/rewrap")
+        self.assertEqual((status, location), (303, "/cleanup?rewrapped=1&failed=0"))
+        self.assertTrue(all(len(line) <= 42 for line in ai.read_text(encoding="utf-8").split("\n")))
+        self.assertEqual(self.srt.read_text(encoding="utf-8"), long)
+        batch = subtitle_cleanup.list_trash(self.config / "trash")[0]["id"]
+        self.assertEqual(self.post("/cleanup/restore", batch=batch), (303, "/cleanup?restored=1&skipped=0"))
+        self.assertEqual(ai.read_text(encoding="utf-8"), long)
+
     def test_filtered_mode_moves_every_match_and_nothing_else(self):
         other = self.root / "Film" / "Film.ai.sv.srt"
         other.write_text("1\n00:00:01,000 --> 00:00:02,000\nHej\n", encoding="utf-8")

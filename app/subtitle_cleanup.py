@@ -5,6 +5,7 @@ Nothing here ever deletes a file directly. Selected subtitles are moved to
 or the trash emptied later. Only real (non-symlink) *.srt files below the
 media roots can be touched; video files are never considered.
 """
+import hashlib
 import json
 import os
 import re
@@ -18,6 +19,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from i18n import STRINGS, t
+from subtitle_layout import relayout_srt
 from library import SIDECAR_FLAGS, VIDEO_EXTENSIONS, _language_class
 
 PAGE_SIZE = 200
@@ -335,6 +337,46 @@ def trash_files(paths, roots, trash_dir, now=None):
     return batch_id, moved, failed
 
 
+def _sha(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def rewrap_files(paths, roots, trash_dir, now=None):
+    """Lay out SubSynq's own subtitles (".ai." files) with at most two lines of 42 characters, like a newly written one. The original is first
+    copied into a new trash batch, so "Restore" brings it back; a file that already fits, or cannot be read as SRT, is left as it is.
+    Returns (batch_id, changed, unchanged, failed)."""
+    trash_dir = Path(trash_dir)
+    stamp = datetime.fromtimestamp(now or time.time()).strftime("%Y%m%d-%H%M%S")
+    batch_id, counter = stamp, 0
+    while (trash_dir / batch_id).exists():
+        counter += 1
+        batch_id = f"{stamp}-{counter}"
+    batch = trash_dir / batch_id
+    changed, unchanged, failed, entries = 0, 0, [], []
+    for path in dict.fromkeys(paths):
+        try:
+            source, root = checked_path(path, roots)
+            if classify(source.name) != "ai":
+                raise ValueError("Bara SubSynqs egna AI-undertexter formas om")
+            text = source.read_text(encoding="utf-8-sig")
+            laid_out = relayout_srt(text)
+            if laid_out is None:
+                unchanged += 1
+                continue
+            destination = batch / root.name / source.relative_to(root)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(source), str(destination))
+            write_atomically(source, laid_out)
+            entries.append({"original": str(source), "trashed": str(destination), "size": source.stat().st_size,
+                            "rewrapped": True, "written_sha": _sha(laid_out)})
+            changed += 1
+        except (ValueError, OSError, UnicodeDecodeError) as error:
+            failed.append((str(path), str(error)))
+    if entries:
+        (batch / "manifest.json").write_text(json.dumps({"files": entries}), encoding="utf-8")
+    return batch_id, changed, unchanged, failed
+
+
 def _manifest_files(batch):
     try:
         return json.loads((Path(batch) / "manifest.json").read_text(encoding="utf-8"))["files"]
@@ -370,6 +412,14 @@ def restore_batch(batch_id, roots, trash_dir):
                 raise ValueError("Ogiltig sökväg i papperskorgen")
             if not any(original.resolve().is_relative_to(Path(root).resolve()) for root in roots):
                 raise ValueError("Ursprungsmappen ligger utanför mediamapparna")
+            if entry.get("rewrapped") and original.exists():
+                # The file there is the one rewrap_files wrote: put the original back only if nobody has changed it since.
+                if _sha(original.read_text(encoding="utf-8-sig")) != entry.get("written_sha"):
+                    raise ValueError("Filen har ändrats efter omformningen; originalet ligger kvar i papperskorgen")
+                shutil.copy2(str(trashed), str(original))
+                trashed.unlink()
+                restored += 1
+                continue
             if original.exists():
                 raise ValueError("Det finns redan en fil på den platsen")
             original.parent.mkdir(parents=True, exist_ok=True)
@@ -589,6 +639,13 @@ def render_cleanup_content(scan, filters, trash_batches, token, notice="", page=
         f"<span class='muted'>{escape(T('cleanup_retention_hint'))}</span></form>"
         + "</div>")
 
+    rewrap_html = (
+        f"<div class='card'><h2>{escape(T('cleanup_rewrap_heading'))}</h2>"
+        f"<p class='muted'>{escape(T('cleanup_rewrap_intro'))}</p>"
+        "<form action='/cleanup/rewrap' method='post'>"
+        f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
+        f"<button type='submit' class='small-button'>{escape(T('cleanup_rewrap_btn', n=counts['ai']))}</button></form></div>")
+
     return (
         f"<div class='card'><h2>{escape(T('cleanup_heading'))}</h2>"
         f"<p class='muted'>{escape(T('cleanup_intro'))}</p>"
@@ -596,4 +653,4 @@ def render_cleanup_content(scan, filters, trash_batches, token, notice="", page=
         f"<p class='muted'>{escape(T('cleanup_last_scan', when=scanned, other=counts['other'], ai=counts['ai']))}</p></div>"
         f"<div class='card'><h2>{escape(T('cleanup_matches_heading', n=len(matches), size=format_size(total_size)))}</h2>"
         f"{pager}{form_start}{table}{actions}{pager}</div>"
-        f"{trash_html}")
+        f"{rewrap_html}{trash_html}")
