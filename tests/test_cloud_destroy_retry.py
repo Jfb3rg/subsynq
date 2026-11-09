@@ -46,6 +46,13 @@ class DestroyRetryTests(unittest.TestCase):
             self.assertTrue(worker.destroy_cloud_gpu('vast', 123))
         self.assertEqual(self.pending(), [])
 
+    def test_not_found_after_a_timeout_clears_the_previous_error_and_pending_entry(self):
+        worker._pending_destroys(add=123)
+        with patch.object(worker.cloud_gpu, 'destroy_chain_instance', side_effect=[
+                RuntimeError('timeout'), RuntimeError('Vast.ai svarade med fel 404: no_such_instance')]):
+            self.assertTrue(worker.destroy_cloud_gpu('vast', 123))
+        self.assertEqual(self.pending(), [])
+
     def test_a_server_the_provider_no_longer_has_counts_as_gone(self):
         with patch.object(worker.cloud_gpu, 'destroy_chain_instance', side_effect=RuntimeError("Vast.ai svarade med fel 404: {'error': 'no_such_instance'}")):
             self.assertTrue(worker.destroy_cloud_gpu('vast', 123))

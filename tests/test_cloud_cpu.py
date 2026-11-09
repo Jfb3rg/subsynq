@@ -756,7 +756,7 @@ class RentCloudCpuTests(unittest.TestCase):
                 patch.object(worker.cloud_gpu, 'show_chain_instance', return_value=state), \
                 patch.object(worker, 'fetch_vast_container_log',
                              side_effect=lambda *args: events.append('log') or 'container failed to start'), \
-                patch.object(worker, 'destroy_cloud_gpu', side_effect=lambda *args: events.append('destroy')):
+                patch.object(worker, 'destroy_cloud_gpu', side_effect=lambda *args: events.append('destroy') or True):
             _, error, _, _, remaining = self.run_rent([], mode='cuda')
         self.assertIn('status=running', str(error))
         self.assertIn('publik IP=finns', str(error))

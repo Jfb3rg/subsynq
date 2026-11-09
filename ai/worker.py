@@ -1126,6 +1126,10 @@ def cloud_host_fault(health):
     """True when the health reply says THIS host is broken: no GPU that answers, too little RAM, or a CUDA driver
     error. Another offer is tried for those (see SlowCloudHost)."""
     status = health.get('status')
+    if status == 'bootstrap_failed':
+        # Installation/download failure, before any model has been run. Other
+        # bootstrap errors (dependency conflicts, model failures) still stop.
+        return str(health.get('bootstrap_error') or '').strip() == 'ollama: misslyckades vid: installerar Ollama'
     if status in ('no_gpu', 'insufficient_memory'):
         return True
     if status == 'error':
@@ -1387,7 +1391,11 @@ def rent_cloud_chain(job, provider, mode):
                         base_url, tls_context)
             except BaseException:
                 reset_opener()
-                destroy_cloud_gpu(provider, instance_id)
+                destroyed = destroy_cloud_gpu(provider, instance_id)
+                if not destroyed:
+                    raise RuntimeError('Molnservern kunde INTE stängas efter startfelet. '
+                                       'Försöker stänga den igen varje minut; kontrollera hos leverantören. '
+                                       'Ingen annan server hyrs i detta startförsök.')
                 with sqlite3.connect(DATABASE, timeout=10) as db:
                     db.execute('UPDATE subtitle_jobs SET cloud_instance_id=NULL WHERE id=?', (job['id'],))
                 raise
@@ -1460,6 +1468,7 @@ def destroy_cloud_gpu(provider, instance_id, *, pauses=DESTROY_PAUSES):
             cloud_gpu.destroy_chain_instance(provider, api_key, instance_id)
         except Exception as error:
             if _gone_already(error):
+                last = None
                 break
             last = error
             continue

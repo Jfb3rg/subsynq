@@ -69,10 +69,28 @@ def llm_parallel():
         return 1
 
 
+CHAIN_OLLAMA_INSTALL_SCRIPT = '''install_ollama() {
+  local attempt script
+  script=$(mktemp)
+  for attempt in 1 2 3; do
+    if curl -fsSL --connect-timeout 30 --max-time 120 --retry 2 https://ollama.com/install.sh -o "$script" && sh "$script"; then
+      rm -f "$script"
+      return 0
+    fi
+    echo "Ollama-installation: försök $attempt/3 misslyckades."
+    [ "$attempt" -eq 3 ] || sleep 15
+  done
+  rm -f "$script"
+  return 1
+}
+'''
+
+
 BOOTSTRAP_TEMPLATE = '''set -e -o pipefail
 step() { echo "$1" > /root/step; echo "== $(date -u +%T) $1"; }
 trap 'echo "misslyckades vid: $(cat /root/step)" > /root/failed' ERR
 @PIP_INSTALL@
+@OLLAMA_INSTALL@
 export DEBIAN_FRONTEND=noninteractive
 export HF_HOME=/root/huggingface HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false HF_HUB_DISABLE_XET=1 HF_HUB_DOWNLOAD_TIMEOUT=120
 step 'apt: systempaket'
@@ -114,7 +132,7 @@ track_whisperpy() {
 }
 track_ollama() {
   tstep 'installerar Ollama'
-  curl -fsSL https://ollama.com/install.sh | sh
+  install_ollama
   tstep 'startar Ollama'
   OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 OLLAMA_NUM_PARALLEL=@PARALLEL@ OLLAMA_MAX_LOADED_MODELS=1 nohup ollama serve > /root/ollama.log 2>&1 &
   for i in $(seq 1 90); do curl -fs http://127.0.0.1:11434/api/tags > /dev/null && break; sleep 2; done
@@ -441,7 +459,8 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
     # Each track keeps its own /root/step.<track> and /root/failed.<track>; /health shows all.
     bootstrap = BOOTSTRAP_TEMPLATE.replace("@TORCH_INDEX@", torch_index).replace(
         "@PULLS@", pulls).replace("@GATEWAY_ENV@", gateway_env).replace(
-        "@QWEN_ENV@", qwen_env).replace("@PIP_INSTALL@", CHAIN_PIP_INSTALL_SCRIPT).replace("@PARALLEL@", str(llm_parallel()))
+        "@QWEN_ENV@", qwen_env).replace("@PIP_INSTALL@", CHAIN_PIP_INSTALL_SCRIPT).replace(
+            "@OLLAMA_INSTALL@", CHAIN_OLLAMA_INSTALL_SCRIPT).replace("@PARALLEL@", str(llm_parallel()))
     bootstrap = compact_shell(bootstrap)
     if prepared:
         bootstrap = (

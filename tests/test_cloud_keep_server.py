@@ -280,11 +280,16 @@ class KeptServerSafetyTests(KeepServerBase):
 class SlowHostTests(KeepServerBase):
     """A host that cannot finish installing is replaced by the next one."""
 
-    def run_rent(self, offers, *, slow=('501',), profile=None, faulty=None):
+    def run_rent(self, offers, *, slow=('501',), profile=None, faulty=None, destroy_error=None):
         self.created = []
         self.destroyed = []
         counter = itertools.count(501)
         current = {}
+
+        def destroy(key, instance):
+            self.destroyed.append(instance)
+            if destroy_error:
+                raise destroy_error
 
         def create(api_key, offer_id, onstart, **kwargs):
             instance = next(counter)
@@ -316,7 +321,7 @@ class SlowHostTests(KeepServerBase):
                 patch.object(worker.cloud_gpu, 'show_instance', return_value={}), \
                 patch.object(worker.cloud_gpu, 'public_service_url', return_value='http://cloud:41000'), \
                 patch.object(worker.cloud_gpu, 'destroy_instance',
-                             side_effect=lambda key, instance: self.destroyed.append(instance)), \
+                             side_effect=destroy), \
                 patch.object(worker, 'fetch_cloud_logs', return_value=None), \
                 patch.object(worker, 'fetch_vast_container_log', return_value=None), \
                 patch.object(worker.time, 'sleep'), \
@@ -416,6 +421,33 @@ class SlowHostTests(KeepServerBase):
         self.assertIsInstance(error, RuntimeError)
         self.assertEqual(len(self.created), 1)
         self.assertEqual(self.destroyed, [501])
+
+    def test_ollama_install_failure_tries_another_host_after_destroying_the_first(self):
+        failure = {'status': 'bootstrap_failed', 'bootstrap_error': 'ollama: misslyckades vid: installerar Ollama'}
+        result, error = self.run_rent(self.offers('m1', 'm1', 'm2'), slow=(), faulty={'501': failure})
+        self.assertIsNone(error)
+        self.assertEqual(result[1], 502)
+        self.assertEqual(self.destroyed, [501])
+        self.assertEqual([offer for _, offer in self.created], [100, 102])
+
+    def test_ollama_install_failure_stops_after_three_hosts(self):
+        failure = {'status': 'bootstrap_failed', 'bootstrap_error': 'ollama: misslyckades vid: installerar Ollama'}
+        result, error = self.run_rent(self.offers('m1', 'm2', 'm3', 'm4'), slow=(),
+                                      faulty={str(i): failure for i in (501, 502, 503)})
+        self.assertIsNone(result)
+        self.assertIn('installerar Ollama', str(error))
+        self.assertEqual(len(self.created), 3)
+        self.assertEqual(self.destroyed, [501, 502, 503])
+
+    def test_a_server_that_cannot_be_destroyed_blocks_the_replacement_and_stays_tracked(self):
+        result, error = self.run_rent(self.offers('m1', 'm2'), slow=(),
+                                      faulty={'501': self.CUDA_FAULT}, destroy_error=RuntimeError('timeout'))
+        self.assertIsNone(result)
+        self.assertIn('kunde INTE stängas', str(error))
+        self.assertEqual(len(self.created), 1)
+        self.assertEqual(self.destroyed, [501, 501, 501])
+        self.assertEqual([item['id'] for item in worker._pending_destroys()], [501])
+        self.assertEqual(self.statuses('SELECT cloud_instance_id FROM subtitle_jobs WHERE id=1'), [(501,)])
 
 
 

@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.374
+
+- Installationen av Ollama på en hyrd server försöker igen upp till tre gånger. Om den ändå misslyckas provas en annan värd, högst tre värdar totalt, som vid andra värdfel.
+- Ett värdbyte stoppas om leverantören inte bekräftar att föregående server förstörts. Servern behålls för fortsatta stängningsförsök och ett tydligt fel visas.
+- Ett svar att servern redan saknas räknas rätt även efter ett tidigare timeoutfel vid stängning.
+
 ## 0.8.373
 
 - Ny knapp under Städa undertexter: "Bryt om långa rader" ger befintliga AI-undertexter högst två rader à 42 tecken, som nya undertexter. Inga ord ändras; originalet läggs först i papperskorgen och kan återställas.
