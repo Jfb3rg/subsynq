@@ -10,6 +10,10 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.377
+
+- En replik där tre olika ljudmodeller hör exakt samma sak, med ett ord som skiljer sig från repliken, får deras ord ("Take off that fucking hat you" blir "Take off that fucking hat."). Samma beviskrav som för helt felhörda repliker; tiden ändras inte.
+
 ## 0.8.376
 
 - "Bryt om långa rader" rör bara SubSynqs egna undertexter (Film.ai.sv.srt bredvid sin video); andra verktygs AI-undertexter lämnas orörda. En undertext som inte går att läsa räknas som misslyckad, inte som redan rätt.

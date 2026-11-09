@@ -2051,6 +2051,66 @@ def replace_outvoted_single_readings(merged, readings, *, maximum_confidence=.6,
     return rows, changes
 
 
+def _word_list(text):
+    return re.findall(r"[\w']+", str(text).casefold().replace('’', "'"))
+
+
+def _one_word_edit(a, b):
+    """The word lists differ by exactly one word: one replaced, one added or one left out."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long = (a, b) if len(a) < len(b) else (b, a)
+    return any(long[:i] + long[i + 1:] == short for i in range(len(long)))
+
+
+def replace_one_word_outvoted(merged, readings, *, minimum_families=3, minimum_independent=2):
+    """(rows, changes): the evidence of replace_outvoted_single_readings for a row that differs by ONE word. That rule only takes rows whose words
+    are wholly different (similarity below .4) and below .6 confidence, so a single wrong word stayed whatever the other passes heard: "Take off
+    that fucking hat you" (.61, one pass) against "Take off that fucking hat." from the rescue pass, Whisper v2 and Qwen; the dangling "you"
+    became "din" and the whole file was refused. Here the same standard applies: at least `minimum_families` model families, two of them other
+    than Whisper large-v3, heard exactly the same words, one word apart from the row, and no other reading heard the row's own words. A reading
+    counts when it overlaps half of the shorter of the two spans (a refined row start can shift the readings a second). Only the text changes;
+    the row keeps its timing. Replay over the saved jobs: 7 distinct rows."""
+    every = dict(readings)
+    every.update(span_readings(merged, readings))
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    changes = []
+    for index, row in enumerate(rows):
+        own = _word_list(row.get('text', ''))
+        duration = row['end'] - row['start']
+        if len(own) < 2 or duration <= 0:
+            continue
+        covering = [(name, other) for name, items in every.items() for other in (items or ())
+                    if _word_list(other.get('text', '')) and not _is_boilerplate(other.get('text', ''))
+                    and other['end'] > other['start'] and _overlap_seconds(row, other) >= .5 * min(duration, other['end'] - other['start'])]
+        if sum(1 for _, other in covering if _word_list(other['text']) == own) > 1:
+            continue                                    # a second reading heard the row's own words
+        groups = {}
+        for name, other in covering:
+            words = _word_list(other['text'])
+            if _one_word_edit(words, own):
+                groups.setdefault(tuple(words), []).append((name, other))
+        best = None
+        for entries in groups.values():
+            families = {_family(name) for name, _ in entries}
+            if len(families) >= minimum_families and len(families & _INDEPENDENT_FAMILIES) >= minimum_independent:
+                if best is None or len(families) > len({_family(name) for name, _ in best}):
+                    best = entries
+        if not best:
+            continue
+        # The written form (capitals, punctuation) of a single reading of an independent family, else of any agreeing reading.
+        written = ([other for name, other in best if not name.endswith('+') and _family(name) in _INDEPENDENT_FAMILIES]
+                   or [other for name, other in best if not name.endswith('+')] or [other for _, other in best])
+        chosen = max(written, key=lambda other: (bool(re.search(r'[.!?]\s*$', str(other['text']))), float(other.get('confidence', 0))))
+        text = str(chosen['text']).strip()
+        changes.append({'start': row['start'], 'from': row['text'], 'to': text, 'families': sorted({_family(name) for name, _ in best}),
+                        'kind': 'one_word'})
+        rows[index] = {**{key: value for key, value in row.items() if key != 'words'}, 'text': text}
+    return rows, changes
+
+
 def _span_overlap_ratio(a, b):
     """Overlap divided by the union of the two time spans."""
     union = max(a['end'], b['end']) - min(a['start'], b['start'])

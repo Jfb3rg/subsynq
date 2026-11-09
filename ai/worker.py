@@ -30,7 +30,7 @@ from faster_whisper.audio import decode_audio
 from faster_whisper.vad import VadOptions, get_speech_timestamps
 
 sys.path.insert(0, '/app')
-from asr_windows import (replace_outvoted_single_readings, plan_lead_word_probes, refine_starts, corroborate_rescue, correct_rescue_onset_drift,
+from asr_windows import (replace_outvoted_single_readings, replace_one_word_outvoted, plan_lead_word_probes, refine_starts, corroborate_rescue, correct_rescue_onset_drift,
                          correct_rescue_word_onsets, correct_confirmed_word_onsets, extend_rescue_prefix,
                          extract_qwen_target_phrase,
                          fill_bounded_rescue_gaps, fill_profile_gaps,
@@ -3294,6 +3294,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged = prefer_confident_reading(merged, consensus_readings)
     # A doubtful row only one reading heard, where three model families heard the same other words ("Gjent mors" / "Vi skal hjem.").
     merged, outvoted_rows = replace_outvoted_single_readings(merged, consensus_readings)
+    # The same evidence for a row only one word apart ("Take off that fucking hat you" / "Take off that fucking hat." from three families).
+    merged, one_word_rows = replace_one_word_outvoted(merged, consensus_readings)
+    outvoted_rows = outvoted_rows + one_word_rows
     if outvoted_rows:
         job['outvoted_rows_replaced'] = outvoted_rows
     # A pass that swapped in a reading brings its own timing: a hair of overlap must not fail a whole job (regression case).
