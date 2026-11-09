@@ -34,7 +34,7 @@ import scan_state
 import auth
 import subtitle_cleanup
 
-VERSION = "0.8.374"
+VERSION = "0.8.376"
 CLEANUP_ROOTS = (Path("/movies"), Path("/tv"), Path("/extra"))
 # Vast.ai and Runpod.io can both rent a server running the whole AI chain
 # (ai/worker.py rent_cloud_chain() via cloud_gpu.py's provider facade). A saved
@@ -1899,10 +1899,16 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if self.path == '/cleanup/rewrap':
                     scan = subtitle_cleanup.load_scan(CONFIG)
-                    chosen = [item['path'] for item in scan['items'] if item.get('kind') == 'ai']
+                    chosen = [item['path'] for item in scan['items'] if subtitle_cleanup.is_subsynq_subtitle(item.get('name', ''))]
                     if not chosen:
-                        raise ValueError('Inga AI-undertexter hittades; skanna först.')
+                        raise ValueError('Inga undertexter från SubSynq hittades; skanna först.')
                     batch, changed, unchanged, failed = subtitle_cleanup.rewrap_files(chosen, CLEANUP_ROOTS, trash_dir)
+                    # The count on the button follows at once: what was laid out no longer needs it.
+                    for item in scan['items']:
+                        if item['path'] in chosen and Path(item['path']).exists():
+                            item['rewrap'] = subtitle_cleanup.needs_rewrap(item['path'])
+                            item['size'] = Path(item['path']).stat().st_size
+                    subtitle_cleanup.save_scan(CONFIG, scan['items'], now=scan['scanned_at'])
                     for failed_path, reason in failed:
                         logging.warning('AI-undertext formades inte om: %s (%s)', failed_path, reason)
                     logging.info('Städa undertexter: %d AI-undertexter formades om (original i %s), %d redan rätt, %d misslyckades',

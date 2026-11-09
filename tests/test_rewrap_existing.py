@@ -39,6 +39,7 @@ class RewrapFilesTests(unittest.TestCase):
         base = Path(self.folder.name)
         self.root, self.trash = base / 'tv', base / 'trash'
         (self.root / 'Show').mkdir(parents=True)
+        (self.root / 'Show' / 'Episode.mkv').write_bytes(b'video')
         self.ai = self.root / 'Show' / 'Episode.ai.sv.srt'
         self.ai.write_text(LONG, encoding='utf-8')
         self.other = self.root / 'Show' / 'Episode.sv.srt'
@@ -66,12 +67,58 @@ class RewrapFilesTests(unittest.TestCase):
         self.assertEqual(self.ai.read_text(encoding='utf-8'), SHORT)
 
     def test_only_subsynq_files_and_only_files_that_need_it(self):
+        (self.root / 'Show' / 'Other.mkv').write_bytes(b'video')
         short = self.root / 'Show' / 'Other.ai.sv.srt'
         short.write_text(SHORT, encoding='utf-8')
         batch, changed, unchanged, failed = subtitle_cleanup.rewrap_files([str(self.other), str(short)], [str(self.root)], self.trash)
         self.assertEqual((changed, unchanged, len(failed)), (0, 1, 1))
         self.assertEqual(self.other.read_text(encoding='utf-8'), LONG)
         self.assertEqual(subtitle_cleanup.list_trash(self.trash), [])
+
+    def test_other_tools_ai_subtitles_are_never_touched(self):
+        # Real names from a library: the first rewrap changed 244 such files.
+        others = ['Episode.subgen.large-v3.ai.eng.srt', 'Episode.sv.ai.gpt-5.4-mini.srt', 'Episode.subgen.large-v3.ai.sv.srt', 'Other.ai.sv.srt']
+        for name in others:
+            (self.root / 'Show' / name).write_text(LONG, encoding='utf-8')
+        _, changed, unchanged, failed = subtitle_cleanup.rewrap_files([str(self.root / 'Show' / name) for name in others],
+                                                                      [str(self.root)], self.trash)
+        self.assertEqual((changed, unchanged, len(failed)), (0, 0, 4))
+        for name in others:
+            self.assertEqual((self.root / 'Show' / name).read_text(encoding='utf-8'), LONG, name)
+
+    def test_an_unreadable_file_is_a_failure_not_already_right(self):
+        self.ai.write_text('1\n00:00:01,000 --> 00:00:02,000\n\nKom igen.\n', encoding='utf-8')
+        _, changed, unchanged, failed = subtitle_cleanup.rewrap_files([str(self.ai)], [str(self.root)], self.trash)
+        self.assertEqual((changed, unchanged, len(failed)), (0, 0, 1))
+
+    def test_subsynq_names_old_and_new(self):
+        self.assertTrue(subtitle_cleanup.is_subsynq_subtitle('Film (2020).ai.sv.srt'))
+        self.assertTrue(subtitle_cleanup.is_subsynq_subtitle('Film.sv.ai.srt'))
+        self.assertTrue(subtitle_cleanup.is_subsynq_subtitle('Film.ai.en.srt'))
+        for name in ('Film.subgen.large-v3.ai.eng.srt', 'Film.sv.ai.gpt-5.4-mini.srt', 'Film.sv.srt', 'Film.ai.de.srt'):
+            self.assertFalse(subtitle_cleanup.is_subsynq_subtitle(name), name)
+
+    def test_the_button_counts_only_files_it_would_change(self):
+        short = self.root / 'Show' / 'Short.ai.sv.srt'
+        (self.root / 'Show' / 'Short.mkv').write_bytes(b'video')
+        short.write_text(SHORT, encoding='utf-8')
+        items = subtitle_cleanup.scan_srt([self.root])
+        self.assertEqual(subtitle_cleanup.rewrap_count(items), 1)          # Episode.ai.sv.srt; not Short, not the other tool's Episode.sv.srt
+        subtitle_cleanup.rewrap_files([str(self.ai)], [str(self.root)], self.trash)
+        self.assertEqual(subtitle_cleanup.rewrap_count(subtitle_cleanup.scan_srt([self.root])), 0)
+
+    def test_a_cue_too_short_to_split_is_not_counted_for_ever(self):
+        tight = '1\n00:00:10,000 --> 00:00:11,500\nHan kommer att hitta vad än det var som slet sönder hennes ansikte och slukade hennes själ.\n'
+        self.ai.write_text(tight, encoding='utf-8')
+        subtitle_cleanup.rewrap_files([str(self.ai)], [str(self.root)], self.trash)
+        self.assertFalse(subtitle_cleanup.needs_rewrap(self.ai))
+
+    def test_a_laid_out_file_laid_out_again_stays_the_same(self):
+        once = relayout_srt(LONG)
+        self.assertIsNone(relayout_srt(once))
+
+    def test_an_older_scan_without_the_count_is_checked_now(self):
+        self.assertEqual(subtitle_cleanup.rewrap_count([{'path': str(self.ai), 'name': self.ai.name}]), 1)
 
     def test_a_file_outside_the_media_folders_is_refused(self):
         outside = Path(self.folder.name) / 'Outside.ai.sv.srt'

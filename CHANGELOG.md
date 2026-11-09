@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.376
+
+- "Bryt om långa rader" rör bara SubSynqs egna undertexter (Film.ai.sv.srt bredvid sin video); andra verktygs AI-undertexter lämnas orörda. En undertext som inte går att läsa räknas som misslyckad, inte som redan rätt.
+- Knappen visar hur många av SubSynqs undertexter som behöver det (0 när ingen gör det) och följer med direkt efter ett tryck.
+- Radlayouten är stabil: en redan omformad undertext ändras inte igen.
+
 ## 0.8.374
 
 - Installationen av Ollama på en hyrd server försöker igen upp till tre gånger. Om den ändå misslyckas provas en annan värd, högst tre värdar totalt, som vid andra värdfel.

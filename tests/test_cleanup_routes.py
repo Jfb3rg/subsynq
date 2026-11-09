@@ -88,11 +88,17 @@ class CleanupRouteTests(unittest.TestCase):
         ai = self.root / "Film" / "Film.ai.sv.srt"
         ai.write_text(long, encoding="utf-8")
         self.srt.write_text(long, encoding="utf-8")
+        other = self.root / "Film" / "Film.subgen.large-v3.ai.eng.srt"
+        other.write_text(long, encoding="utf-8")
         subtitle_cleanup.save_scan(self.config, subtitle_cleanup.scan_srt([self.root]))
+        (self.root / "Film" / "Film.mkv").exists() or (self.root / "Film" / "Film.mkv").write_bytes(b"video")
+        self.assertEqual(subtitle_cleanup.rewrap_count(subtitle_cleanup.load_scan(self.config)["items"]), 1)
         status, location = self.post("/cleanup/rewrap")
         self.assertEqual((status, location), (303, "/cleanup?rewrapped=1&failed=0"))
+        self.assertEqual(subtitle_cleanup.rewrap_count(subtitle_cleanup.load_scan(self.config)["items"]), 0, "the count follows at once")
         self.assertTrue(all(len(line) <= 42 for line in ai.read_text(encoding="utf-8").split("\n")))
         self.assertEqual(self.srt.read_text(encoding="utf-8"), long)
+        self.assertEqual(other.read_text(encoding="utf-8"), long)
         batch = subtitle_cleanup.list_trash(self.config / "trash")[0]["id"]
         self.assertEqual(self.post("/cleanup/restore", batch=batch), (303, "/cleanup?restored=1&skipped=0"))
         self.assertEqual(ai.read_text(encoding="utf-8"), long)

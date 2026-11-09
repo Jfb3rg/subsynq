@@ -90,8 +90,17 @@ def join_fragments(cues, max_line=MAX_LINE):
 
 
 def layout_cues(cues, max_line=MAX_LINE):
-    """All cues of a file laid out: fragments of one sentence joined (join_fragments), then each cue on at most two lines (layout_cue)."""
-    return [part for start, end, text in join_fragments(cues, max_line) for part in layout_cue(start, end, text, max_line)]
+    """All cues of a file laid out: fragments of one sentence joined (join_fragments), then each cue on at most two lines (layout_cue). Repeated
+    until nothing changes (at most four rounds): a cue split in time can be joined again with its neighbour into one better cue, and a laid-out
+    file laid out once more must stay exactly the same (3 of 260 real files changed on a second round before)."""
+    current = [(start, end, ' '.join(str(text).split())) for start, end, text in cues]
+    for _ in range(4):
+        laid_out = [part for start, end, text in join_fragments(current, max_line) for part in layout_cue(start, end, text, max_line)]
+        flat = [(start, end, ' '.join(text.split())) for start, end, text in laid_out]
+        if flat == current:
+            return laid_out
+        current = flat
+    return laid_out
 
 
 def layout_cue(start, end, text, max_line=MAX_LINE):
@@ -150,12 +159,21 @@ def format_srt(cues):
 
 
 def relayout_srt(text, max_line=MAX_LINE):
-    """The file laid out like a newly written subtitle (layout_cues), or None when it cannot be read as SRT or already has no line longer
-    than max_line. Every word stays, in order; only line breaks, the joining of a sentence's fragments and the splitting of a cue change."""
+    """The file laid out like a newly written subtitle (layout_cues), or None when it cannot be read as SRT, has no line longer than
+    max_line, or would come out exactly as it is (a cue too short to split keeps its two long lines: there is nothing to do). Every word stays,
+    in order; only line breaks, the joining of a sentence's fragments and the splitting of a cue change."""
     cues = parse_srt(text)
     if not cues or all(len(line) <= max_line for line in str(text).replace('\r\n', '\n').split('\n')):
         return None
     laid_out = layout_cues(cues, max_line)
     if ' '.join(t for _, _, t in laid_out).split() != ' '.join(t for _, _, t in cues).split():
         return None
-    return format_srt(laid_out)
+    result = format_srt(laid_out)
+    if result.strip() == str(text).replace('\r\n', '\n').strip():
+        return None
+    return result
+
+
+def needs_relayout(text, max_line=MAX_LINE):
+    """True when relayout_srt would change the file."""
+    return relayout_srt(text, max_line) is not None

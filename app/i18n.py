@@ -489,11 +489,14 @@ STRINGS = {
         "en": "✓ Saved: the trash is emptied after {n} days (0 = never)."},
     "cleanup_rewrap_heading": {"sv": "Långa rader i AI-undertexter", "en": "Long lines in AI subtitles"},
     "cleanup_rewrap_intro": {
-        "sv": "AI-undertexter som skrevs före 0.8.368 kan ha rader som går från kant till kant. Knappen bryter om dem till högst två rader "
-              "à 42 tecken, som nya undertexter. Inga ord ändras. Originalet läggs först i papperskorgen och kan återställas där.",
-        "en": "AI subtitles written before 0.8.368 can have lines from edge to edge. The button lays them out with at most two lines of "
-              "42 characters, like new subtitles. No word changes. The original goes to the trash first and can be restored there."},
-    "cleanup_rewrap_btn": {"sv": "Bryt om långa rader ({n} AI-undertexter)", "en": "Wrap long lines ({n} AI subtitles)"},
+        "sv": "SubSynqs egna undertexter (Film.ai.sv.srt) som skrevs före 0.8.368 kan ha rader som går från kant till kant. Knappen bryter om "
+              "dem till högst två rader à 42 tecken, som nya undertexter. Andra verktygs AI-undertexter rörs inte. Inga ord ändras. "
+              "Originalet läggs först i papperskorgen och kan återställas där.",
+        "en": "SubSynq's own subtitles (Film.ai.sv.srt) written before 0.8.368 can have lines from edge to edge. The button lays them out "
+              "with at most two lines of 42 characters, like new subtitles. Other tools' AI subtitles are not touched. No word changes. "
+              "The original goes to the trash first and can be restored there."},
+    "cleanup_rewrap_btn": {"sv": "Bryt om långa rader ({n} undertexter från SubSynq behöver det)",
+                           "en": "Wrap long lines ({n} subtitles from SubSynq need it)"},
     "cleanup_notice_rewrapped": {"sv": "✓ {n} AI-undertexter fick högst två rader à 42 tecken (originalen ligger i papperskorgen).",
                                  "en": "✓ {n} AI subtitles now have at most two lines of 42 characters (the originals are in the trash)."},
     "cleanup_notice_extra": {"sv": "{n} kunde inte hanteras (se Logg).",

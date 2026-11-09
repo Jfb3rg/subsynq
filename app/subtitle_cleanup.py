@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from i18n import STRINGS, t
-from subtitle_layout import relayout_srt
+from subtitle_layout import needs_relayout, parse_srt, relayout_srt
 from library import SIDECAR_FLAGS, VIDEO_EXTENSIONS, _language_class
 
 PAGE_SIZE = 200
@@ -133,6 +133,7 @@ def scan_srt(roots):
                     "kind": classify(filename), "lang": guess_language(filename),
                     "orphan": not has_video_sibling(filename, files),
                     "problems": inspect_srt(path),
+                    "rewrap": needs_rewrap(path) if is_subsynq_subtitle(filename) else False,
                     "dup_key": duplicate_key(filename, directory, files),
                 })
     group_sizes = {}
@@ -337,6 +338,40 @@ def trash_files(paths, roots, trash_dir, now=None):
     return batch_id, moved, failed
 
 
+# SubSynq names its own subtitles Film.ai.sv.srt (Film.sv.ai.srt in older versions). classify() calls every name with an "ai" token "ai", which
+# also takes other tools' files (Film.subgen.large-v3.ai.eng.srt, Film.sv.ai.gpt-5.4-mini.srt): 244 of 260 files the first rewrap changed on a
+# real library were such files. Only SubSynq's own names are laid out.
+_OWN_AI_NAME = re.compile(r"\.(?:ai\.(?:sv|en)|(?:sv|en)\.ai)\.srt$", re.IGNORECASE)
+
+
+def is_subsynq_subtitle(name):
+    """The name has SubSynq's own ending (Film.ai.sv.srt, Film.ai.en.srt, older Film.sv.ai.srt)."""
+    return bool(_OWN_AI_NAME.search(str(name)))
+
+
+def written_by_subsynq(path):
+    """SubSynq's ending AND the video it was written for right beside it: SubSynq writes <video name>.ai.sv.srt, so the name without the
+    ending is the video's own name (Film.subgen.large-v3.ai.sv.srt has no video called Film.subgen.large-v3 beside it)."""
+    path = Path(path)
+    if not is_subsynq_subtitle(path.name):
+        return False
+    stem = _OWN_AI_NAME.sub("", path.name)
+    return any((path.parent / f"{stem}{extension}").is_file() for extension in VIDEO_EXTENSIONS)
+
+
+def needs_rewrap(path):
+    """A SubSynq subtitle beside its video that "Bryt om långa rader" would change; False for any other file or one that cannot be read."""
+    try:
+        return written_by_subsynq(path) and needs_relayout(Path(path).read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def rewrap_count(items):
+    """How many listed subtitles the button would change (the scan's "rewrap"; an older scan without it is checked now)."""
+    return sum(1 for item in items if (item["rewrap"] if "rewrap" in item else needs_rewrap(item.get("path", ""))))
+
+
 def _sha(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -356,9 +391,11 @@ def rewrap_files(paths, roots, trash_dir, now=None):
     for path in dict.fromkeys(paths):
         try:
             source, root = checked_path(path, roots)
-            if classify(source.name) != "ai":
-                raise ValueError("Bara SubSynqs egna AI-undertexter formas om")
+            if not written_by_subsynq(source):
+                raise ValueError("Bara SubSynqs egna undertexter (bredvid sin video) formas om")
             text = source.read_text(encoding="utf-8-sig")
+            if parse_srt(text) is None:
+                raise ValueError("Filen kunde inte läsas som SRT; den lämnades orörd")
             laid_out = relayout_srt(text)
             if laid_out is None:
                 unchanged += 1
@@ -639,12 +676,14 @@ def render_cleanup_content(scan, filters, trash_batches, token, notice="", page=
         f"<span class='muted'>{escape(T('cleanup_retention_hint'))}</span></form>"
         + "</div>")
 
+    to_rewrap = rewrap_count(scan.get("items", [])) if scan else 0
     rewrap_html = (
         f"<div class='card'><h2>{escape(T('cleanup_rewrap_heading'))}</h2>"
         f"<p class='muted'>{escape(T('cleanup_rewrap_intro'))}</p>"
         "<form action='/cleanup/rewrap' method='post'>"
         f"<input type='hidden' name='token' value='{escape(token, quote=True)}'>"
-        f"<button type='submit' class='small-button'>{escape(T('cleanup_rewrap_btn', n=counts['ai']))}</button></form></div>")
+        f"<button type='submit' class='small-button'{'' if to_rewrap else ' disabled'}>{escape(T('cleanup_rewrap_btn', n=to_rewrap))}</button>"
+        "</form></div>")
 
     return (
         f"<div class='card'><h2>{escape(T('cleanup_heading'))}</h2>"
