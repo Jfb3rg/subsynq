@@ -3,7 +3,7 @@ FROM ${SUBSYNQ_BASE_IMAGE}
 USER root
 COPY ai/constraints-worker.txt /tmp/constraints-worker.txt
 # faster-whisper 1.2.1 passes metadata_errors to av.open(); PyAV 19 removed it.
-RUN pip install --no-cache-dir -c /tmp/constraints-worker.txt faster-whisper==1.2.1 av==18.1.0 psutil
+RUN pip install --no-cache-dir -c /tmp/constraints-worker.txt faster-whisper==1.2.1 av==18.1.0 psutil onnx-asr==0.12.0
 COPY app/ /app/
 COPY ai/ /ai/
 # The image never depends on the file modes of the source tree (a source file whose mode lacked read for everyone once made

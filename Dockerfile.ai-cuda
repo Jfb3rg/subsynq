@@ -3,7 +3,7 @@ FROM ${SUBSYNQ_BASE_IMAGE}
 USER root
 COPY ai/constraints-worker.txt /tmp/constraints-worker.txt
 RUN pip install --no-cache-dir -c /tmp/constraints-worker.txt \
-        faster-whisper==1.2.1 av==18.1.0 psutil \
+        faster-whisper==1.2.1 av==18.1.0 psutil onnx-asr==0.12.0 \
     && pip install --no-cache-dir nvidia-cublas-cu12==12.8.4.1 \
         nvidia-cudnn-cu12==9.10.2.21 nvidia-cuda-runtime-cu12==12.8.90 \
     && pip check

@@ -36,15 +36,28 @@ def entry(**fields):
 
 
 class CatalogueTests(unittest.TestCase):
-    def test_the_shipped_models_file_lists_the_eight_models_the_pipeline_loads(self):
+    def test_the_shipped_models_file_lists_the_nine_models_the_pipeline_loads(self):
         specs = parse_catalogue(json.loads(SHIPPED.read_text(encoding="utf-8")))
         self.assertEqual([s.name for s in specs],
                          ["large-v3", "large-v2", "KBLab/kb-whisper-large", "NbAiLab/nb-whisper-large", "Qwen/Qwen3-ASR-1.7B",
-                          "Qwen/Qwen3-ForcedAligner-0.6B", "gemma3:12b", "gemma4:12b"])
+                          "Qwen/Qwen3-ForcedAligner-0.6B", "istupakov/parakeet-tdt-0.6b-v3-onnx", "gemma3:12b", "gemma4:12b"])
         self.assertEqual({s.role: s.name for s in specs if s.role},
                          {"translation": "gemma3:12b", "review": "gemma4:12b"})
-        self.assertEqual({s.kind for s in specs}, {"faster-whisper", "hf", "ollama"})
-        self.assertEqual(len({s.id for s in specs}), 8)
+        self.assertEqual({s.kind for s in specs}, {"faster-whisper", "hf", "hf-files", "ollama"})
+        self.assertEqual(len({s.id for s in specs}), 9)
+
+    def test_the_parakeet_entry_lists_exactly_the_files_the_reader_needs(self):
+        import parakeet_reader
+        spec = [s for s in parse_catalogue(json.loads(SHIPPED.read_text(encoding="utf-8"))) if s.kind == "hf-files"][0]
+        self.assertEqual((spec.name, set(spec.files)), (parakeet_reader.REPOSITORY, set(parakeet_reader.REQUIRED_FILES)))
+
+    def test_a_files_model_needs_a_list_of_files(self):
+        for data in ({"models": [entry(kind="hf-files")]}, {"models": [entry(kind="hf-files", files="a.onnx")]},
+                     {"models": [entry(files=[""])]}):
+            with self.assertRaisesRegex(CatalogueError, "files"):
+                parse_catalogue(data)
+        spec = parse_catalogue({"models": [entry(kind="hf-files", files=["a.onnx", " b.txt "])]})[0]
+        self.assertEqual(spec.files, ("a.onnx", "b.txt"))
 
     def test_invalid_files_are_rejected_with_a_reason(self):
         for data, reason in (
@@ -63,7 +76,7 @@ class CatalogueTests(unittest.TestCase):
             own.write_text("{trasig", encoding="utf-8")
             result = load_catalogue([own, SHIPPED], environ={})
             self.assertEqual(result.source, SHIPPED)
-            self.assertEqual(len(result.specs), 8)
+            self.assertEqual(len(result.specs), 9)
             self.assertIn("models.json", result.errors[0])
             self.assertEqual(load_catalogue([Path(folder) / "saknas.json"], environ={}).specs, [])
 
@@ -157,6 +170,93 @@ class FakeOllama(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+
+class FilesBackendTests(unittest.TestCase):
+    SPEC = ModelSpec("p", "hf-files", "org/parakeet-onnx", "Parakeet", 2.5, "worker", files=("config.json", "encoder.onnx", "encoder.onnx.data"))
+
+    def fake_hub(self, folder, written):
+        def snapshot_download(repo, local_dir, allow_patterns, revision):
+            written.append((repo, allow_patterns, revision))
+            for name in allow_patterns:
+                (Path(local_dir) / name).write_bytes(b"x" * 10)
+        return snapshot_download
+
+    def test_download_writes_plain_files_and_the_revision_last(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend, written = mm.FilesBackend(folder), []
+            self.assertFalse(backend.is_present(self.SPEC))
+            hub = type("Hub", (), {"snapshot_download": staticmethod(self.fake_hub(folder, written))})
+            with patch.dict(sys.modules, {"huggingface_hub": hub}), patch.object(mm, "_latest_revision", return_value="rev1"), \
+                    patch.object(mm, "_expected_bytes", return_value=30):
+                backend.download(self.SPEC, lambda percent, detail: None)
+            self.assertEqual(written, [("org/parakeet-onnx", ["config.json", "encoder.onnx", "encoder.onnx.data"], "rev1")])
+            folder_of_model = mm.files_dir(folder, "org/parakeet-onnx")
+            self.assertEqual(folder_of_model.relative_to(folder).as_posix(), "hf-files/org--parakeet-onnx")
+            self.assertFalse(any(path.is_symlink() for path in folder_of_model.iterdir()))
+            self.assertTrue(backend.is_present(self.SPEC))
+            self.assertEqual(backend.installed_version(self.SPEC), "rev1")
+
+    def test_a_missing_file_a_missing_marker_or_a_partial_download_is_not_present(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend = mm.FilesBackend(folder)
+            target = mm.files_dir(folder, "org/parakeet-onnx")
+            target.mkdir(parents=True)
+            for name in self.SPEC.files:
+                (target / name).write_bytes(b"x")
+            self.assertFalse(backend.is_present(self.SPEC))                 # no marker: the download never finished
+            (target / mm.REVISION_MARKER).write_text("rev1\n")
+            self.assertTrue(backend.is_present(self.SPEC))
+            (target / "encoder.onnx.data.incomplete").write_bytes(b"x")
+            self.assertFalse(backend.is_present(self.SPEC))
+            (target / "encoder.onnx.data.incomplete").unlink()
+            (target / "encoder.onnx").unlink()
+            self.assertFalse(backend.is_present(self.SPEC))
+
+    def test_a_new_download_is_not_present_until_it_has_finished(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend = mm.FilesBackend(folder)
+            target = mm.files_dir(folder, "org/parakeet-onnx")
+            target.mkdir(parents=True)
+            for name in self.SPEC.files:
+                (target / name).write_bytes(b"x")
+            (target / mm.REVISION_MARKER).write_text("old\n")
+            seen = []
+
+            def interrupted(repo, local_dir, allow_patterns, revision):
+                seen.append(backend.is_present(self.SPEC))
+                raise OSError("nätverket föll")
+            hub = type("Hub", (), {"snapshot_download": staticmethod(interrupted)})
+            with patch.dict(sys.modules, {"huggingface_hub": hub}), patch.object(mm, "_latest_revision", return_value="new"), \
+                    patch.object(mm, "_expected_bytes", return_value=30), self.assertRaises(OSError):
+                backend.update(self.SPEC, lambda percent, detail: None)
+            self.assertEqual(seen, [False])
+            self.assertFalse(backend.is_present(self.SPEC))
+
+    def test_remove_deletes_only_that_models_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend = mm.FilesBackend(folder)
+            target = mm.files_dir(folder, "org/parakeet-onnx")
+            other = mm.files_dir(folder, "org/other")
+            for path in (target, other):
+                path.mkdir(parents=True)
+                (path / "x").write_bytes(b"x")
+            backend.remove(self.SPEC)
+            backend.remove(self.SPEC)       # already gone: not an error
+            self.assertFalse(target.exists())
+            self.assertTrue(other.exists())
+
+    def test_a_model_name_that_leaves_the_files_folder_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend = mm.FilesBackend(folder)
+            outside = Path(folder) / "keep"
+            outside.mkdir()
+            (outside / "x").write_bytes(b"x")
+            spec = ModelSpec("p", "hf-files", "..", "Fel", 1, "worker", files=("x",))
+            (Path(folder) / mm.FILES_FOLDER).mkdir()
+            with self.assertRaises(ValueError):
+                backend.remove(spec)
+            self.assertTrue((outside / "x").exists())
 
 
 class OllamaBackendTests(unittest.TestCase):
@@ -292,6 +392,42 @@ class ManagerTests(unittest.TestCase):
             backend.fail.clear()
             self.assertTrue(manager.run_once())
             self.assertTrue(manager.ready)
+
+    def with_extra(self):
+        return specs("a", "b") + [ModelSpec("x", "fake", "x", "Extra röst", 1.0, "worker", extra=True)]
+
+    def test_an_extra_model_is_downloaded_last_and_the_manager_is_ready_before_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ready_when_fetched = []
+
+            class Watching(FakeBackend):
+                def download(inner, spec, report):
+                    ready_when_fetched.append((spec.name, manager.ready))
+                    super().download(spec, report)
+            backend = Watching()
+            manager = self.manager(backend, folder, catalogue=self.with_extra())
+            self.assertTrue(manager.run_once())
+            self.assertEqual(backend.downloads, ["a", "b", "x"])
+            self.assertEqual(ready_when_fetched, [("a", False), ("b", False), ("x", True)])
+
+    def test_a_failing_extra_model_never_takes_ready_away(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend = FakeBackend(present={"a", "b"}, fail={"x"})
+            manager = self.manager(backend, folder, catalogue=self.with_extra())
+            for _ in range(2):          # the periodic re-check keeps ready while the extra is still missing
+                self.assertTrue(manager.run_once())
+                self.assertTrue(manager.ready)
+            status = self.status(folder)
+            self.assertEqual(backend.downloads, ["x", "x"])
+            self.assertEqual({m["id"]: m["state"] for m in status["models"]}, {"a": "present", "b": "present", "x": "error"})
+            self.assertTrue(status["ready"])
+
+    def test_a_missing_required_model_still_keeps_it_not_ready_with_an_extra_present(self):
+        with tempfile.TemporaryDirectory() as folder:
+            backend = FakeBackend(present={"a", "x"}, fail={"b"})
+            manager = self.manager(backend, folder, catalogue=self.with_extra())
+            self.assertFalse(manager.run_once())
+            self.assertFalse(manager.ready)
 
     def test_too_little_disk_space_stops_before_downloading(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -3,8 +3,8 @@
 Nobody should have to fetch models by hand. Which models SubSynq uses is NOT decided
 in code: it is listed in a separate file, models.json (the copy shipped with the app,
 or /config/models.json if you put one there). The worker starts a ModelManager that
-compares that list with what is on disk, downloads whatever is missing (Whisper and
-Qwen from Hugging Face, Gemma through Ollama) and reports progress in
+compares that list with what is on disk, downloads whatever is missing (Whisper, Qwen
+and Parakeet from Hugging Face, Gemma through Ollama) and reports progress in
 /config/models-status.json, which the web interface shows.
 
 Change the list (a new model, or a better version of one) and the new model is
@@ -34,7 +34,7 @@ POLL_SECONDS = 2.0
 RECHECK_SECONDS = 600       # re-verify once ready (cheap: only looks at the disk)
 RETRY_MIN, RETRY_MAX = 60, 900
 WAIT_STEP = 5               # while waiting, look for a removal request this often
-KINDS = ("faster-whisper", "hf", "ollama")
+KINDS = ("faster-whisper", "hf", "hf-files", "ollama")
 CATALOGUE_FILE = "models.json"
 STATUS_FILE = "models-status.json"
 LEDGER_FILE = "models-installed.json"
@@ -61,6 +61,8 @@ class ModelSpec:
     role: str = ""   # 'translation' | 'review' for the Gemma models the worker calls
     optional: bool = False   # a language pack: only downloaded while it is switched on (language-packs.json)
     language: str = ""       # the language an optional pack is for, e.g. 'sv'
+    files: tuple = ()        # 'hf-files' only: the file names (patterns) to download from the repository
+    extra: bool = False      # an extra reader: downloaded after the required models and never keeps a local job waiting
 
     @property
     def key(self):
@@ -78,6 +80,15 @@ class Catalogue:
     specs: list
     source: Path = None
     errors: list = None
+
+
+def _file_patterns(entry, number):
+    files = entry.get("files", [])
+    if not isinstance(files, list) or not all(isinstance(name, str) and name.strip() for name in files):
+        raise CatalogueError(f'modell {number}: "files" måste vara en lista med filnamn')
+    if entry["kind"] == "hf-files" and not files:
+        raise CatalogueError(f'modell {number}: kind hf-files kräver "files"')
+    return tuple(name.strip() for name in files)
 
 
 def parse_catalogue(data):
@@ -102,7 +113,8 @@ def parse_catalogue(data):
             raise CatalogueError(f'modell {number}: size_gb måste vara ett tal') from None
         specs.append(ModelSpec(entry["id"], entry["kind"], entry["name"].strip(), entry["label"], size,
                                str(entry.get("used_by", "")), str(entry.get("role", "")),
-                               entry.get("optional") is True, str(entry.get("language", ""))))
+                               entry.get("optional") is True, str(entry.get("language", "")),
+                               _file_patterns(entry, number), entry.get("extra") is True))
     return specs
 
 
@@ -270,6 +282,15 @@ def _remove_cache_dir(repo_dir, cache_dir):
     shutil.rmtree(repo_dir)
 
 
+FILES_FOLDER = "hf-files"
+REVISION_MARKER = ".subsynq-revision"
+
+
+def files_dir(models_dir, repo_id):
+    """Where an 'hf-files' model lives: <models>/hf-files/<owner>--<repository>, as plain files."""
+    return Path(models_dir) / FILES_FOLDER / repo_id.replace("/", "--")
+
+
 def _dir_bytes(path):
     total = 0
     try:
@@ -388,6 +409,61 @@ class HubBackend:
         """Download the newest revision, then delete the older one(s)."""
         self.download(spec, report)
         _prune_old_revisions(self.hub_dir, spec.name)
+
+
+class FilesBackend:
+    """Whole Hugging Face repositories as plain files under <models>/hf-files/, newest revision straight from Hugging Face.
+
+    ONNX Runtime refuses to read weights through the symlinks of the Hugging Face cache, so a model it runs (Parakeet) is
+    stored as real files. Nothing of it is ever part of the SubSynq repository: the files come from Hugging Face on the
+    first start, and an update re-downloads only the files that changed (the revision is recorded in REVISION_MARKER,
+    written last, so a half-finished download is never taken for a finished one)."""
+
+    def __init__(self, models_dir):
+        self.models_dir = Path(models_dir)
+
+    def _dir(self, spec):
+        """The model's own folder, directly under <models>/hf-files; a name that points anywhere else (.., a symlink) is refused."""
+        folder = files_dir(self.models_dir, spec.name)
+        root = (self.models_dir / FILES_FOLDER).resolve()
+        if folder.is_symlink() or folder.resolve().parent != root:
+            raise ValueError(f"vägrar använda {folder}")
+        return folder
+
+    def is_present(self, spec):
+        folder = self._dir(spec)
+        if not (folder / REVISION_MARKER).is_file() or any(folder.rglob("*.incomplete")):
+            return False
+        return all(any(path.is_file() for path in folder.glob(pattern)) for pattern in spec.files)
+
+    def download(self, spec, report):
+        from huggingface_hub import snapshot_download
+        folder = self._dir(spec)
+        revision = _latest_revision(spec.name)
+        total = _expected_bytes(spec.name, list(spec.files)) or int(spec.size_gb * GIB)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / REVISION_MARKER).unlink(missing_ok=True)    # not present again until this download has finished
+        with _Watcher(folder, total, report):
+            snapshot_download(spec.name, local_dir=str(folder), allow_patterns=list(spec.files), revision=revision)
+        (folder / REVISION_MARKER).write_text(revision + "\n", encoding="utf-8")
+
+    def remove(self, spec):
+        folder = self._dir(spec)
+        if folder.is_dir():
+            shutil.rmtree(folder)
+
+    def installed_version(self, spec):
+        try:
+            return (self._dir(spec) / REVISION_MARKER).read_text(encoding="utf-8").strip() or None
+        except OSError:
+            return None
+
+    def latest_version(self, spec):
+        return _latest_revision(spec.name)
+
+    def update(self, spec, report):
+        """Download the newest revision into the same folder (only changed files are fetched)."""
+        self.download(spec, report)
 
 
 class OllamaBackend:
@@ -533,7 +609,7 @@ class ModelManager:
                 s.id: self._models.get(s.id, {}) | {
                     "id": s.id, "label": s.label, "used_by": s.used_by, "size_gb": s.size_gb,
                     "name": s.name, "kind": s.kind, "optional": s.optional, "language": s.language,
-                    "enabled": self._is_wanted(s)}
+                    "extra": s.extra, "enabled": self._is_wanted(s)}
                 for s in self.specs}
             for model in self._models.values():
                 model.setdefault("update", "")          # "" | current | available | unknown
@@ -716,21 +792,31 @@ class ModelManager:
             self._maybe_check_updates()       # after "ready" is reported, so a slow network never delays jobs
             self._write()
             return True
-        self._ready, self._state = False, "downloading"
+        required = [s for s in missing if not s.extra]
+        if required:                    # only a missing extra reader never takes "ready" away
+            self._ready, self._state = False, "downloading"
         total_gb = sum(s.size_gb for s in missing)
         self._message = f"{len(missing)} modeller saknas (cirka {total_gb:.0f} GB) och hämtas automatiskt"
         self.log(self._message)
         self._write()
         failures = 0
         for spec in missing:
-            if not self._download_one(spec):
+            if not spec.extra and not self._download_one(spec):
                 failures += 1
-        self._ready = failures == 0 and all(m["state"] == "present" for m in self._models.values() if m.get("enabled", True))
+        self._ready = failures == 0 and all(m["state"] == "present" for m in self._models.values()
+                                            if m.get("enabled", True) and not m.get("extra"))
         self._state = "ready" if self._ready else "error"
         if self._ready:
             self._message = ""
         self._record_present()
         self._write()
+        if self._ready:
+            for spec in missing:        # the extra readers come last; a failure shows on their own line and never stops a job
+                if spec.extra:
+                    self._download_one(spec)
+            self._message = ""
+            self._record_present()
+            self._write()
         return self._ready
 
     def _permission_text(self, error=None):
@@ -826,6 +912,6 @@ def build_manager(*, config_dir="/config", models_dir="/models", ollama_url=None
     base = base.split("/api/")[0]
     hub_dir = Path(os.environ.get("HF_HOME", f"{models_dir}/huggingface")) / "hub"
     backends = {"faster-whisper": FasterWhisperBackend(models_dir), "hf": HubBackend(hub_dir),
-                "ollama": OllamaBackend(base)}
+                "hf-files": FilesBackend(models_dir), "ollama": OllamaBackend(base)}
     return ModelManager(lambda: load_catalogue(catalogue_paths(config_dir)), backends, config_dir, models_dir,
                         log=log, is_busy=is_busy)

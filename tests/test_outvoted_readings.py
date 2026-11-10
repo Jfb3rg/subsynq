@@ -81,6 +81,25 @@ class OutvotedSingleReadingTests(unittest.TestCase):
         self.assertEqual(replace_outvoted_single_readings(self.FINAL, readings)[1], [])
 
 
+    # Real readings of a saved file: a window that covers two rows is read whole by three families, and the short second row would get the
+    # whole sentence of the first one.
+    TWO_ROWS = [cue(881.6, 884.7, 'No, seriously, am I gonna forget where my hairbrush is?', .66), cue(884.7, 885.2, 'No.', .58),
+                cue(885.2, 886.6, "Go to some neighbor's house?", .87)]
+    TWO_ROWS_READINGS = {'context': [cue(881.6, 884.7, 'No, seriously, am I gonna forget where my hairbrush is?', .66), cue(884.7, 885.2, 'No.', .58)],
+                         'v2': [cue(881.6, 884.9, 'No, seriously, am I gonna forget where my hairbrush is?', .58)],
+                         'qwen': [cue(881.3, 885.0, 'No, seriously, am I gonna forget where my hairbrush is?')],
+                         'parakeet': [cue(881.3, 885.0, 'No seriously, am I gonna forget where my hairbrush is?')]}
+
+    def test_a_sentence_that_is_already_the_row_before_is_not_written_into_the_next_row(self):
+        self.assertEqual(replace_outvoted_single_readings(self.TWO_ROWS, self.TWO_ROWS_READINGS)[1], [])
+
+    def test_the_same_vote_still_replaces_a_row_when_no_neighbour_holds_the_sentence(self):
+        rows = [cue(870.0, 878.0, 'Something else entirely.', .9)] + self.TWO_ROWS[1:2]
+        rows, changes = replace_outvoted_single_readings(rows, {'v2': [cue(884.7, 885.2, 'No, I am not.')], 'qwen': [cue(884.6, 885.3, 'No, I am not.')],
+                                                               'parakeet': [cue(884.6, 885.3, 'No, I am not.')]})
+        self.assertEqual(rows[1]['text'], 'No, I am not.')
+
+
 class UnresolvedGrammarTests(unittest.TestCase):
     """B: a grammar flag the remark-free grammar task cannot repair goes on to the repair that reads the remark."""
 

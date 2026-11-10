@@ -51,7 +51,8 @@ class CatalogueTests(unittest.TestCase):
         specs = parse_catalogue(json.loads(SHIPPED.read_text(encoding="utf-8")))
         self.assertEqual({s.name: (s.optional, s.language) for s in specs if s.optional},
                          {"KBLab/kb-whisper-large": (True, "sv"), "NbAiLab/nb-whisper-large": (True, "no")})
-        self.assertEqual(len([s for s in specs if not s.optional]), 6)
+        self.assertEqual(len([s for s in specs if not s.optional and not s.extra]), 6)
+        self.assertEqual([s.name for s in specs if s.extra], ["istupakov/parakeet-tdt-0.6b-v3-onnx"])
 
 
 class PackFileTests(unittest.TestCase):

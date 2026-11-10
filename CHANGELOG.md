@@ -10,6 +10,21 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.383
+
+- Parakeet läser även **tyska** avsnitt (utöver engelska). Modellen kan 25 språk, men SubSynq slår bara på språk där den mätts: på sparade trailers skilde den sig från godkända ord på 7,6 % i tyska och 6,8 % i engelska mot 32,5 % i svenska och 44,6 % i danska (där den ofta hör ord som aldrig sagts), så svenska och danska är fortsatt avstängda.
+- Parakeet får 2 sekunder extra ljud på varje sida om varje fönster (språket gissas ur klippet) och bara hela ord som börjar inne i fönstret behålls. Det halverade felen vid fönstrens kanter.
+
+## 0.8.381
+
+- Ny extra röst för engelska avsnitt: **Parakeet TDT 0.6B v3** (NVIDIA) lyssnar på samma oeniga ställen som Qwen3-ASR och är en egen modellfamilj i ordomröstningen. Den körs på CPU (cirka 2–3 gånger snabbare än ljudets längd med fyra trådar, 2,7 GB minne) även när huvudavlyssningen sker på en hyrd GPU, och ersätter ingen läsare. Saknas modellen, är språket inte godkänt eller misslyckas den, avgör de andra som förut.
+- Modellen ingår inte i SubSynq: den hämtas direkt från Hugging Face (`istupakov/parakeet-tdt-0.6b-v3-onnx`, cirka 2,4 GB) av modellhanteringen efter de andra modellerna och håller inte upp något jobb. Den visas under Inställningar > Modeller och uppdateras när en ny version finns. Stäng av med `SUBSYNQ_PARAKEET=0`. Har du en egen `/config/models.json` måste du lägga till posten själv (se `app/models.json`), annars hoppas Parakeet över.
+- Strängare ordomröstning: en kort rad får inte längre en hel mening som redan står i raden före eller efter, och ett ord stryks inte när två avlyssningar hört det på sin plats just intill raden (en rads slut kan vara avklippt).
+
+## 0.8.380
+
+- Steget som rättar ett enda felhört ord (från 0.8.377) är snabbare: ett helt avsnitt tar under en sekund i stället för 13–16 sekunder. Samma beviskrav och exakt samma resultat som förut.
+
 ## 0.8.379
 
 - "Hey" som ropar på, hejdar eller lugnar någon skrivs "Hallå", inte hälsningen "Hej": när det upprepas ("Hey, hey, hey!"), ropas ensamt ("Hey!") eller inleder en uppmaning eller protest ("Hey, what are you doing?", "Hey, wake up!"). "Hey" före ett namn eller en vanlig mening lämnas som förut, eftersom det kan vara en hälsning.

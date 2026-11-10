@@ -48,5 +48,35 @@ class OneWordOutvoteTests(unittest.TestCase):
         self.assertEqual(replace_one_word_outvoted([ROW], readings)[1], [])
 
 
+    def test_many_distant_readings_and_an_unsorted_pass_give_the_same_result(self):
+        # The search only looks at readings near the row; far-away readings (a long film) and a pass listed out of time order change nothing.
+        far = [r(start, start + 2, 'Something else entirely.') for start in range(0, 2000, 4)]
+        readings = {name: [r(2300 + 4 * place, 2302 + 4 * place, 'Unrelated line.') for place in range(50)] + items + far
+                    for name, items in READINGS.items()}
+        readings['precision'] = readings['precision'][::-1]
+        rows, changes = replace_one_word_outvoted([ROW], readings)
+        self.assertEqual(rows[0]['text'], 'Take off that fucking hat.')
+        self.assertEqual(len(changes), 1)
+
+    def test_a_reading_without_times_is_skipped(self):
+        readings = dict(READINGS, context=[{'text': 'Take off that fucking hat you'}])
+        self.assertEqual(replace_one_word_outvoted([ROW], readings)[0][0]['text'], 'Take off that fucking hat.')
+
+
+    # Real readings of a saved file: the cue ends at 866.04 s, the last word "Yes." sits at 866.1-866.4 s in two passes.
+    TRAILING_ROW = r(865.256, 866.04, 'Honestly. Really? Yes.', .6)
+    TRAILING = {'context': [r(864.9, 866.0, 'Honestly, really?', .27)], 'v2': [r(865.2, 865.8, 'Honestly.'), r(865.8, 866.2, 'Really?'), r(866.2, 866.5, 'Yeah.')],
+                'precision': [r(865.0, 865.6, 'Honestly.', .92), r(865.7, 866.1, 'Really?', .94), r(866.1, 866.4, 'Yes.', .76)],
+                'rescue': [r(865.7, 866.1, 'Really?', .84), r(866.1, 866.4, 'Yes.', .57)],
+                'qwen': [r(864.6, 866.3, 'Honestly.', .5)], 'parakeet': [r(864.6, 866.3, 'Honestly. Really?', .5)]}
+
+    def test_a_word_two_passes_heard_next_to_the_row_is_not_dropped_by_a_reading_that_stops_early(self):
+        self.assertEqual(replace_one_word_outvoted([self.TRAILING_ROW], self.TRAILING)[1], [])
+
+    def test_the_same_word_in_the_next_sentence_is_no_witness(self):
+        readings = dict(READINGS, v2=READINGS['v2'] + [r(2071.2, 2072.4, 'You hungry?')], qwen=READINGS['qwen'] + [r(2071.2, 2072.6, 'You hungry?')])
+        self.assertEqual(replace_one_word_outvoted([ROW], readings)[0][0]['text'], 'Take off that fucking hat.')
+
+
 if __name__ == '__main__':
     unittest.main()

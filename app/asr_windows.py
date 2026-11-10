@@ -1813,7 +1813,8 @@ def span_readings(final, readings):
 # forced-language reading without voice-activity filter, Whisper v2 and Qwen3-ASR each vote as a family of their own.
 _FAMILIES = {'context': 'whisper-v3', 'precision': 'whisper-v3', 'rescue': 'whisper-v3',
              'whispered_gap': 'whisper-v3', 'v2': 'whisper-v2', 'qwen': 'qwen', 'forced': 'whisper-v3-forced',
-             'nb': 'nb-whisper'}        # NB-Whisper, the optional Norwegian extra reader (app/norwegian_reader.py)
+             'nb': 'nb-whisper',         # NB-Whisper, the optional Norwegian extra reader (app/norwegian_reader.py)
+             'parakeet': 'parakeet'}    # Parakeet TDT, the extra English reader on the CPU (app/parakeet_reader.py)
 
 
 def _family(name):
@@ -1821,7 +1822,7 @@ def _family(name):
 
 
 # Models other than Whisper large-v3 itself: what the v3 passes (also the forced re-read) agree on can be their shared mistake.
-_INDEPENDENT_FAMILIES = frozenset({'whisper-v2', 'qwen', 'nb-whisper'})
+_INDEPENDENT_FAMILIES = frozenset({'whisper-v2', 'qwen', 'nb-whisper', 'parakeet'})
 
 
 def _mean_agreement(text, cluster, skip=None):
@@ -2000,6 +2001,18 @@ def _most_heard_reading(cluster, families, chosen_text, *, minimum_similarity=.5
     return _medoid(ranked[0]) if len(ranked[0]) > 1 else ranked[0][0]
 
 
+def _repeats_neighbour(text, previous, following, minimum_words=3):
+    """True when `text` holds the whole text of the row before or after (at least `minimum_words` words): a window that covers two
+    rows reads both, and giving one row the words of the other would write the same sentence twice (regression case: "No." next to
+    "No, seriously, am I gonna forget where my hairbrush is?")."""
+    words = _word_list(text)
+    for neighbour in (previous, following):
+        other = _word_list(neighbour.get('text', '')) if neighbour else []
+        if len(other) >= minimum_words and any(words[i:i + len(other)] == other for i in range(len(words) - len(other) + 1)):
+            return True
+    return False
+
+
 def replace_outvoted_single_readings(merged, readings, *, maximum_confidence=.6, minimum_families=3, minimum_independent=2,
                                      minimum_cover=.3, own_support=.7, different=.4):
     """(rows, changes): replace a doubtful row that only one reading heard when at least `minimum_families` model families, two of them other
@@ -2041,6 +2054,8 @@ def replace_outvoted_single_readings(merged, readings, *, maximum_confidence=.6,
         following = rows[index + 1] if index + 1 < len(rows) else None
         if (previous and start < previous['end'] - .05) or (following and end > following['start'] + .05):
             start, end = row['start'], row['end']        # the neighbours stay intact: keep the row's own timing
+        if _repeats_neighbour(chosen['text'], previous, following):
+            continue                                    # the reading's wide window also holds a neighbouring row: that is not this row's speech
         replacement = {'start': start, 'end': end, 'text': str(chosen['text']).strip(),
                        'confidence': float(chosen.get('confidence', 0))}
         if chosen.get('words') and (start, end) == (chosen['start'], chosen['end']):
@@ -2049,6 +2064,22 @@ def replace_outvoted_single_readings(merged, readings, *, maximum_confidence=.6,
                         'families': sorted({_family(name) for name, _ in best})})
         rows[index] = replacement
     return rows, changes
+
+
+def _positioned_index(items):
+    """`_time_index` of one pass's readings that also remembers each reading's place in the list, for `_positioned_near`."""
+    pairs = sorted(((item['start'], place, item) for place, item in enumerate(items or ()) if 'start' in item and 'end' in item),
+                   key=lambda entry: (entry[0], entry[1]))
+    longest = max((item['end'] - item['start'] for _, _, item in pairs), default=0.0)
+    return pairs, [start for start, _, _ in pairs], max(longest, 0.0)
+
+
+def _positioned_near(index, start, end):
+    """The readings of `_positioned_index` that can touch [start, end] (a superset), in the order of the pass's own list."""
+    pairs, starts, longest = index
+    low = bisect.bisect_left(starts, start - longest - 1e-6)
+    high = bisect.bisect_right(starts, end + 1e-6)
+    return [item for _, _, item in sorted(pairs[low:high], key=lambda entry: entry[1])]
 
 
 def _word_list(text):
@@ -2065,6 +2096,34 @@ def _one_word_edit(a, b):
     return any(long[:i] + long[i + 1:] == short for i in range(len(long)))
 
 
+def _heard_by_other_passes(row, own, place, readings, agreeing, margin=.5):
+    """How many passes (the pieces of one pass count once) heard the word at index `place` of the row's words `own` in a reading that lies within `margin`
+    seconds of the row, outside the readings that agree on leaving it out. A reading counts only when it holds the word where the row has it (next
+    to a neighbouring word of the row, or alone at the row's edge): the same word in the next sentence is no witness. A cue's end is often trimmed
+    to where its first words stop, so the last word may sit just beyond it (regression case: "Honestly. Really? Yes." ends at 866.04 s, the
+    "Yes." of two passes at 866.1-866.4 s)."""
+    wide = {'start': row['start'] - margin, 'end': row['end'] + margin}
+    dropped = own[place]
+    pairs = [own[i:i + 2] for i in (place - 1, place) if 0 <= i and i + 1 < len(own)]
+
+    def holds(words):
+        if words == [dropped]:
+            return place in (0, len(own) - 1)
+        return any(words[i:i + 2] == pair for pair in pairs for i in range(len(words) - 1))
+
+    return len({_base_name(name) for name, items in readings.items() for other in items or ()
+                if other.get('end', 0) > other.get('start', 0) and holds(_word_list(other.get('text', '')))
+                and not any(other is item for item in agreeing)
+                and _overlap_seconds(wide, other) >= .5 * (other['end'] - other['start'])})
+
+
+def _dropped_index(own, heard):
+    """The index of the word `own` has and `heard` leaves out (the word lists differ by exactly that one word), else None."""
+    if len(own) != len(heard) + 1:
+        return None
+    return next((i for i in range(len(own)) if own[:i] + own[i + 1:] == heard), None)
+
+
 def replace_one_word_outvoted(merged, readings, *, minimum_families=3, minimum_independent=2):
     """(rows, changes): the evidence of replace_outvoted_single_readings for a row that differs by ONE word. That rule only takes rows whose words
     are wholly different (similarity below .4) and below .6 confidence, so a single wrong word stayed whatever the other passes heard: "Take off
@@ -2075,6 +2134,7 @@ def replace_one_word_outvoted(merged, readings, *, minimum_families=3, minimum_i
     the row keeps its timing. Replay over the saved jobs: 7 distinct rows."""
     every = dict(readings)
     every.update(span_readings(merged, readings))
+    indexed = {name: _positioned_index(items) for name, items in every.items()}
     rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
     changes = []
     for index, row in enumerate(rows):
@@ -2082,7 +2142,10 @@ def replace_one_word_outvoted(merged, readings, *, minimum_families=3, minimum_i
         duration = row['end'] - row['start']
         if len(own) < 2 or duration <= 0:
             continue
-        covering = [(name, other) for name, items in every.items() for other in (items or ())
+        # Only readings that can touch the row are tested (a film has thousands of cues and every pass as many readings); they are tested in
+        # the order of each pass's own list, so the result is the same as scanning all of them.
+        covering = [(name, other) for name, found in ((name, _positioned_near(index_, row['start'], row['end'])) for name, index_ in indexed.items())
+                    for other in found
                     if _word_list(other.get('text', '')) and not _is_boilerplate(other.get('text', ''))
                     and other['end'] > other['start'] and _overlap_seconds(row, other) >= .5 * min(duration, other['end'] - other['start'])]
         if sum(1 for _, other in covering if _word_list(other['text']) == own) > 1:
@@ -2100,6 +2163,9 @@ def replace_one_word_outvoted(merged, readings, *, minimum_families=3, minimum_i
                     best = entries
         if not best:
             continue
+        dropped = _dropped_index(own, _word_list(best[0][1]['text']))
+        if dropped is not None and _heard_by_other_passes(row, own, dropped, every, [other for _, other in best]) > 1:
+            continue        # two passes heard the word the others leave out: a reading that stops early proves nothing
         # The written form (capitals, punctuation) of a single reading of an independent family, else of any agreeing reading.
         written = ([other for name, other in best if not name.endswith('+') and _family(name) in _INDEPENDENT_FAMILIES]
                    or [other for name, other in best if not name.endswith('+')] or [other for _, other in best])

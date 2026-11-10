@@ -80,6 +80,7 @@ import name_harmony
 import reader_plan
 import swedish_reader
 import norwegian_reader
+import parakeet_reader
 import cloud_session
 import opensubtitles
 from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, CHAIN_GPU_MIN_DISK_GB, CHAIN_GPU_MIN_RELIABILITY,
@@ -1762,6 +1763,61 @@ def read_code_switch_checks(job, media, rows, readings, models, total):
     return result
 
 
+PARAKEET_MAXIMUM_SECONDS = 900          # of audio per file (about six minutes on four CPU threads); the longest saved episode has 776 s of consensus windows
+
+
+def read_with_parakeet(job, media, windows, reader=None):
+    """Parakeet's readings of the windows Qwen3-ASR reads, [] when it cannot or should not vote (recorded in job['parakeet_reader']).
+
+    An optional extra: a missing model, an unmeasured language or a failure means the other readers decide alone, never a failed job."""
+    record = job['parakeet_reader'] = {'state': 'skipped', 'reason': ''}
+    if not windows:
+        record['reason'] = 'inga oense ställen att läsa'
+    elif not parakeet_reader.enabled():
+        record['reason'] = 'avstängd (SUBSYNQ_PARAKEET=0)'
+    else:
+        usable, reason = parakeet_reader.usable_language(job.get('audio_choice'))
+        if not usable:
+            record['reason'] = reason
+        elif reader is None and not parakeet_reader.model_present('/models'):
+            record['reason'] = 'modellen är inte hämtad'
+    if record['reason']:
+        return []
+    reader = reader or parakeet_reader.Reader('/models')
+    pad = parakeet_reader.padding(job.get('audio_choice'))
+    readings, seconds = [], 0.0
+    try:
+        with tempfile.TemporaryDirectory() as clip_folder:
+            for index, window in enumerate(windows):
+                if seconds + (window['end'] - window['start']) > PARAKEET_MAXIMUM_SECONDS:
+                    record['reason'] = f'tak på {PARAKEET_MAXIMUM_SECONDS} s ljud nått'
+                    break
+                check_cancelled(job['id'])
+                update_job(job['id'], 'transcribing', 59, f'{parakeet_reader.LABEL} läser oense stycken · {index + 1} av {len(windows)}')
+                clip = Path(clip_folder) / 'parakeet.wav'
+                begin = max(0.0, window['start'] - pad)
+                subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(begin), '-i', str(media),
+                                '-t', str(window['end'] - begin + pad), '-map', audio_map(job), '-ac', '1',
+                                '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip)],
+                               capture_output=True, timeout=90, check=True)
+                text = reader.read(clip, (window['start'] - begin, window['end'] - begin)) if pad else reader.read(clip)
+                seconds += window['end'] - window['start']
+                if text:
+                    readings.append({'start': window['start'], 'end': window['end'], 'text': text,
+                                     'confidence': parakeet_reader.CONFIDENCE})
+        record['state'] = 'used'
+    except JobCancelled:
+        raise
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        record.update(state='failed', reason=repr(error)[:200])
+        print(f'VARNING: {parakeet_reader.LABEL} kunde inte läsa oense stycken: {error!r}', flush=True)
+        readings = []
+    finally:
+        reader.release()
+    record.update(windows=len(readings), seconds=round(seconds, 1))
+    return readings
+
+
 def read_lead_word_probes(job, media, merged, readings, models, total, skip_indices, hint=None):
     """Qwen3-ASR's reading of each place where one reading heard opening words a cut row lost (asr_windows.plan_lead_word_probes). The
     readings carry the lead's measured time, never the clip's bounds. An optional opinion: a failure leaves the rule with the readings it had."""
@@ -3269,6 +3325,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         finally:
             models.release_qwen()
         consensus_readings['qwen'] = qwen_reading
+    # Parakeet reads the same places on the CPU: one more family in the three word votes below (not in the other rules that count passes).
+    parakeet_reading = read_with_parakeet(job, media, qwen_windows) if focus_intervals is None else []
+    vote_readings = dict(consensus_readings, **{parakeet_reader.READING_NAME: parakeet_reading}) if parakeet_reading else consensus_readings
     # Qwen settles single-word swaps: a large-v2 word it contradicts is taken back, a word large-v2 and Qwen both hear is taken.
     merged, qwen_word_changes = settle_v2_words_with_qwen(merged, qwen_reading, v2_profile, nb_profile)
     job['qwen_word_changes'] = qwen_word_changes
@@ -3293,11 +3352,11 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     # reading of the same place.
     merged = prefer_confident_reading(merged, consensus_readings)
     # A doubtful row only one reading heard, where three model families heard the same other words ("Gjent mors" / "Vi skal hjem.").
-    merged, outvoted_rows = replace_outvoted_single_readings(merged, consensus_readings)
+    merged, outvoted_rows = replace_outvoted_single_readings(merged, vote_readings)
     # The same evidence for a row only one word apart ("Take off that fucking hat you" / "Take off that fucking hat." from three families).
-    merged, one_word_rows = replace_one_word_outvoted(merged, consensus_readings)
+    merged, one_word_rows = replace_one_word_outvoted(merged, vote_readings)
     # And for ONE word inside a longer row, where the agreeing readings differ elsewhere ("a very staid quantum" / "a very state quantum").
-    merged, word_rows = replace_outvoted_word(merged, consensus_readings)
+    merged, word_rows = replace_outvoted_word(merged, vote_readings)
     outvoted_rows = outvoted_rows + one_word_rows + word_rows
     if outvoted_rows:
         job['outvoted_rows_replaced'] = outvoted_rows
@@ -3363,7 +3422,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
             job['tail_confirmation'].update(restored=True, recovered_anchor=recovered_anchor)
     trace_payload.update(timing_refinement=job.get('timing_refinement'), lead_word_probes=job.get('lead_word_probes'), confirmed_word_onsets=job.get('confirmed_word_onsets'), nb=nb_profile, norwegian_reader=job.get('norwegian_reader'), collapsed_words_restored=job.get('collapsed_words_restored'), collapsed_word_windows=collapsed_windows, qwen_word_changes=job.get('qwen_word_changes'), dub_bed=job.get('dub_bed'), lead_words_restored=job.get('lead_words_restored'), source_word_confirmations=short_word_checks, profile_evidence=profile_evidence, consensus_windows=consensus_windows,
                          code_switch_checks=job.get('code_switch_checks'), phrase_overlaps_removed=phrase_overlaps, consensus_qwen=consensus_readings.get("qwen", []),
-                         consensus_forced=consensus_readings.get("forced", []),
+                         consensus_forced=consensus_readings.get("forced", []), consensus_parakeet=parakeet_reading, parakeet_reader=job.get('parakeet_reader'),
                          intervening_windows=intervening_windows, intervening_languages=intervening_languages,
                          intervening_first=intervening_first, intervening_second=intervening_second,
                          intervening_v2=intervening_v2,
