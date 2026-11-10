@@ -10,6 +10,17 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.379
+
+- "Hey" som ropar på, hejdar eller lugnar någon skrivs "Hallå", inte hälsningen "Hej": när det upprepas ("Hey, hey, hey!"), ropas ensamt ("Hey!") eller inleder en uppmaning eller protest ("Hey, what are you doing?", "Hey, wake up!"). "Hey" före ett namn eller en vanlig mening lämnas som förut, eftersom det kan vara en hälsning.
+- Ett enda ord mitt i en replik som tre olika ljudmodeller hör annorlunda, med samma ord före och efter, får deras ord. Resten av repliken och tiden ändras inte.
+- En replik där två avlyssningar skiljer sig på ett ord och som ingen kontroll hunnit pröva läses om av tre modeller. Avgör inte det heller behålls texten och repliken visas under "Visa osäkra repliker" med det andra ordet.
+- Rättningen av en översatt replik minns formuleringar som granskningen redan underkänt och går inte tillbaka till dem; kan den inte hitta något annat skrivs hela repliken om.
+
+## 0.8.378
+
+- Tilltalet "sir" skrivs "sir" i svenskan, inte "herre" eller "befäl". Gäller bara när källan själv säger "sir" (inte lord, master, commander och liknande).
+
 ## 0.8.377
 
 - En replik där tre olika ljudmodeller hör exakt samma sak, med ett ord som skiljer sig från repliken, får deras ord ("Take off that fucking hat you" blir "Take off that fucking hat."). Samma beviskrav som för helt felhörda repliker; tiden ändras inte.

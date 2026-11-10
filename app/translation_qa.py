@@ -631,7 +631,8 @@ SWEDISH_MEANING_RULE = (
     'A shouted "Hey!" to get attention is "Hallå!" or "Hörru!"; "Hej!" is only a greeting. "Roger that" is "Uppfattat", "Yeah, well" '
     'is "Ja, men", "So, hey" is "Så, okej", "you know me" is "du känner mig", "Be alert" is "Var på er vakt" (never "på alert"), '
     '"Look, man" is "Hör här". Never use Norwegian or Danish words (likegyldig, ikke, jeg, kanskje, også, veldig): write Swedish. '
-    'Keep a nickname or form of address the same through the whole file (if Chief is kept as a name, keep Chief everywhere). ')
+    'Keep a nickname or form of address the same through the whole file (if Chief is kept as a name, keep Chief everywhere). '
+    'The address "sir" (military, police, to a superior or a customer) stays "sir" in Swedish subtitles, never "herre" or "befäl". ')
 
 
 # Norwegian/Danish "må ikke" forbids ("must not"); Swedish "måste inte" means "need not" (SamplePerson mot verden, regression caseand 202:
@@ -876,6 +877,74 @@ _SCANDINAVIAN_WORDS = re.compile(r"\b(?:likegyldig\w*|ikke|jeg|hvorfor|hvordan|h
 
 _CALL_WORDS = {'hey', 'oh', 'yes', 'no', 'sir', 'and', 'mr', 'mrs', 'ms', 'dr', 'doc'}
 
+# "sir" as an address is "sir" in Swedish subtitles (user's choice 2026-11-10). One episode had "herre" 6 times, "befäl" 4 and "sir" 2 for the
+# same address. Only when the source itself says "sir" and no other word that "herre"/"befäl" could render.
+_SIR = re.compile(r'\bsir\b', re.IGNORECASE)
+_SIR_OTHER_SOURCES = re.compile(r'\b(?:lord|master|gentlem[ae]n|mister|mr|sire|commander|officer|chief|captain|lieutenant|sergeant|general|'
+                                r'colonel|major|boss)\b', re.IGNORECASE)
+_SIR_WRONG = re.compile(r'\b(?:min\s+)?(?:herre|herren|befäl|befälet)\b', re.IGNORECASE)   # "min herre" -> "sir" (never "min sir")
+
+
+def sir_address_flag(source, target):
+    """The wrong Swedish word for the address "sir" in this row, or None."""
+    if not _SIR.search(str(source)) or _SIR_OTHER_SOURCES.search(str(source)):
+        return None
+    found = _SIR_WRONG.search(str(target))
+    return found.group() if found else None
+
+
+def repair_sir_address(rows, flags, target_key='sv'):
+    """Write "sir" for a flagged "herre"/"befäl" that renders the source's "sir"; only that word changes (a capital at a sentence start kept)."""
+    result, changes = [dict(row) for row in rows], []
+    if target_key != 'sv':
+        return result, changes
+    requested = {(f.get('id'), f.get('target_quote')) for f in flags if f.get('category') == 'meaning'}
+    for row in result:
+        wrong = sir_address_flag(row.get('source', ''), row.get('sv') or '')
+        if not wrong or (row['id'], wrong) not in requested:
+            continue
+        before = row['sv']
+        row['sv'] = _SIR_WRONG.sub(lambda match: 'Sir' if match.group()[0].isupper() else 'sir', before)
+        changes.append({'id': row['id'], 'category': 'meaning', 'source_quote': 'sir', 'before': before, 'after': row['sv']})
+    return result, changes
+
+
+# "Hey" said twice or more ("Hey, hey, hey! Hands off!"), shouted alone ("Hey!") or opening a protest or an order ("Hey, what are you
+# doing?", "Hey, Henry, wake up!") calls, stops or calms someone; "Hej" is the greeting and was written for it in saved files ("Hej, hej, hej,
+# hej, hej! Rör dem inte!"). "Hallå" is right for the call and still reads as a shouted greeting, so the change is safe both ways. "Hey" before
+# a name or another clause ("Hey, Paul.", "Hey, how are you?") can be either and is left to the translation.
+_HEY_ORDER = (r"what (?:are you|do you think you're) doing\s*[?!]|what the (?:hell|heck|fuck)\b|where (?:are you|do you think you're) going\s*[?!]|"
+              r"(?:stop(?! by)|wait|watch (?:out|it)|look out|calm down|wake up|get (?:off|out|up|down|away|back)|"
+              r"let (?:go|(?:me|him|her|them|us) go)|hands off|come back|cut it out|knock it off|back off|slow down|hold (?:on|it)|"
+              r"put (?:that|it) down|leave (?:me|him|her|them|us|it) alone)\b")
+_HEY_CALL = re.compile(r"^\W*hey(?:(?:\W+hey)+\b|\s*!+\W*$|\s*[,!]\s*(?:[^\W\d_][\w'-]*\s*,\s*)?(?:" + _HEY_ORDER + r"))", re.IGNORECASE)
+_HEJ_LEAD = re.compile(r'^\W*hej\b(?:[\s,!.]+hej\b)*', re.IGNORECASE)
+
+
+def hey_call_flag(source, target):
+    """The leading "Hej"(s) of a Swedish row whose source opens with a repeated or lone shouted "Hey" or with "Hey" and an order, or None."""
+    if not _HEY_CALL.search(str(source)):
+        return None
+    found = _HEJ_LEAD.search(str(target))
+    return found.group() if found else None
+
+
+def repair_hey_call(rows, flags, target_key='sv'):
+    """Write "Hallå" for each flagged leading "Hej" that renders a "Hey" that calls (hey_call_flag); nothing else in the row changes."""
+    result, changes = [dict(row) for row in rows], []
+    if target_key != 'sv':
+        return result, changes
+    requested = {(f.get('id'), f.get('target_quote')) for f in flags if f.get('category') == 'meaning'}
+    for row in result:
+        wrong = hey_call_flag(row.get('source', ''), row.get('sv') or '')
+        if not wrong or (row['id'], wrong) not in requested:
+            continue
+        before = row['sv']
+        lead = re.sub(r'hej', lambda match: 'Hallå' if match.group()[0].isupper() else 'hallå', wrong, flags=re.IGNORECASE)
+        row['sv'] = lead + before[len(wrong):]
+        changes.append({'id': row['id'], 'category': 'meaning', 'source_quote': 'Hey', 'before': before, 'after': row['sv']})
+    return result, changes
+
 
 def _close_to(name, text, minimum=.75):
     """A word of `text` is the name or a near spelling of it (Lucys, Kanada for Canada, Normandie for Normandy)."""
@@ -914,6 +983,14 @@ def file_consistency_flags(rows):
         if 'BUD/S' in target and 'BUD/S' not in source and not _BUDS_SOURCE.search(source):
             flags.append({'id': row['id'], 'category': 'meaning', 'source_quote': source, 'target_quote': 'BUD/S',
                           'reason': 'BUD/S är bara SEAL-utbildningen efter since/through; "bud" till en person är tilltal (kompis).'})
+        wrong_sir = sir_address_flag(source, target)
+        if wrong_sir:
+            flags.append({'id': row['id'], 'category': 'meaning', 'source_quote': 'sir', 'target_quote': wrong_sir,
+                          'reason': f'Tilltalet "sir" skrivs "sir" i svenska undertexter, inte "{wrong_sir}".'})
+        wrong_hey = hey_call_flag(source, target)
+        if wrong_hey:
+            flags.append({'id': row['id'], 'category': 'meaning', 'source_quote': 'Hey', 'target_quote': wrong_hey,
+                          'reason': 'Utropet "Hey" som ropar på, hejdar eller lugnar någon är "Hallå", inte hälsningen "Hej".'})
         foreign = _SCANDINAVIAN_WORDS.search(target)
         if foreign and not _SCANDINAVIAN_WORDS.search(source):
             flags.append({'id': row['id'], 'category': 'untranslated', 'source_quote': source, 'target_quote': foreign.group(),

@@ -30,7 +30,7 @@ from faster_whisper.audio import decode_audio
 from faster_whisper.vad import VadOptions, get_speech_timestamps
 
 sys.path.insert(0, '/app')
-from asr_windows import (replace_outvoted_single_readings, replace_one_word_outvoted, plan_lead_word_probes, refine_starts, corroborate_rescue, correct_rescue_onset_drift,
+from asr_windows import (replace_outvoted_single_readings, replace_one_word_outvoted, replace_outvoted_word, plan_lead_word_probes, refine_starts, corroborate_rescue, correct_rescue_onset_drift,
                          correct_rescue_word_onsets, correct_confirmed_word_onsets, extend_rescue_prefix,
                          extract_qwen_target_phrase,
                          fill_bounded_rescue_gaps, fill_profile_gaps,
@@ -94,7 +94,7 @@ import dub_bed
 from translation_qa import (might_be_swedish, dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
                             deterministic_flags, SWEDISH_MEANING_RULE, looks_untranslated, name_key, non_latin_runs, proper_name_forms,
-                            quote_is_only_names, repair_kept_names, restore_id_order, SOFT_FLAG_CATEGORIES, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
+                            quote_is_only_names, repair_hey_call, repair_kept_names, repair_sir_address, restore_id_order, SOFT_FLAG_CATEGORIES, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
                             swedish_rows_to_keep, whisper_language_label)
 from forced_reading import needs_second_reading, prefer_second_reading, reading_summary
 from source_judge import EngineUnavailable, choose_readings, complete_cut_off_rows, contradictory_rejected_choice, repeats_neighbour
@@ -3296,7 +3296,9 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     merged, outvoted_rows = replace_outvoted_single_readings(merged, consensus_readings)
     # The same evidence for a row only one word apart ("Take off that fucking hat you" / "Take off that fucking hat." from three families).
     merged, one_word_rows = replace_one_word_outvoted(merged, consensus_readings)
-    outvoted_rows = outvoted_rows + one_word_rows
+    # And for ONE word inside a longer row, where the agreeing readings differ elsewhere ("a very staid quantum" / "a very state quantum").
+    merged, word_rows = replace_outvoted_word(merged, consensus_readings)
+    outvoted_rows = outvoted_rows + one_word_rows + word_rows
     if outvoted_rows:
         job['outvoted_rows_replaced'] = outvoted_rows
     # A pass that swapped in a reading brings its own timing: a hair of overlap must not fail a whole job (regression case).
@@ -3813,7 +3815,8 @@ def assess_source_with_reread(job, rows, media_name='', **options):
     job.pop('source_reread', None)  # a fallback source must not inherit the previous source's audit
     choice_findings = unresolved_source_choice_ids(rows, job.get('source_choices') or [])
     kana_candidates = kana_review_ids(job, rows)
-    flagged = sorted(set(choice_findings) | set(kana_candidates))
+    one_word_candidates = one_word_review_ids(job, rows)
+    flagged = sorted(set(choice_findings) | set(kana_candidates) | set(one_word_candidates))
     first_reason = ''
     try:
         assess_source_quality(rows, media_name, broken=flagged, **options,
@@ -3829,6 +3832,7 @@ def assess_source_with_reread(job, rows, media_name='', **options):
     changed = reread_flagged_rows(job, rows, flagged)
     job['source_reread'] = {'flagged': flagged, 'changed': changed, 'first_verdict': first_reason, 'readings': job.get('reread_rows') or []}
     job['source_reread']['kana_review_candidates'] = kana_candidates
+    job['source_reread']['one_word_review_candidates'] = one_word_candidates
     still = []
     assess_source_quality(rows, media_name, lenient=True, broken=still, **options,
                           language_context=source_audit_language_context(job, rows))
@@ -3843,6 +3847,18 @@ def assess_source_with_reread(job, rows, media_name='', **options):
             _, confirmed = agreed_replacement(current[row_id], record.get('readings') or [])
             if confirmed['decision'] == 'läsningen stämmer med nuvarande text' and confirmed.get('same_words'):
                 choice_unclear.discard(row_id)
+    # A one-word alternative is settled only when the models that read the row again heard the words it has; a row they could not settle
+    # stays in job['unsettled_readings'] and is listed for the user.
+    settled = set()
+    for record in job['source_reread']['readings']:
+        row_id = record.get('id')
+        if row_id in one_word_candidates and record.get('current') == current.get(row_id):
+            _, confirmed = agreed_replacement(current[row_id], record.get('readings') or [])
+            if confirmed['decision'] == 'läsningen stämmer med nuvarande text' and confirmed.get('same_words'):
+                settled.add(row_id)
+    if settled:
+        job['unsettled_readings'] = [item for item in job.get('unsettled_readings') or [] if item['id'] not in settled]
+    job['source_reread']['settled_one_word_readings'] = sorted(settled)
     still = sorted(set(still) | {item['id'] for item in conflicts} | choice_unclear)
     job['source_reread']['source_choice_findings'] = choice_findings
     job['source_reread']['unresolved_source_choices'] = sorted(choice_unclear)
@@ -3868,6 +3884,30 @@ def kana_review_ids(job, rows):
         if any(isinstance(text, str) and kana_slot(row['source'], text) for text in decision['candidates']):
             planned.add(row['id'])
     return [row['id'] for row in rows if row['id'] in planned][:4]
+
+
+def one_word_review_ids(job, rows):
+    """Plan acoustic checks for a one-word alternative the source judge never read, never approve it.
+
+    The judge reads only the first doubtful rows of a file, so a later row where the rescue pass heard one other word was examined by
+    nothing (regression case: "I'm three" kept where three model families read "On three" on a wider clip)."""
+    if not REREAD_ENABLED:
+        return []
+    current = {row['id']: row for row in rows}
+    planned = {item['id'] for item in job.get('unsettled_readings') or []
+               if (row := current.get(item.get('id'))) and row['source'] == item.get('source') and not row.get('confirmed_source_words')}
+    return [row['id'] for row in rows if row['id'] in planned][:4]
+
+
+def unsettled_reading_rows(job, rows, listed):
+    """The doubtful-report entries for rows where two readings differ by one word and no check settled which is right
+    (choose_between_readings, assess_source_with_reread); only while the row still has that wording and is not listed already."""
+    current = {row['id']: row for row in rows}
+    return [{'id': row['id'], 'start': row['start'], 'end': row['end'], 'source': row['source'], 'sv': row.get('sv', ''),
+             'reason': f'Två avlyssningar av repliken skiljer sig på ett ord (den andra hörde "{item["other"]}"); '
+                       'ingen kontroll kunde avgöra vilken som stämmer, så den befintliga läsningen behölls.'}
+            for item in job.get('unsettled_readings') or []
+            if (row := current.get(item['id'])) and row['source'] == item['source'] and row['id'] not in listed]
 
 
 def unresolved_source_choice_ids(rows, decisions):
@@ -4680,10 +4720,17 @@ def render_whole_cue_meanings(job, rows, flags, answer, target_key, target_langu
     return [{**item, 'edits': edits_for(item)} if item['id'] in ids else item for item in answer]
 
 
-def repair_translation_spans(job, rows, flags, *, target_key='sv', target_language='Swedish', record=None):
-    """Apply explicit, uniquely anchored edits inside the reviewer's quoted spans."""
+def repair_translation_spans(job, rows, flags, *, target_key='sv', target_language='Swedish', record=None, unresolved=None):
+    """Apply explicit, uniquely anchored edits inside the reviewer's quoted spans.
+
+    A row whose edit only brings back a wording already refused for it in this job is asked for once more with every refused wording listed;
+    when the answer is a refused wording again, the row keeps its current text and its id is put in `unresolved` (the caller then rewrites
+    the whole row instead). Regression case: one word went "stabil" -> "samlad" -> "stram" -> "samlad" -> "stram" over five rounds, because
+    this repair only ever saw the latest refused wording, and the file was refused."""
     ids = {flag['id'] for flag in flags}
     targets = [row for row in rows if row['id'] in ids]
+    refused, _ = refused_wordings(job, targets, target_key)
+    refused_keys = {row['id']: {wording_key(text) for text in refused[row['id']]} - {wording_key(row[target_key])} for row in targets}
     positions = {index for index, row in enumerate(rows) if row['id'] in ids}
     neighbors = {neighbor for index in positions for neighbor in (index - 1, index, index + 1)
                  if 0 <= neighbor < len(rows)}
@@ -4705,11 +4752,16 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
     # fallible reviewer reason: a real review suggested a calque of a correct idiom.
     evidence = [{key: flag[key] for key in ('id', 'category', 'source_quote', 'target_quote')}
                 for flag in flags]
+    # A row flagged for the first time has no history: its prompt is exactly what it was before this memory existed.
     prompt = {'requested_ids': [row['id'] for row in targets], 'flags': evidence,
               'editable_targets': [{'id': row['id'], 'current_target': row[target_key],
-                                    'allowed_before': quoted_choices[row['id']]} for row in targets],
+                                    'allowed_before': quoted_choices[row['id']],
+                                    **({'rejected_targets': refused[row['id']]} if refused_keys[row['id']] else {})} for row in targets],
               'context': [{key: rows[index].get(key) for key in ('id', 'source', target_key)}
                           for index in sorted(neighbors)]}
+    history_rule = ('An editable target\'s rejected_targets lists EVERY wording of that line already refused, the current one included: '
+                    'the line after your edits must be none of them, so choose a different word or phrase than all of those. '
+                    if any(refused_keys.values()) else '')
     request = {
         'model': REVIEW_MODEL_NAME, 'think': False, 'stream': False, 'format': schema, 'keep_alive': '5m',
         'system': (f'Repair the requested {target_language} subtitle defects using MINIMAL phrase edits. '
@@ -4730,11 +4782,16 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
                    'to do in this situation, not the literal dictionary meanings of its words. '
                    f'Then express that intended action in natural {target_language} in after. '
                    'Do not translate the idiom word by word. Do not add a fact, promise, instruction '
-                   'or participant absent from the source. Preserve uncertainty and fragments.'),
+                   'or participant absent from the source. Preserve uncertainty and fragments.' + history_rule),
         'prompt': json.dumps(prompt, ensure_ascii=False),
         'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': min(4096, max(2048, 320 * len(targets))),
                     'num_thread': 6, 'seed': 173},
     }
+    current = {row['id']: row for row in targets}
+
+    def refused_again(candidate):
+        return sorted(row['id'] for row in candidate if row['id'] in ids and wording_key(row[target_key]) in refused_keys[row['id']])
+
     for attempt in range(2):
         check_cancelled(job['id'])
         response = call_ollama(request)['response']
@@ -4757,6 +4814,16 @@ def repair_translation_spans(job, rows, flags, *, target_key='sv', target_langua
             if target_key == 'sv' and any(looks_untranslated(row['source'], row[target_key])
                                          for row in candidate if row['id'] in ids):
                 raise ValueError('Oöversatt källa i rättningsförsöket.')
+            repeated = refused_again(candidate)
+            if repeated and not attempt:
+                raise ValueError('Ändringen ger en formulering som redan har nekats för rad ' + ', '.join(str(row_id) for row_id in repeated)
+                                 + ' (se rejected_targets); välj ett annat ord eller en annan fras.')
+            if repeated:
+                if record is not None:
+                    record({'stage': 'refused_again', 'ids': repeated, 'kept': 'raden behåller sin nuvarande text och skrivs om som hel rad'})
+                if unresolved is not None:
+                    unresolved.update(repeated)
+                candidate = [dict(current[row['id']]) if row['id'] in repeated else row for row in candidate]
             check_cancelled(job['id'])
             return candidate
         except (KeyError, TypeError, ValueError) as error:
@@ -4782,6 +4849,16 @@ def repair_flagged_translation(job, rows, flags, *, target_key='sv', target_lang
     flags = [f for f in flags if not (f.get('id') in named and str(f.get('reason', '')).startswith('Namnet '))]
     if record is not None and names:
         record({'stage': 'kept_name', 'changes': names})
+    rows, sirs = repair_sir_address(rows, flags, target_key)
+    addressed = {change['id'] for change in sirs}
+    flags = [f for f in flags if not (f.get('id') in addressed and str(f.get('reason', '')).startswith('Tilltalet "sir"'))]
+    if record is not None and sirs:
+        record({'stage': 'sir_address', 'changes': sirs})
+    rows, heys = repair_hey_call(rows, flags, target_key)
+    called = {change['id'] for change in heys}
+    flags = [f for f in flags if not (f.get('id') in called and str(f.get('reason', '')).startswith('Utropet "Hey"'))]
+    if record is not None and heys:
+        record({'stage': 'hey_call', 'changes': heys})
     result = (repair_flagged_translation_split(job, rows, flags, target_key=target_key, target_language=target_language, record=record)
               if flags else [dict(row) for row in rows])
     before = {row['id']: row for row in rows}
@@ -4856,16 +4933,20 @@ def repair_flagged_translation_once(job, rows, flags, *, target_key='sv', target
     # Explain and render meaning separately; the final audit still judges the original source.
     # Whole short cues can be idioms too. Anchored patches also handle their full quoted text.
     by_id = {row['id']: row for row in rows}
-    patch_ids = {row_id for row_id in ids if all(
+    # A row whose phrase edits only returned wording already refused is rewritten as a whole row from then on (repair_translation_spans).
+    whole_row = job.setdefault('_phrase_unresolved', [])
+    patch_ids = {row_id for row_id in ids if f'{target_key}:{row_id}' not in whole_row and all(
         flag['category'] in {'meaning', 'untranslated', 'transliteration'}
         and flag.get('target_quote')
         and by_id[row_id][target_key].count(flag['target_quote']) == 1
         for flag in flags if flag['id'] == row_id)}
     if patch_ids:
+        unresolved = set()
         candidate = repair_translation_spans(job, rows,
             [flag for flag in flags if flag['id'] in patch_ids],
-            target_key=target_key, target_language=target_language, record=record)
-        remaining = [flag for flag in flags if flag['id'] not in patch_ids]
+            target_key=target_key, target_language=target_language, record=record, unresolved=unresolved)
+        whole_row.extend(f'{target_key}:{row_id}' for row_id in sorted(unresolved))
+        remaining = [flag for flag in flags if flag['id'] not in patch_ids or flag['id'] in unresolved]
         return (repair_flagged_translation(job, candidate, remaining,
                     target_key=target_key, target_language=target_language, record=record)
                 if remaining else candidate)
@@ -6114,6 +6195,14 @@ def choose_between_readings(job, rows):
     """
     job['source_choices'] = []
     doubtful = sum(1 for row in rows if row.get('alternatives'))
+    # Rows where the rescue pass heard one other word (asr_windows._one_word_rescue). The judge only reads the first rows of a file; a row it
+    # never judged is read again by three models (assess_source_with_reread, one_word_review_ids) and, when that settles nothing, keeps its
+    # wording and is listed for the user with the other wording (regression case: "I'm three" against "On three").
+    one_word = {row['id']: (row['source'], next(item['text'] for item in row['alternatives'] if item.get('one_word')))
+                for row in rows if any(item.get('one_word') for item in row.get('alternatives') or ())}
+
+    def unsettled(judged):
+        return [{'id': row_id, 'source': source, 'other': other} for row_id, (source, other) in sorted(one_word.items()) if row_id not in judged]
     # A row cut off in the middle of a sentence is completed with words another reader heard, before anything is judged (nothing the file says is changed).
     rows, completions = complete_cut_off_rows(rows)
     completed = {item['id'] for item in completions}
@@ -6122,6 +6211,7 @@ def choose_between_readings(job, rows):
     plain = [{key: value for key, value in row.items() if key not in ('alternatives', 'word_families')} for row in rows]
     shown = [{'id': item['id'], 'choice': 'completion', 'candidates': [item['from'], item['to']], 'supports': [], 'a_has_error': True, 'from': item['from'],
               'to': item['to'], 'applied': True, 'completion': True} for item in completions]
+    job['unsettled_readings'] = unsettled(completed)
     if not doubtful:
         return plain, shown
     update_job(job['id'], 'verifying', 59, f'Väljer mellan avlyssnade läsningar av {doubtful} osäkra repliker',
@@ -6145,6 +6235,7 @@ def choose_between_readings(job, rows):
     applied = sum(1 for decision in decisions if decision['applied'])
     print(f'Källval: {applied} av {doubtful} osäkra repliker fick en annan avlyssnad läsning.', flush=True)
     job['source_choices'] = shown + decisions
+    job['unsettled_readings'] = unsettled(completed | {decision['id'] for decision in decisions})
     return chosen, job['source_choices']
 
 
@@ -6697,6 +6788,7 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
                   'reason': 'Källkontrollen bedömer fortfarande repliken som osäker efter försöket att läsa om ljudet; '
                             'den befintliga läsningen behölls.'}
                  for row in translated if row.get('source_unclear') and row['id'] not in listed]
+    doubtful += unsettled_reading_rows(job, translated, {item.get('id') for item in doubtful})
     if doubtful:
         save_doubtful_report(job, media, doubtful)
         note += f' · {len(doubtful)} {"replik" if len(doubtful) == 1 else "repliker"} kan vara fel (se rapporten)'

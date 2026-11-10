@@ -2111,6 +2111,76 @@ def replace_one_word_outvoted(merged, readings, *, minimum_families=3, minimum_i
     return rows, changes
 
 
+def _written_words(text):
+    """[(word as _word_list reads it, start, end)] in the text as written."""
+    return [(match.group().casefold(), match.start(), match.end()) for match in re.finditer(r"[\w']+", str(text).replace('’', "'"))]
+
+
+def _slot_positions(words, before, after):
+    """Where a reading has ONE word between `before` and `after` (the row's neighbouring words)."""
+    found = []
+    for position in range(len(before), len(words) - len(after)):
+        if words[position - len(before):position] == before and words[position + 1:position + 1 + len(after)] == after:
+            found.append(position)
+    return found
+
+
+def replace_outvoted_word(merged, readings, *, minimum_families=3, minimum_independent=2, context=2):
+    """(rows, changes): replace ONE word inside a row when at least `minimum_families` model families, two of them other than Whisper large-v3,
+    have the same other word at that place, between the same `context` words on both sides, and no second reading has the row's own word there.
+
+    replace_one_word_outvoted needs the agreeing readings to say exactly the same whole line, so one wrong word stayed when a reading differed
+    somewhere else too: "It's a very staid quantum interference device." (the long pass alone) against "a very state quantum interference" from
+    the rescue and precision passes, Whisper v2 ("That's a very state ...") and Qwen; the translation of the unheard word was refused five rounds
+    and the file with it. Only a word with `context` of the row's own words on each side is judged (never the first or last two words, where the
+    passes cut the sentence differently), exactly one place in the row may qualify, and only that word changes: the row keeps its other words,
+    its punctuation and its timing."""
+    every = dict(readings)
+    every.update(span_readings(merged, readings))
+    indexed = {name: _time_index(items) for name, items in every.items()}
+    rows = [dict(row) for row in sorted(merged, key=lambda item: item['start'])]
+    changes = []
+    for index, row in enumerate(rows):
+        written = _written_words(row.get('text', ''))
+        own = [word for word, _, _ in written]
+        duration = row['end'] - row['start']
+        if len(own) < 2 * context + 1 or own != _word_list(row.get('text', '')) or duration <= 0:
+            continue
+        covering = [(name, other, _written_words(other.get('text', ''))) for name, found in indexed.items()
+                    for other in _rows_near(found, row['start'], row['end'])
+                    if other['end'] > other['start'] and _overlap_seconds(row, other) >= .5 * min(duration, other['end'] - other['start'])
+                    and _word_list(other.get('text', '')) and not _is_boilerplate(other.get('text', ''))]
+        found = []
+        for slot in range(context, len(own) - context):
+            before, after = own[slot - context:slot], own[slot + 1:slot + 1 + context]
+            heard = {}
+            for name, other, tokens in covering:
+                words = [word for word, _, _ in tokens]
+                for position in _slot_positions(words, before, after):
+                    heard.setdefault(words[position], []).append((name, str(other['text']).replace('’', "'")[tokens[position][1]:tokens[position][2]]))
+            if len({_base_name(name) for name, _ in heard.get(own[slot], [])}) > 1:
+                continue                                # a second reading heard the row's own word there
+            for word, entries in heard.items():
+                families = {_family(name) for name, _ in entries}
+                if word != own[slot] and len(families) >= minimum_families and len(families & _INDEPENDENT_FAMILIES) >= minimum_independent:
+                    found.append((slot, word, entries, families))
+        if len(found) != 1:
+            continue
+        slot, word, entries, families = found[0]
+        forms = [form for name, form in entries if _family(name) in _INDEPENDENT_FAMILIES] or [form for _, form in entries]
+        form = max(sorted(set(forms)), key=forms.count)
+        start, end = written[slot][1], written[slot][2]
+        text = str(row['text']).replace('’', "'")
+        if re.search(r'[.!?…]\s*$', text[:start]):
+            form = form[:1].upper() + form[1:]
+        elif form[:1].isupper() and not text[start:start + 1].isupper() and sum(1 for other in forms if other == form) < len(forms):
+            form = form[:1].lower() + form[1:]
+        replaced = text[:start] + form + text[end:]
+        changes.append({'start': row['start'], 'from': row['text'], 'to': replaced, 'families': sorted(families), 'kind': 'word'})
+        rows[index] = {**{key: value for key, value in row.items() if key != 'words'}, 'text': replaced}
+    return rows, changes
+
+
 def _span_overlap_ratio(a, b):
     """Overlap divided by the union of the two time spans."""
     union = max(a['end'], b['end']) - min(a['start'], b['start'])
@@ -2520,16 +2590,16 @@ def _one_word_rescue(text, members, confidence):
     """The short-window rescue pass (alone or its pieces joined) heard the cue's words but one, more confidently. Its own family is the cue's,
     so the family mean hides it ("Yes, sir, I'm three." against "Yes, sir! On three?", 0.72/0.78: the cue was never doubted and shipped
     wrong). Such a cue becomes doubtful: the other wording goes to the existing checks, which still need their own evidence to change it.
-    Replay over the saved jobs: 20 of 10 800 rows."""
+    Replay over the saved jobs: 20 of 10 800 rows. Returns that other wording ('' when there is none)."""
     own = _words_with_apostrophes(text)
     if len(own) < 2:
-        return False
+        return ''
     for name, other in members:
         words = _words_with_apostrophes(other.get('text', ''))
         if (_base_name(name) == 'rescue' and len(words) == len(own) and sum(a != b for a, b in zip(words, own)) == 1
                 and float(other.get('confidence', 0)) >= confidence + .05):
-            return True
-    return False
+            return str(other['text']).strip()
+    return ''
 
 
 def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agreement=.85, maximum_candidates=5,
@@ -2559,8 +2629,8 @@ def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agre
         if not members:
             continue
         confidence = float(row.get('confidence', 0))
-        if not (0 < confidence < maximum_confidence or _mean_agreement(text, members) < minimum_agreement
-                or _one_word_rescue(text, members, confidence)):
+        rescue_wording = _one_word_rescue(text, members, confidence)
+        if not (0 < confidence < maximum_confidence or _mean_agreement(text, members) < minimum_agreement or rescue_wording):
             continue
 
         def support_of(wording):
@@ -2578,7 +2648,9 @@ def reading_alternatives(final, readings, *, maximum_confidence=.6, minimum_agre
                                  'confidence': float(other.get('confidence', 0))}
         ranked = sorted(distinct.values(), key=lambda entry: (-entry['support'], -entry['confidence']))
         if ranked:
-            result[index] = [{key: entry[key] for key in ('text', 'support', 'current_support')}
+            # `one_word` marks the rescue pass's wording one word apart: when nothing settles it, the row is listed for the user (worker).
+            result[index] = [{**{key: entry[key] for key in ('text', 'support', 'current_support')},
+                              **({'one_word': True} if rescue_wording and _normalized(entry['text']) == _normalized(rescue_wording) else {})}
                              for entry in ranked[:maximum_candidates]]
             own = re.findall(r"[^\W\d_]+", text.casefold())
             for candidate in result[index]:
