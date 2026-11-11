@@ -57,12 +57,14 @@ MAX_AUDIO_BYTES = 32 * 1024 * 1024
 FORWARD_HEADERS = ("Content-Type", "X-SubSynq-Language")
 # Exactly the keyword arguments worker.py passes to faster-whisper today.
 # Anything else is refused rather than silently ignored.
+# `hotwords` carries the short sentence-form text of a second reading (app/sentence_form.py), nothing else.
 ALLOWED_OPTIONS = {
     "language": (str, type(None)), "multilingual": (bool,), "vad_filter": (bool,),
     "beam_size": (int,), "condition_on_previous_text": (bool,),
     "word_timestamps": (bool,), "hallucination_silence_threshold": (int, float),
-    "temperature": (int, float),
+    "temperature": (int, float), "hotwords": (str,),
 }
+MAX_HOTWORDS_CHARACTERS = 400
 
 # KB-Whisper reads Swedish (app/swedish_reader.py) and NB-Whisper is the extra Norwegian reader (app/norwegian_reader.py), same repository names;
 # each is downloaded by faster-whisper on its first request. Without NB-Whisper here the rented server refused it (regression case).
@@ -398,6 +400,8 @@ def parse_options(header):
         if allowed is None or not isinstance(value, allowed) or (
                 isinstance(value, bool) and bool not in allowed):
             raise ValueError(f"Whisper-alternativet {name!r} är inte tillåtet.")
+    if len(options.get("hotwords", "")) > MAX_HOTWORDS_CHARACTERS:
+        raise ValueError("Whisper-alternativet 'hotwords' är för långt.")
     return options
 
 

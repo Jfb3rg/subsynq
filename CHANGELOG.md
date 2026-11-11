@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.386
+
+- **Meningsform där Whisper tappat den.** Ett stycke i huvudavlyssningen som Whisper skrivit utan punkter och stor bokstav läses en gång till, med en kort text i meningsform som föregående sammanhang. Den extra läsningen väljer varken ord eller rader: först när allt annat är klart får de rader som fortfarande saknar meningsform dess punkter, kommatecken och stora bokstäver, och bara på ord som båda läsningarna har. Ord och tider är exakt som förut. Bara engelska än så länge (andra språk läggs till när de är mätta).
+- Huvudavlyssningen tar längre tid, eftersom stycken utan meningsform läses två gånger (en femtedel till hälften av ljudet i de mätta avsnitten). Alla stycken får inte meningsform: där den extra läsningen inte heller har den, eller hörde för många andra ord, står raderna kvar som förut. Kan stängas av med `SUBSYNQ_FORM_REREAD=0`.
+- En hyrd server som startats av en äldre version och står kvar tar inte emot den extra texten; då hoppas steget över för det jobbet och resten går som vanligt.
+
 ## 0.8.384
 
 - **Färre osäkra repliker i rapporten.** En replik som källkontrollen tvivlar på listas inte längre när alla modeller som läste om ljudet hörde exakt samma ord som redan står där. Repliker som bara den andra kontrollen pekar ut läses nu också om (förut listades de utan omläsning), och rapporten säger vad som faktiskt gjordes med varje replik. Gränsen som stoppar en fil (mer än en tredjedel osäkra) är oförändrad. Den extra omläsningen kan stängas av med `SUBSYNQ_SECOND_REREAD=0`.

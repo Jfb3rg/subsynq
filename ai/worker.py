@@ -93,6 +93,7 @@ from subtitle_layout import layout_cues
 from sentence_cuts import evidence_words, move_cuts_to_sentence_ends
 import dub_bed
 from collapsed_runs import replace_collapsed_runs, rows_inside_windows
+from sentence_form import form_prompt, lost_form, restore_rows_form, row_words, unmarked_words
 from translation_qa import (might_be_swedish, dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
                             deterministic_flags, SWEDISH_MEANING_RULE, looks_untranslated, name_key, non_latin_runs, proper_name_forms,
@@ -631,6 +632,10 @@ FAMILY_VOTE_ENABLED = os.environ.get('SUBSYNQ_FAMILY_VOTE', '1').strip().lower()
 # Replaces stretches the long pass wrote without sentence form by confirmed sentences (app/collapsed_runs.py). SUBSYNQ_COLLAPSED_RUNS=0
 # turns the step off without a code change: the pipeline then behaves exactly as in 0.8.383.
 COLLAPSED_RUNS_ENABLED = os.environ.get('SUBSYNQ_COLLAPSED_RUNS', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
+# A main-pass window Whisper wrote without sentence form is read once more with a sentence-form text as previous context. That reading is
+# kept aside, and the finished rows that still lack sentence form take its capitals and punctuation (app/sentence_form.py).
+# SUBSYNQ_FORM_REREAD=0 turns the step off without a code change: the job then runs exactly as in 0.8.384.
+FORM_REREAD_ENABLED = os.environ.get('SUBSYNQ_FORM_REREAD', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
 QWEN_HINTED_DOUBTFUL_WINDOWS = 40
 
 
@@ -805,6 +810,9 @@ class RemoteWhisperModel:
     we use -- the local AMD ROCm service by default (GPU_ASR_URL), or a rented
     cloud instance when base_url is given explicitly (same HTTP contract,
     see cloud_gpu.py)."""
+    # The service takes the audio only: a second reading with a previous text would be the first reading again.
+    accepts_prompt = False
+
     def __init__(self, base_url=None, label='AMD-GPU-tjänsten'):
         self.base_url = base_url or GPU_ASR_URL
         self.label = label
@@ -836,6 +844,29 @@ class RemoteWhisperModel:
                 words=words, no_speech_prob=0.0, avg_logprob=0.0,
             ))
         return segments, SimpleNamespace(language=result.get('language'))
+
+
+def read_window_form(reader, clip, options, segments, info, window, state):
+    """A second reading of one main-pass window Whisper wrote without sentence form (app/sentence_form.py), or None.
+
+    The same clip is read once more with the same options and a short sentence-form text as previous context. faster-whisper gives
+    `hotwords` to every 30-second chunk; `initial_prompt` only reaches the first chunk when chunks are read without previous text. The
+    reading takes no part in the steps that choose words and rows: it is kept aside and only lends its capitals and punctuation to the
+    finished rows (restore_rows_form). A reader that refuses the text is not asked again in this job (`state`)."""
+    if not FORM_REREAD_ENABLED or state.get('refused') or not getattr(reader, 'accepts_prompt', True):
+        return None
+    language = options.get('language') or getattr(info, 'language', None)
+    prompt = form_prompt(language)
+    if not prompt or not lost_form([str(word.word) for segment in segments for word in segment.words or []]):
+        return None
+    try:
+        second, _ = reader.transcribe(str(clip), **options, hotwords=prompt)
+        rows = [{'start': window['start'] + segment.start, 'end': window['start'] + segment.end, 'text': str(segment.text).strip()}
+                for segment in second]
+    except RuntimeError as error:
+        state['refused'] = f'läsaren tog inte emot hjälptexten: {error}'
+        return None
+    return {'window': window, 'language': language, 'rows': rows}
 
 
 def is_cloud_cpu(device):
@@ -2526,12 +2557,13 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     strict_speech = []
     used_windows = {}
     profile_evidence = []
+    form_readings, form_state = [], {}
     if QWEN_ASR_ENABLED:
         wait_for_qwen(job)
     def run_profile(folder, window_seconds, overlap_seconds, progress_start, progress_end, label,
                     *, vad_filter=True, minimum_probability=.25, windows_override=None,
                     collect_speech=False, collect_words=False, reading_model=None,
-                    language_code=None, maximum_pause=2.8):
+                    language_code=None, maximum_pause=2.8, read_form=False):
         windows = (plan_windows(total, window_seconds=window_seconds,
                                 overlap_seconds=overlap_seconds)
                    if windows_override is None else windows_override)
@@ -2562,13 +2594,16 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                     })
             effective_language = (language_code or window.get('language') or filename_language
                                   or window_language(job.get('audio_choice'), window['start'], window['end']))
-            segments, _ = (reading_model or model).transcribe(
-                str(clip), language=effective_language,
-                multilingual=effective_language is None,
-                vad_filter=vad_filter, beam_size=5,
-                condition_on_previous_text=False, word_timestamps=True,
-                hallucination_silence_threshold=2.0,
-            )
+            options = dict(language=effective_language, multilingual=effective_language is None,
+                           vad_filter=vad_filter, beam_size=5,
+                           condition_on_previous_text=False, word_timestamps=True,
+                           hallucination_silence_threshold=2.0)
+            segments, info = (reading_model or model).transcribe(str(clip), **options)
+            if read_form:
+                segments = list(segments)
+                form_reading = read_window_form(reading_model or model, clip, options, segments, info, window, form_state)
+                if form_reading:
+                    form_readings.append({'profile': label, **form_reading})
             check_cancelled(job['id'])
             found = []
             for segment in segments:
@@ -2628,10 +2663,10 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         if focus_intervals is None:
             model = prefer_swedish_reader(job, media, model, models, device, total, folder)
         context_window, precision_window = asr_profiles(device)
-        context_profile = run_profile(folder, *context_window, 2, 20, 'Whisper läser sammanhang')
+        context_profile = run_profile(folder, *context_window, 2, 20, 'Whisper läser sammanhang', read_form=True)
         precision_profile = run_profile(folder, *precision_window, 20, 38,
                                         'Kontrollerar luckor och tider',
-                                        minimum_probability=.15, collect_speech=True)
+                                        minimum_probability=.15, collect_speech=True, read_form=True)
         context_profile, precision_profile = filter_unsupported_hallucinations(
             context_profile, precision_profile)
         # Both readings are Whisper's own: where the short pass holds every word of the long pass
@@ -3442,6 +3477,12 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         merged, recovered_anchor = restore_tail_after_anchor_recovery(merged, tail_probes, before_tail_edge)
         if recovered_anchor:
             job['tail_confirmation'].update(restored=True, recovered_anchor=recovered_anchor)
+    # Last of all, so that every step above chooses words and rows from the first readings exactly as before: rows that still stand
+    # without sentence form take the capitals and punctuation of the main-pass windows' second readings (app/sentence_form.py).
+    form_before = unmarked_words(row_words(merged))
+    merged, form_restored = restore_rows_form(merged, form_readings)
+    form_rereads = {'readings': form_readings, 'restored': form_restored, 'refused': form_state.get('refused'),
+                    'unmarked_before': form_before, 'unmarked_after': unmarked_words(row_words(merged))}
     trace_payload.update(timing_refinement=job.get('timing_refinement'), lead_word_probes=job.get('lead_word_probes'), confirmed_word_onsets=job.get('confirmed_word_onsets'), nb=nb_profile, norwegian_reader=job.get('norwegian_reader'), collapsed_words_restored=job.get('collapsed_words_restored'), collapsed_word_windows=collapsed_windows, qwen_word_changes=job.get('qwen_word_changes'), dub_bed=job.get('dub_bed'), lead_words_restored=job.get('lead_words_restored'), source_word_confirmations=short_word_checks, profile_evidence=profile_evidence, consensus_windows=consensus_windows,
                          code_switch_checks=job.get('code_switch_checks'), phrase_overlaps_removed=phrase_overlaps, consensus_qwen=consensus_readings.get("qwen", []),
                          consensus_forced=consensus_readings.get("forced", []), consensus_parakeet=parakeet_reading, parakeet_reader=job.get('parakeet_reader'),
@@ -3452,7 +3493,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                          cluster_first=cluster_first,
                          cluster_second=cluster_second, cluster_v2=cluster_v2, final=merged,
                          final_before_reader_plan=before_reader_plan if plan_replaced else None, reader_plan=job.get('reader_plan'),
-                         family_vote_added=family_vote_added, outvoted_rows_replaced=outvoted_rows, collapsed_runs_replaced=collapsed_runs_replaced, consensus_prefixes=consensus_prefixes, repeated_starts_dropped=repeated_starts, credit_rows_dropped=credit_rows, glossary_changes=glossary_changes, title_rows_joined=title_rows_joined, names_harmonized=name_harmonized,
+                         family_vote_added=family_vote_added, outvoted_rows_replaced=outvoted_rows, collapsed_runs_replaced=collapsed_runs_replaced, form_rereads=form_rereads, consensus_prefixes=consensus_prefixes, repeated_starts_dropped=repeated_starts, credit_rows_dropped=credit_rows, glossary_changes=glossary_changes, title_rows_joined=title_rows_joined, names_harmonized=name_harmonized,
                          late_titles=late_titles, late_languages=late_languages,
                          late_first=late_first, late_second=late_second, late_v2=late_v2)
     save_asr_trace(job, trace_payload)
@@ -6691,6 +6732,8 @@ class SequentialASRModels:
         session = self
 
         class ReadingModel:
+            accepts_prompt = getattr(model, 'accepts_prompt', True)
+
             def transcribe(self, *args, **kwargs):
                 session.activate(model)
                 return model.transcribe(*args, **kwargs)
