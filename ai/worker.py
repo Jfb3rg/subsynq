@@ -92,16 +92,17 @@ from probe import probe_media
 from subtitle_layout import layout_cues
 from sentence_cuts import evidence_words, move_cuts_to_sentence_ends
 import dub_bed
+from collapsed_runs import replace_collapsed_runs, rows_inside_windows
 from translation_qa import (might_be_swedish, dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
                             deterministic_flags, SWEDISH_MEANING_RULE, looks_untranslated, name_key, non_latin_runs, proper_name_forms,
-                            quote_is_only_names, repair_hey_call, repair_kept_names, repair_sir_address, restore_id_order, SOFT_FLAG_CATEGORIES, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
+                            quote_is_only_names, repair_hey_call, repair_intercept, repair_kept_names, repair_sir_address, restore_id_order, SOFT_FLAG_CATEGORIES, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
                             swedish_rows_to_keep, whisper_language_label)
 from forced_reading import needs_second_reading, prefer_second_reading, reading_summary
 from source_judge import EngineUnavailable, choose_readings, complete_cut_off_rows, contradictory_rejected_choice, repeats_neighbour
 from collapsed_words import plan_collapsed_word_checks, restore_collapsed_words
 from glossary import apply_glossary, load_glossary
-from reread import agreed_replacement, confirmed_interior_insertion, conflicting_reread_rows, interior_insertion_slot, language_from_text, clipped_prefix_evidence
+from reread import agreed_replacement, confirmed_by_reread, confirmed_interior_insertion, conflicting_reread_rows, interior_insertion_slot, language_from_text, clipped_prefix_evidence
 from reread import foreign_context_plan, foreign_context_reading, foreign_context_replacement, CONTEXT_WINDOWS, words_inside, wording_support, orthography_shift
 from reread_boundaries import (language_group_plans, confirmed_group_language, local_language_override,
                                kana_slot, confirmed_kana_insertion, confirmed_group_partition, confirmed_continuation)
@@ -172,6 +173,10 @@ FOCUSED_REVIEW = os.environ.get('SUBSYNQ_FOCUSED_REVIEW', '0') == '1'
 # A row the final review still doubts after one repair has its audio read again (reread_flagged_rows); 0 switches that off.
 REREAD_ENABLED = os.environ.get('SUBSYNQ_REREAD', '1').strip().lower() not in ('0', 'off', 'false', 'no')
 REREAD_MAXIMUM_ROWS = 8
+# Rows only the second source audit names are read again too, once (assess_source_with_reread). SUBSYNQ_SECOND_REREAD=0 turns that off
+# without a code change; more rows than the maximum are not read (they are listed as not read again).
+SECOND_REREAD_ENABLED = os.environ.get('SUBSYNQ_SECOND_REREAD', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
+SECOND_REREAD_MAXIMUM_ROWS = 60
 # How many requests the model server may work on at once (1: one after the other, as always). A rented GPU decodes several requests in about the
 # time of one (the model's weights are read once per step), so a long file is reviewed and translated in this many contiguous parts at the same time;
 # the rented server is started with the same OLLAMA_NUM_PARALLEL (app/cloud_gpu.py). Never used on a local CPU.
@@ -623,6 +628,9 @@ def gpu_health(timeout=3):
 QWEN_LANGUAGE_HINTS = {'ta': 'tamil'}
 # Speech no final cue covers is added when two model families read it alike (app/asr_windows.py, STATUS 2026-10-20); 0/off switches it off.
 FAMILY_VOTE_ENABLED = os.environ.get('SUBSYNQ_FAMILY_VOTE', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
+# Replaces stretches the long pass wrote without sentence form by confirmed sentences (app/collapsed_runs.py). SUBSYNQ_COLLAPSED_RUNS=0
+# turns the step off without a code change: the pipeline then behaves exactly as in 0.8.383.
+COLLAPSED_RUNS_ENABLED = os.environ.get('SUBSYNQ_COLLAPSED_RUNS', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
 QWEN_HINTED_DOUBTFUL_WINDOWS = 40
 
 
@@ -3360,6 +3368,20 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
     outvoted_rows = outvoted_rows + one_word_rows + word_rows
     if outvoted_rows:
         job['outvoted_rows_replaced'] = outvoted_rows
+    # Stretches the long pass wrote in lower case without punctuation, cut in the middle of sentences ("...look I know he's a" + "major
+    # donor but absolutely not"): the short pass's or a cluster reread's sentences, where two other model families confirm each differing word.
+    collapsed_runs_replaced = []
+    if COLLAPSED_RUNS_ENABLED and focus_intervals is None:
+        merged, collapsed_runs_replaced = replace_collapsed_runs(
+            merged,
+            [('precision', precision_profile), ('cluster_first', rows_inside_windows(cluster_first, cluster_windows)),
+             ('cluster_second', rows_inside_windows(cluster_second, cluster_windows, shift=1)),
+             ('cluster_v2', rows_inside_windows(cluster_v2, cluster_windows))],
+            {'v2': v2_profile + late_v2, 'cluster_v2': cluster_v2, 'cluster_first': cluster_first, 'cluster_second': cluster_second,
+             'qwen': qwen_reading, 'cluster_qwen': [item for item in cluster_languages if item.get('text')],
+             parakeet_reader.READING_NAME: parakeet_reading})
+        if collapsed_runs_replaced:
+            job['collapsed_runs_replaced'] = collapsed_runs_replaced
     # A pass that swapped in a reading brings its own timing: a hair of overlap must not fail a whole job (regression case).
     merged = trim_small_overlaps(merged)
     # Whisper's long pass sometimes opens a sentence again where a window ends; the short pass hears it once (Wildlife Sample: an extra line shifted 18 translations).
@@ -3430,7 +3452,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                          cluster_first=cluster_first,
                          cluster_second=cluster_second, cluster_v2=cluster_v2, final=merged,
                          final_before_reader_plan=before_reader_plan if plan_replaced else None, reader_plan=job.get('reader_plan'),
-                         family_vote_added=family_vote_added, outvoted_rows_replaced=outvoted_rows, consensus_prefixes=consensus_prefixes, repeated_starts_dropped=repeated_starts, credit_rows_dropped=credit_rows, glossary_changes=glossary_changes, title_rows_joined=title_rows_joined, names_harmonized=name_harmonized,
+                         family_vote_added=family_vote_added, outvoted_rows_replaced=outvoted_rows, collapsed_runs_replaced=collapsed_runs_replaced, consensus_prefixes=consensus_prefixes, repeated_starts_dropped=repeated_starts, credit_rows_dropped=credit_rows, glossary_changes=glossary_changes, title_rows_joined=title_rows_joined, names_harmonized=name_harmonized,
                          late_titles=late_titles, late_languages=late_languages,
                          late_first=late_first, late_second=late_second, late_v2=late_v2)
     save_asr_trace(job, trace_payload)
@@ -3866,6 +3888,21 @@ def split_known_unclear_flags(flags, rows):
     return [flag for flag in flags if flag not in kept], kept
 
 
+SOURCE_UNCLEAR_REASON = ('Källkontrollen bedömer fortfarande repliken som osäker efter försöket att läsa om ljudet; '
+                         'den befintliga läsningen behölls.')
+SOURCE_UNCLEAR_NOT_READ_REASON = 'Källkontrollen bedömer repliken som osäker; ljudet bakom den lästes inte om, så den befintliga läsningen behölls.'
+SOURCE_UNCLEAR_REPLACED_REASON = ('Källkontrollen bedömde repliken som osäker; ljudet lästes om och texten byttes till den läsning modellerna '
+                                  'var överens om, men den nya texten har inte granskats igen.')
+
+
+def source_unclear_reason(job, row_id):
+    """Why a row the source audit left unclear is listed: what was actually done about it (assess_source_with_reread)."""
+    record = job.get('source_reread') or {}
+    if row_id in (record.get('late_changed') or ()):
+        return SOURCE_UNCLEAR_REPLACED_REASON
+    return SOURCE_UNCLEAR_NOT_READ_REASON if row_id in (record.get('not_read_again') or ()) else SOURCE_UNCLEAR_REASON
+
+
 def assess_source_with_reread(job, rows, media_name='', **options):
     """The source audit; any rows it calls clearly broken are read again (reread_flagged_rows: Whisper large-v3, large-v2
     and Qwen3-ASR on a wider clip; a row changes only where two model families agree) and the file is audited once more. Rows that are still
@@ -3926,6 +3963,22 @@ def assess_source_with_reread(job, rows, media_name='', **options):
     if len(still) > SOURCE_DOUBTFUL_SHARE * len(rows):
         raise BrokenSourceRows(f'Källkontrollen och omläsningen lämnar {len(still)} av {len(rows)} repliker osäkra; '
                                'fler än en tredjedel kan inte behållas.', still)
+    # The second audit names rows the first one did not. They are read again as well, once and without another audit, so that every row
+    # listed for the user was really checked against the audio. Such a row stays unclear whatever the reading says, except as below.
+    late = [row_id for row_id in still if row_id not in flagged][:SECOND_REREAD_MAXIMUM_ROWS]
+    if late and REREAD_ENABLED and SECOND_REREAD_ENABLED:
+        first_records = list(job['source_reread']['readings'])
+        update_job(job['id'], 'verifying', 60, f'Källkontrollen tvivlar på {len(late)} repliker till - läser om ljudet bakom dem med tre modeller',
+                   model='Omläsning med Whisper large-v3, large-v2 och Qwen3-ASR')
+        late_changed = reread_flagged_rows(job, rows, late)
+        job['reread_rows'] = first_records + list(job.get('reread_rows') or [])
+        job['source_reread'].update(readings=job['reread_rows'], late_flagged=late, late_changed=late_changed)
+    read_again = {record.get('id') for record in job['source_reread']['readings']}
+    job['source_reread']['not_read_again'] = [row_id for row_id in still if row_id not in read_again]
+    # The gate above counts every unclear row. A row the audit doubts although every model family that read it again heard exactly its
+    # words is not listed for the user (the proof that already clears a rejected source choice); conflicts and unsettled choices stay.
+    job['source_reread']['confirmed_by_reread'] = confirmed_by_reread(
+        rows, job['source_reread']['readings'], set(still) - {item['id'] for item in conflicts} - choice_unclear)
     return sorted(set(still))
 
 
@@ -4918,6 +4971,11 @@ def repair_flagged_translation(job, rows, flags, *, target_key='sv', target_lang
     flags = [f for f in flags if not (f.get('id') in called and str(f.get('reason', '')).startswith('Utropet "Hey"'))]
     if record is not None and heys:
         record({'stage': 'hey_call', 'changes': heys})
+    rows, intercepts = repair_intercept(rows, flags, target_key)
+    intercepted = {change['id'] for change in intercepts}
+    flags = [f for f in flags if not (f.get('id') in intercepted and str(f.get('reason', '')).startswith('Intercept är'))]
+    if record is not None and intercepts:
+        record({'stage': 'intercept', 'changes': intercepts})
     result = (repair_flagged_translation_split(job, rows, flags, target_key=target_key, target_language=target_language, record=record)
               if flags else [dict(row) for row in rows])
     before = {row['id']: row for row in rows}
@@ -6843,10 +6901,12 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
     doubtful = list(job.get('doubtful_rows') or [])
     # Rows the source audit still found unclear after reading them again: kept with their best reading, listed for the user to check.
     listed = {item.get('id') for item in doubtful}
+    # Not listed: a row whose words every model family heard again exactly (it keeps the words that were confirmed).
+    confirmed = set(confirmed_by_reread(translated, (job.get('source_reread') or {}).get('readings') or [],
+                                        set((job.get('source_reread') or {}).get('confirmed_by_reread') or [])))
     doubtful += [{'id': row['id'], 'start': row['start'], 'end': row['end'], 'source': row['source'], 'sv': row.get('sv', ''),
-                  'reason': 'Källkontrollen bedömer fortfarande repliken som osäker efter försöket att läsa om ljudet; '
-                            'den befintliga läsningen behölls.'}
-                 for row in translated if row.get('source_unclear') and row['id'] not in listed]
+                  'reason': source_unclear_reason(job, row['id'])}
+                 for row in translated if row.get('source_unclear') and row['id'] not in listed and row['id'] not in confirmed]
     doubtful += unsettled_reading_rows(job, translated, {item.get('id') for item in doubtful})
     if doubtful:
         save_doubtful_report(job, media, doubtful)

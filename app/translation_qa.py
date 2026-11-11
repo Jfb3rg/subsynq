@@ -632,7 +632,9 @@ SWEDISH_MEANING_RULE = (
     'is "Ja, men", "So, hey" is "Så, okej", "you know me" is "du känner mig", "Be alert" is "Var på er vakt" (never "på alert"), '
     '"Look, man" is "Hör här". Never use Norwegian or Danish words (likegyldig, ikke, jeg, kanskje, også, veldig): write Swedish. '
     'Keep a nickname or form of address the same through the whole file (if Chief is kept as a name, keep Chief everywhere). '
-    'The address "sir" (military, police, to a superior or a customer) stays "sir" in Swedish subtitles, never "herre" or "befäl". ')
+    'The address "sir" (military, police, to a superior or a customer) stays "sir" in Swedish subtitles, never "herre" or "befäl". '
+    'To intercept a convoy, ship, plane or person on its way is "genskjuta"; to intercept a message, signal or call is "snappa upp". '
+    'Never "avbryta" (that is to interrupt), and "avlyssna" only for a message. ')
 
 
 # Norwegian/Danish "må ikke" forbids ("must not"); Swedish "måste inte" means "need not" (SamplePerson mot verden, regression caseand 202:
@@ -806,6 +808,11 @@ def swedish_context_flags(rows, target_key='sv'):
         if dying and killing and not re.search(r'殺|死なせ|\bkill\w*\b', source, re.IGNORECASE):
             findings.append((dying.group(), killing.group(),
                              'Att dö är inte att döda: källan anger döende, inte att orsaka någon annans död. Bevara handling och aktör.'))
+        wrong_intercept = intercept_flag(source, target)
+        if wrong_intercept:
+            findings.append((_INTERCEPT.search(source).group(), wrong_intercept,
+                             f'Intercept är att genskjuta (hinna ifatt och stoppa på vägen) eller, om ett meddelande, att snappa upp; '
+                             f'"{wrong_intercept}" betyder något annat.'))
         for english, swedish in ENGLISH_EXONYMS.items():
             # SAMPLE GAMMA (regression case): "attack on Ukraine" became "attack mot Ukraine"; Swedish writes Ukraina.
             kept = re.search(rf'\b{english}\b', target)
@@ -916,14 +923,33 @@ def repair_sir_address(rows, flags, target_key='sv'):
 _HEY_ORDER = (r"what (?:are you|do you think you're) doing\s*[?!]|what the (?:hell|heck|fuck)\b|where (?:are you|do you think you're) going\s*[?!]|"
               r"(?:stop(?! by)|wait|watch (?:out|it)|look out|calm down|wake up|get (?:off|out|up|down|away|back)|"
               r"let (?:go|(?:me|him|her|them|us) go)|hands off|come back|cut it out|knock it off|back off|slow down|hold (?:on|it)|"
-              r"put (?:that|it) down|leave (?:me|him|her|them|us|it) alone)\b")
+              r"put (?:that|it) down|leave (?:me|him|her|them|us|it) alone|you there|listen|excuse me|du da|ihr da|sie da)\b|look\s*[,!.]")
 _HEY_CALL = re.compile(r"^\W*hey(?:(?:\W+hey)+\b|\s*!+\W*$|\s*[,!]\s*(?:[^\W\d_][\w'-]*\s*,\s*)?(?:" + _HEY_ORDER + r"))", re.IGNORECASE)
 _HEJ_LEAD = re.compile(r'^\W*hej\b(?:[\s,!.]+hej\b)*', re.IGNORECASE)
 
 
-def hey_call_flag(source, target):
-    """The leading "Hej"(s) of a Swedish row whose source opens with a repeated or lone shouted "Hey" or with "Hey" and an order, or None."""
-    if not _HEY_CALL.search(str(source)):
+_HEY_LEAD = re.compile(r"^\W*hey\s*[,!]", re.IGNORECASE)
+_UNFINISHED = re.compile(r"(?:\.{2,}|…|,|\s[-–—])\W*$")
+HEY_SAME_UTTERANCE_GAP = .5
+
+
+def continues_utterance(rows, index):
+    """The row goes on with what the row before it left unfinished ("By the way, uh..." + "Hey, have you seen anyone?"): that row ends on
+    dots, a comma or a dash and this one starts within half a second. Someone already talking does not greet."""
+    if not index:
+        return False
+    previous, row = rows[index - 1], rows[index]
+    try:
+        gap = float(row['start']) - float(previous['end'])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return -.1 <= gap <= HEY_SAME_UTTERANCE_GAP and bool(_UNFINISHED.search(str(previous.get('source', ''))))
+
+
+def hey_call_flag(source, target, *, continues=False):
+    """The leading "Hej"(s) of a Swedish row whose source opens with a repeated or lone shouted "Hey" or with "Hey" and an order, or (with
+    `continues`, see continues_utterance) with a "Hey," in the middle of what someone is saying; None otherwise."""
+    if not _HEY_CALL.search(str(source)) and not (continues and _HEY_LEAD.search(str(source))):
         return None
     found = _HEJ_LEAD.search(str(target))
     return found.group() if found else None
@@ -935,14 +961,65 @@ def repair_hey_call(rows, flags, target_key='sv'):
     if target_key != 'sv':
         return result, changes
     requested = {(f.get('id'), f.get('target_quote')) for f in flags if f.get('category') == 'meaning'}
-    for row in result:
-        wrong = hey_call_flag(row.get('source', ''), row.get('sv') or '')
+    for index, row in enumerate(result):
+        wrong = hey_call_flag(row.get('source', ''), row.get('sv') or '', continues=continues_utterance(rows, index))
         if not wrong or (row['id'], wrong) not in requested:
             continue
         before = row['sv']
         lead = re.sub(r'hej', lambda match: 'Hallå' if match.group()[0].isupper() else 'hallå', wrong, flags=re.IGNORECASE)
         row['sv'] = lead + before[len(wrong):]
         changes.append({'id': row['id'], 'category': 'meaning', 'source_quote': 'Hey', 'before': before, 'after': row['sv']})
+    return result, changes
+
+
+# "to intercept a convoy" was written "avbryta en konvoj" (interrupt) and "avlyssna en konvoj" (eavesdrop on) in saved files. To intercept
+# something on its way is "genskjuta"; a message, signal or call is "snappa upp" (there "avlyssna" is also right). "Avbryta" stays where the
+# source itself has a word for breaking something off.
+_INTERCEPT = re.compile(r"\bintercept(?:s|ed|ing)?\b", re.IGNORECASE)
+_INTERCEPT_MOVING = re.compile(
+    r"\bintercept(?:s|ed|ing)?\s+(?:(?:the|a|an|that|this|those|these|their|his|her|its|our|your|my|any|every|another|\d+|one|two|three)\s+)?"
+    r"(?:[\w'-]+\s+){0,2}?(?:convoys?|ships?|vessels?|boats?|submarines?|planes?|aircraft|jets?|bombers?|fighters?|helicopters?|trucks?|cars?|"
+    r"vehicles?|trains?|missiles?|rockets?|shipments?|couriers?|him|her|them)\b", re.IGNORECASE)
+_BROKEN_OFF = re.compile(r"\b(?:interrupt\w*|abort\w*|cancel\w*|cut(?:s|ting)?\s+(?:\w+\s+)?(?:off|short)|br(?:eak|oke|oken)\s+(?:\w+\s+)?off|"
+                         r"call(?:s|ed|ing)?\s+(?:\w+\s+)?off|halt\w*|suspend\w*|discontinu\w*|stop\w*|quit\w*|end(?:s|ed|ing)?)\b", re.IGNORECASE)
+_INTERRUPT_SV = re.compile(r"\bavbr(?:yta|yter|yts|yt|öts|öt|utits|utit|uten|utet|utna)\b", re.IGNORECASE)
+_EAVESDROP_SV = re.compile(r"\bavlyssna(?:r|de|t|s|des|ts|d|nde)?\b", re.IGNORECASE)
+_GENSKJUTA = {'avbryta': 'genskjuta', 'avbryter': 'genskjuter', 'avbryts': 'genskjuts', 'avbryt': 'genskjut', 'avbröt': 'genskjöt',
+              'avbröts': 'genskjöts', 'avbrutit': 'genskjutit', 'avbrutits': 'genskjutits', 'avbruten': 'genskjuten', 'avbrutet': 'genskjutet',
+              'avbrutna': 'genskjutna', 'avlyssna': 'genskjuta', 'avlyssnar': 'genskjuter', 'avlyssnade': 'genskjöt', 'avlyssnat': 'genskjutit',
+              'avlyssnas': 'genskjuts', 'avlyssnades': 'genskjöts', 'avlyssnats': 'genskjutits', 'avlyssnad': 'genskjuten'}
+
+
+def intercept_flag(source, target):
+    """The Swedish verb that renders the source's "intercept" as interrupting (or, for something that moves, as eavesdropping), or None."""
+    source, target = str(source), str(target)
+    if not _INTERCEPT.search(source):
+        return None
+    moving = _INTERCEPT_MOVING.search(source)
+    found = (None if _BROKEN_OFF.search(source) else _INTERRUPT_SV.search(target)) or (moving and _EAVESDROP_SV.search(target))
+    return found.group() if found else None
+
+
+def repair_intercept(rows, flags, target_key='sv'):
+    """Write the matching form of "genskjuta" for a flagged verb (intercept_flag) where the source intercepts something that moves (a convoy,
+    a ship, a plane, him, them); only that verb changes. A message or anything else is left to the ordinary repair, which gets the reason."""
+    result, changes = [dict(row) for row in rows], []
+    if target_key != 'sv':
+        return result, changes
+    requested = {(f.get('id'), f.get('target_quote')) for f in flags if f.get('category') == 'meaning'}
+    for row in result:
+        source, before = str(row.get('source', '')), row.get('sv') or ''
+        wrong = intercept_flag(source, before)
+        pattern = _INTERRUPT_SV if wrong and _INTERRUPT_SV.fullmatch(wrong) else _EAVESDROP_SV
+        # As many wrong verbs as the source has "intercept" at most: one more is a verb for something else the row says.
+        if (not wrong or (row['id'], wrong) not in requested or not _INTERCEPT_MOVING.search(source)
+                or len(pattern.findall(before)) > len(_INTERCEPT.findall(source))
+                or any(found.casefold() not in _GENSKJUTA for found in pattern.findall(before))):
+            continue
+        row['sv'] = pattern.sub(lambda match: (_GENSKJUTA[match.group().casefold()].capitalize() if match.group()[0].isupper()
+                                               else _GENSKJUTA[match.group().casefold()]), before)
+        changes.append({'id': row['id'], 'category': 'meaning', 'source_quote': _INTERCEPT.search(row['source']).group(), 'before': before,
+                        'after': row['sv']})
     return result, changes
 
 
@@ -968,7 +1045,7 @@ def file_consistency_flags(rows):
         for key, written in forms.items():
             if any(re.search(rf'(?<![\w]){re.escape(form)}(?![\w])', str(row.get('source', ''))) and form in target for form in written):
                 kept[key] = kept.get(key, 0) + 1
-    for row in rows:
+    for index, row in enumerate(rows):
         source, target = str(row.get('source', '')), str(row.get('sv') or '')
         words = re.findall(r'[^\W\d_]+', source)
         only_names = bool(words) and all(name_key(word) in forms or word.casefold() in _CALL_WORDS for word in words)
@@ -987,7 +1064,7 @@ def file_consistency_flags(rows):
         if wrong_sir:
             flags.append({'id': row['id'], 'category': 'meaning', 'source_quote': 'sir', 'target_quote': wrong_sir,
                           'reason': f'Tilltalet "sir" skrivs "sir" i svenska undertexter, inte "{wrong_sir}".'})
-        wrong_hey = hey_call_flag(source, target)
+        wrong_hey = hey_call_flag(source, target, continues=continues_utterance(rows, index))
         if wrong_hey:
             flags.append({'id': row['id'], 'category': 'meaning', 'source_quote': 'Hey', 'target_quote': wrong_hey,
                           'reason': 'Utropet "Hey" som ropar på, hejdar eller lugnar någon är "Hallå", inte hälsningen "Hej".'})

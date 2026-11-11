@@ -10,6 +10,13 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.384
+
+- **Färre osäkra repliker i rapporten.** En replik som källkontrollen tvivlar på listas inte längre när alla modeller som läste om ljudet hörde exakt samma ord som redan står där. Repliker som bara den andra kontrollen pekar ut läses nu också om (förut listades de utan omläsning), och rapporten säger vad som faktiskt gjordes med varje replik. Gränsen som stoppar en fil (mer än en tredjedel osäkra) är oförändrad. Den extra omläsningen kan stängas av med `SUBSYNQ_SECOND_REREAD=0`.
+- **Stycken utan meningsform.** Där den långa avlyssningen skrivit ett stycke utan punkter och stor bokstav byts raderna mot hela meningar ur en annan avlyssning, men bara där de andra modellerna bekräftar varje ord som skiljer. Kan stängas av med `SUBSYNQ_COLLAPSED_RUNS=0`.
+- "Intercept a convoy" blir "genskjuta en konvoj", inte "avbryta" eller "avlyssna".
+- "Hey" mitt i det någon säger, och "Hey, you there / listen / look! / excuse me", blir "Hallå" i stället för hälsningen "Hej".
+
 ## 0.8.383
 
 - Parakeet läser även **tyska** avsnitt (utöver engelska). Modellen kan 25 språk, men SubSynq slår bara på språk där den mätts: på sparade trailers skilde den sig från godkända ord på 7,6 % i tyska och 6,8 % i engelska mot 32,5 % i svenska och 44,6 % i danska (där den ofta hör ord som aldrig sagts), så svenska och danska är fortsatt avstängda.

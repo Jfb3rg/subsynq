@@ -52,6 +52,34 @@ class HeyCallTests(unittest.TestCase):
                            ('Hey, your bruises are gone.', 'Hej, dina blåmärken är borta.')):
             self.assertIsNone(hey_call_flag(source, sv), (source, sv))
 
+    def test_a_hey_that_calls_for_attention_is_flagged(self):
+        for source, sv, right in (('Hey, you there, with the red hat!', 'Hej, du där, med den röda hatten!', 'Hallå, du där, med den röda hatten!'),
+                                  ('Hey, listen to me.', 'Hej, lyssna på mig.', 'Hallå, lyssna på mig.'),
+                                  ('Hey, look!', 'Hej, titta!', 'Hallå, titta!'),
+                                  ('Hey, excuse me, is this your bag?', 'Hej, ursäkta, är det här din väska?', 'Hallå, ursäkta, är det här din väska?'),
+                                  ('Hey, du da, mit dem Hut!', 'Hej, du där, med hatten!', 'Hallå, du där, med hatten!')):
+            rows = [row(1, source, sv)]
+            self.assertEqual([flag['target_quote'] for flag in hey_flags(rows)], ['Hej'], source)
+            self.assertEqual(repair_hey_call(rows, file_consistency_flags(rows))[0][0]['sv'], right)
+        for source, sv in (('Hey, you.', 'Hej, du.'), ('Hey, look who is here!', 'Hej, titta vem som är här!'), ('Hey, sorry I am late.', 'Hej, förlåt att jag är sen.')):
+            self.assertEqual(hey_flags([row(1, source, sv)]), [], source)
+
+    def test_a_hey_in_the_middle_of_what_someone_says_is_no_greeting(self):
+        unfinished = {'id': 1, 'start': 10.0, 'end': 12.0, 'source': 'Oh, before I forget, uh...', 'sv': 'Åh, innan jag glömmer...'}
+        hey = {'id': 2, 'start': 12.0, 'end': 14.0, 'source': 'Hey, did you find the keys?', 'sv': 'Hej, hittade du nycklarna?'}
+        rows = [unfinished, hey]
+        self.assertEqual([(flag['id'], flag['target_quote']) for flag in hey_flags(rows)], [(2, 'Hej')])
+        repaired, changes = repair_hey_call(rows, file_consistency_flags(rows))
+        self.assertEqual([item['sv'] for item in repaired], ['Åh, innan jag glömmer...', 'Hallå, hittade du nycklarna?'])
+        self.assertEqual(hey_flags(repaired), [])
+        # A finished row before it, a pause, or no "Hey," at the start: it can be a greeting and is left alone.
+        for before, start, source in (({**unfinished, 'source': 'Oh, before I forget.'}, 12.0, hey['source']),
+                                      ({**unfinished, 'source': 'Marta!'}, 12.0, hey['source']),
+                                      (unfinished, 13.5, hey['source']),
+                                      (unfinished, 12.0, 'Hey Marta, did you find the keys?')):
+            self.assertEqual(hey_flags([before, {**hey, 'start': start, 'source': source}]), [], (before['source'], start, source))
+        self.assertEqual(hey_flags([hey]), [])
+
     def test_a_lower_case_lead_and_a_dash_are_kept(self):
         rows = [row(9, '- hey, hey, stop it!', '- hej, hej, sluta!')]
         self.assertEqual(repair_hey_call(rows, file_consistency_flags(rows))[0][0]['sv'], '- hallå, hallå, sluta!')

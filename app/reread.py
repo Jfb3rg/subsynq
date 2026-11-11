@@ -188,6 +188,22 @@ def confirmed_interior_insertion(row, readings, neighbours=()):
                   'cue_times_preserved': True}
 
 
+def confirmed_by_reread(rows, records, ids):
+    """The ids among `ids` whose words the reread confirmed: the row still has the text that was read again, and every model family that
+    read it (at least two) heard exactly those words. The same proof that clears a rejected source choice; a similar text with another word,
+    too few families or diverging readings confirm nothing."""
+    current = {row['id']: row['source'] for row in rows if row['id'] in ids}
+    confirmed = set()
+    for record in records:
+        row_id = record.get('id')
+        if row_id not in current or _normalized(str(record.get('current', ''))) != _normalized(str(current[row_id])):
+            continue
+        _, verdict = agreed_replacement(current[row_id], record.get('readings') or [])
+        if verdict['decision'] == 'läsningen stämmer med nuvarande text' and verdict.get('same_words'):
+            confirmed.add(row_id)
+    return sorted(confirmed)
+
+
 def conflicting_reread_rows(rows, records, ids):
     """Evidence for still-hard meaning errors, not a new source choice or a soft flag.
 
