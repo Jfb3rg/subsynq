@@ -10,7 +10,7 @@ sys.path.insert(0, '/app')
 import worker
 from translation_qa import non_latin_flags, non_latin_runs
 
-# Guardians (2017) (regression case) and THE PILOT (job 93): the translator was told to copy names unchanged, so Cyrillic names stayed in the Swedish text,
+# Sample Upsilon (regression case) and SAMPLE PHI: the translator was told to copy names unchanged, so Cyrillic names stayed in the Swedish text,
 # and the reviewer listed them as "names_kept" instead of flagging them.
 GUARDIANS = [{'id': 0, 'start': 8.47, 'end': 12.01, 'source': 'За две недели я должна объехать весь бывший Советский Союз,',
               'sv': 'Jag måste resa genom hela det forna Советский Союз på två veckor.'},

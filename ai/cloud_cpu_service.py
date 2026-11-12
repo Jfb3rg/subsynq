@@ -260,7 +260,7 @@ def activate_whisper(name):
 def release_gpu_memory():
     """Hand the memory Whisper and Qwen3-ASR hold back to the card before the translation model loads. On a rented RTX 3090 they kept
     7 GiB (3.4 + 3.6) through the whole translation, so gemma3:27b got 16.7 GiB, ran partly on the CPU and generated 4 tokens/s instead of
-    33 (STATUS natt 43). Both models load again on the next request. Returns {"whisper": was it loaded, "qwen": is it restarting (None: it
+    33. Both models load again on the next request. Returns {"whisper": was it loaded, "qwen": is it restarting (None: it
     did not answer)}."""
     global whisper, whisper_loaded
     with whisper_lock:

@@ -1,7 +1,7 @@
 """Minimal UI-language catalog for the interface chrome (navigation, page
 titles, top bar) -- svenska (default) and engelska. Deeper text such as
 error messages, quality-gate reasoning and settings card copy stays Swedish
-only for now; see SETTINGS-PLAN.md and STATUS.md for the phased rollout.
+only for now.
 """
 
 LANGUAGES = ("sv", "en")

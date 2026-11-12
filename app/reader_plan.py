@@ -1,6 +1,6 @@
 """Which reader writes the text of a language (FLEURS test 2026-10-19, STATUS night 35).
 
-SWITCHED OFF BY DEFAULT (STATUS 2026-10-19, night 36). On read speech (FLEURS) Qwen3-ASR (another model family, already in the chain) reads Hindi
+SWITCHED OFF BY DEFAULT. On read speech (FLEURS) Qwen3-ASR (another model family, already in the chain) reads Hindi
 (12.6 % wrong words against Whisper large-v3's 24.8 %), Korean (11.6 against 15.2) and Chinese (4.9 against 6.5) clearly better, so for those
 languages Qwen can re-read the speech and its words replace Whisper's, every cue keeping Whisper's start and end. On real film audio it did not hold:
 the SAMPLE_ALPHA trailer (Korean) with the burned-in English subtitles as witness, Qwen lost words Whisper had right ("mudfish", "putting out the mountain fires",

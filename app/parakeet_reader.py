@@ -2,13 +2,13 @@
 
 Parakeet (NVIDIA, CC-BY-4.0; the ONNX conversion by istupakov) is a FastConformer encoder with a token-and-duration transducer: another
 architecture than the Whisper models (encoder-decoder) and Qwen3-ASR (language-model decoder), so its mistakes are not theirs. On the saved
-English trailers and episodes it heard the same words as three other families on 6 of 7 rows where those agreed (STATUS 2026-11-10) and
+English trailers and episodes it heard the same words as three other families on 6 of 7 rows where those agreed and
 differed from the approved source on 6.8 % of the words of 45 ordinary rows, mostly "gonna/gotta" and names: as good as the others, not better.
 So it never replaces a reader. It reads the windows Qwen3-ASR reads, on the CPU of the machine the worker runs on (about 2.4 times faster than
 real time on four threads, 2.7 GB of memory), also when the main reading is done on a rented GPU, and is one more model family in the votes
 (asr_windows._FAMILIES: 'parakeet'). The model is NOT part of SubSynq: the model manager downloads the files from Hugging Face (kind
 'hf-files', models.json) and keeps them at the newest revision. The languages are measured one by one, not by reputation: it lists 25 European
-languages, but on saved trailers (2 s of sound each side of every approved row, STATUS 2026-11-10) it differed from the approved words on 6.8 % in
+languages, but on saved trailers (2 s of sound each side of every approved row) it differed from the approved words on 6.8 % in
 English and 7.6 % in German, against 32.5 % in Swedish and 44.6 % in Danish, where short clips often came out as English or German words that
 were never said. So it reads English and German; Swedish, Danish and the rest stay off until they are measured better. It guesses the language
 from the clip itself, so a window is read with PADDING seconds of sound on each side and the words outside the window are cut away again by

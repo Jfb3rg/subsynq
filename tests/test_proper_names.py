@@ -112,7 +112,7 @@ GERMAN = [
 
 
 class GermanNounsAreNotNamesTests(unittest.TestCase):
-    """regression caseand 44: German writes every noun with a capital, so "Messer", "Mord", "Kollegen" were
+    """regression case: German writes every noun with a capital, so "Messer", "Mord", "Kollegen" were
     handed to the translator as names to copy unchanged and the Swedish came back full of German nouns."""
 
     def test_a_german_text_has_no_names_from_capitals_alone(self):

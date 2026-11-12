@@ -205,7 +205,7 @@ class UnclearRowsInReviewTests(unittest.TestCase):
     def test_a_second_text_verdict_does_not_hide_an_unresolved_acoustic_conflict(self):
         sample = rows(51)
         sample[15]['source'] = 'Bestevennet fra du!'
-        # Actual readings in job 229: no source change, but the second source audit forgot this row.
+        # Actual readings in the test case: no source change, but the second source audit forgot this row.
         record = {'id': 15, 'current': sample[15]['source'], 'decision': 'modellfamiljerna läste olika ord',
                   'readings': [{'name': 'precision', 'text': 'Beste wennen voor al die...'},
                                {'name': 'v2', 'text': 'Best event ever, oh yeah!'},

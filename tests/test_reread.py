@@ -19,20 +19,20 @@ def readings(precision, v2, qwen):
             {'name': 'qwen', 'text': qwen, 'confidence': .5}]
 
 
-# Real readings of the rows the final review flagged in the KOKUHO, SAMPLE_ALPHA and FRANCE trailers (regression case; STATUS natt 40).
-KOKUHO_DEAL = ('き成立や', readings('取引成立や', '取引成立や', '取引成立や。'))
-KOKUHO_FACE = ('ですよのお顔に自分が食われちまいます からね',
+# Real readings of the rows the final review flagged in the SAMPLE KAPPA, SAMPLE_ALPHA and FRANCE trailers (regression case).
+SAMPLE_KAPPA_DEAL = ('き成立や', readings('取引成立や', '取引成立や', '取引成立や。'))
+SAMPLE_KAPPA_FACE = ('ですよのお顔に自分が食われちまいます からね',
                readings('そのお顔に自分は食われちまいますからね', 'そのお顔に自分が食われちまいますからね', 'そのお顔に自分が食われちまいますからね。'))
-KOKUHO_ARTS = ('あたはゲーで勝負するんや。', readings('あんたは芸で勝負するんや', 'あんたは芸で勝負するんや', 'あんたは芸で勝負するんや。'))
-KOKUHO_SERIOUSLY = ('歌舞伎役者にさせるん?', readings('本気で歌舞伎役者にさせる!', '本気で歌舞伎役者にさせるん', '本気で歌舞伎役者にさせる。'))
+SAMPLE_KAPPA_ARTS = ('あたはゲーで勝負するんや。', readings('あんたは芸で勝負するんや', 'あんたは芸で勝負するんや', 'あんたは芸で勝負するんや。'))
+SAMPLE_KAPPA_SERIOUSLY = ('歌舞伎役者にさせるん?', readings('本気で歌舞伎役者にさせる!', '本気で歌舞伎役者にさせるん', '本気で歌舞伎役者にさせる。'))
 # Where the readers do not agree, or the current text is as good as the readings, nothing is changed.
-KOKUHO_GARBLED = ('どっちにしても、結構手だったら結構身が入るだろ',
+SAMPLE_KAPPA_GARBLED = ('どっちにしても、結構手だったら結構身が入るだろ',
                   readings('聞くわけじゃったらシンボルも結構に身が入れるわ', '結構相手が立ちんぼも結構に見が入るよな', '結構開いてた新聞も結構に実が生えるら。'))
-KOKUHO_GARBLED_TOO = ('客車もんは時期だがいい気もやわ',
+SAMPLE_KAPPA_GARBLED_TOO = ('客車もんは時期だがいい気もやわ',
                       readings('逆者いうもんはいじきたが生きもんやわ', '役者流氓は 無理にしてきたが生きもんやわ', '百社有望は、いじきたない気もやわ。'))
-KOKUHO_CENTURY = ('世紀の王子家か?', readings('聖地の王国が', '聖地の王国へか', '聖地の大骨折が。'))
-KOKUHO_CLIPPED = ('歌舞伎役者にさせるん?', readings('本気で歌舞伎役者にさせる!', '本気で歌舞伎役者にさせるん', 'で歌舞伎役者にさせる。'))
-KOKUHO_RIGHT = ('実の息子より部屋子の方が芸が上言うのが', readings('実の息子より部屋子の方が芸が上言うのが', '実の息子より部屋後の方が芸が上いうのが', '実の息子より部屋子の方が芸が上いうのが。'))
+SAMPLE_KAPPA_CENTURY = ('世紀の王子家か?', readings('聖地の王国が', '聖地の王国へか', '聖地の大骨折が。'))
+SAMPLE_KAPPA_CLIPPED = ('歌舞伎役者にさせるん?', readings('本気で歌舞伎役者にさせる!', '本気で歌舞伎役者にさせるん', 'で歌舞伎役者にさせる。'))
+SAMPLE_KAPPA_RIGHT = ('実の息子より部屋子の方が芸が上言うのが', readings('実の息子より部屋子の方が芸が上言うのが', '実の息子より部屋後の方が芸が上いうのが', '実の息子より部屋子の方が芸が上いうのが。'))
 SAMPLE_ALPHA_DEAL = ('미꾸라지 마냥 미끄러운 거래 한 20분쯤 걸었는데',
              readings('미꾸라지 마냥 미끄러운 걸 한 20분쯤 걸었네', '삐꾸라지마냥 삐끄덩거리고 한 20분쯤 걸었네', '비굴하지만요. 떡걸음 한 20분쯤 걸었네.'))
 FRANCE_FAMOUS = ("Cette célébrité s'y démonte.", readings('Cette célébrité si démonte.', 'Cette célébrité si démonte.', "Cette célébrité s'y démonte."))
@@ -45,43 +45,43 @@ def replaced(case):
 
 class ReplacedRowsTests(unittest.TestCase):
     def test_a_source_cut_short_or_misheard_by_one_pass_is_replaced_when_three_readers_agree(self):
-        self.assertEqual(replaced(KOKUHO_DEAL), ('取引成立や', 'ersatt'))
-        self.assertEqual(replaced(KOKUHO_ARTS), ('あんたは芸で勝負するんや', 'ersatt'))
-        text, decision = replaced(KOKUHO_FACE)
+        self.assertEqual(replaced(SAMPLE_KAPPA_DEAL), ('取引成立や', 'ersatt'))
+        self.assertEqual(replaced(SAMPLE_KAPPA_ARTS), ('あんたは芸で勝負するんや', 'ersatt'))
+        text, decision = replaced(SAMPLE_KAPPA_FACE)
         self.assertEqual(decision, 'ersatt')
         self.assertTrue(text.startswith('そのお顔に自分') and text.endswith('食われちまいますからね'), text)
-        self.assertTrue(replaced(KOKUHO_SERIOUSLY)[0].startswith('本気で歌舞伎役者にさせる'))
+        self.assertTrue(replaced(SAMPLE_KAPPA_SERIOUSLY)[0].startswith('本気で歌舞伎役者にさせる'))
 
     def test_readers_that_all_hear_something_else_change_nothing(self):
-        for case in (KOKUHO_GARBLED, KOKUHO_GARBLED_TOO):
+        for case in (SAMPLE_KAPPA_GARBLED, SAMPLE_KAPPA_GARBLED_TOO):
             self.assertEqual(replaced(case), (None, 'modellfamiljerna läste olika ord'))
 
     def test_two_whisper_models_agreeing_against_qwen_do_not_replace_a_text_that_may_be_better(self):
-        """KOKUHO row 8: both Whisper models read "聖地の王国" and Qwen "聖地の大骨折"; every family must agree, and they agree only at about 0.6."""
-        self.assertEqual(replaced(KOKUHO_CENTURY), (None, 'modellfamiljerna läste olika ord'))
+        """SAMPLE KAPPA row 8: both Whisper models read "聖地の王国" and Qwen "聖地の大骨折"; every family must agree, and they agree only at about 0.6."""
+        self.assertEqual(replaced(SAMPLE_KAPPA_CENTURY), (None, 'modellfamiljerna läste olika ord'))
         self.assertEqual(replaced(SAMPLE_ALPHA_DEAL), (None, 'modellfamiljerna läste olika ord'))
 
     def test_three_families_agreeing_at_0_77_are_not_enough(self):
-        """KOKUHO row 8 in job 77: all three readers heard "聖地の王国…" (agreement 0.77) but the burned-in subtitles say "Future stars or failure of
-        the century!", so the current "世紀の…" was the better text. The four right corrections (job 76/77) agreed at 0.96 or more."""
+        """SAMPLE KAPPA row 8 in the test case: all three readers heard "聖地の王国…" (agreement 0.77) but the burned-in subtitles say "Future stars or failure of
+        the century!", so the current "世紀の…" was the better text. The four right corrections agreed at 0.96 or more."""
         text, record = agreed_replacement('世紀の王子家か?', readings('聖地の王国が', '聖地の王国へか', '聖地の王国に。'))
         self.assertIsNone(text)
         self.assertEqual(record['decision'], 'modellfamiljerna läste olika ord')
-        for case in (KOKUHO_DEAL, KOKUHO_ARTS, KOKUHO_FACE, KOKUHO_SERIOUSLY):
+        for case in (SAMPLE_KAPPA_DEAL, SAMPLE_KAPPA_ARTS, SAMPLE_KAPPA_FACE, SAMPLE_KAPPA_SERIOUSLY):
             self.assertGreaterEqual(agreed_replacement(*case)[1]['agreement'], .9)
 
     def test_a_missing_reader_leaves_the_others_to_decide_but_a_dissenting_one_blocks(self):
-        without_qwen = [reading for reading in KOKUHO_DEAL[1] if reading['name'] != 'qwen']
-        self.assertEqual(agreed_replacement(KOKUHO_DEAL[0], without_qwen)[0], '取引成立や')
+        without_qwen = [reading for reading in SAMPLE_KAPPA_DEAL[1] if reading['name'] != 'qwen']
+        self.assertEqual(agreed_replacement(SAMPLE_KAPPA_DEAL[0], without_qwen)[0], '取引成立や')
         dissent = [*without_qwen, {'name': 'qwen', 'text': '大成立ですか', 'confidence': .5}]
-        self.assertIsNone(agreed_replacement(KOKUHO_DEAL[0], dissent)[0])
+        self.assertIsNone(agreed_replacement(SAMPLE_KAPPA_DEAL[0], dissent)[0])
 
     def test_a_text_the_readers_confirm_is_left_alone(self):
         self.assertEqual(replaced(FRANCE_FAMOUS), (None, 'liknande text med olika ord'))
-        self.assertEqual(replaced(KOKUHO_RIGHT)[0], None)
+        self.assertEqual(replaced(SAMPLE_KAPPA_RIGHT)[0], None)
 
     def test_a_reading_that_fits_the_current_text_nearly_as_well_is_not_a_reason_to_change(self):
-        self.assertEqual(replaced(KOKUHO_CLIPPED), (None, 'nuvarande text passar läsningarna nästan lika bra'))
+        self.assertEqual(replaced(SAMPLE_KAPPA_CLIPPED), (None, 'nuvarande text passar läsningarna nästan lika bra'))
 
     def test_one_family_is_not_a_vote(self):
         text, record = agreed_replacement('き成立や', [{'name': 'precision', 'text': '取引成立や', 'confidence': .9},
@@ -103,7 +103,7 @@ class ReplacedRowsTests(unittest.TestCase):
         self.assertIsNone(text, 'a loop is not a second family')
 
     def test_the_record_keeps_what_every_reader_heard(self):
-        _, record = agreed_replacement(*KOKUHO_DEAL)
+        _, record = agreed_replacement(*SAMPLE_KAPPA_DEAL)
         self.assertEqual([item['name'] for item in record['readings']], ['precision', 'v2', 'qwen'])
         self.assertEqual(record['agreement'], 1.0)
         self.assertEqual(record['current'], 'き成立や')
@@ -118,7 +118,7 @@ class LanguageTests(unittest.TestCase):
         self.assertIsNone(language_from_text([]))
 
     def test_a_reading_in_another_script_than_the_current_text_is_not_the_same_utterance(self):
-        """Job 77: the language guessed on a two-second clip gave Chinese, Maori and Spanish for one Japanese line."""
+        """the test case: the language guessed on a two-second clip gave Chinese, Maori and Spanish for one Japanese line."""
         self.assertFalse(same_script('でもあれですよ。', 'Demar el deseo.'))
         self.assertFalse(same_script('でもあれですよ。', 'ki kua i te tatu mō mō kēkone mīnga haere rā.'))
         self.assertTrue(same_script('でもあれですよ。', 'でもあれですよ'))
@@ -204,7 +204,7 @@ class WorkerTests(unittest.TestCase):
     def test_a_row_the_readers_agree_on_gets_its_source_replaced_in_place_and_the_rest_is_recorded(self):
         with tempfile.NamedTemporaryFile(suffix='.mp4') as media:
             job = {'id': 3, 'media_path': media.name}
-            changed, rows = self.read_again(job, lambda *args: {1: KOKUHO_DEAL[1], 2: KOKUHO_CLIPPED[1]})
+            changed, rows = self.read_again(job, lambda *args: {1: SAMPLE_KAPPA_DEAL[1], 2: SAMPLE_KAPPA_CLIPPED[1]})
         self.assertEqual(changed, [1])
         self.assertEqual([row['source'] for row in rows], ['Hello.', '取引成立や', '歌舞伎役者にさせるん?'])
         self.assertEqual([(item['id'], item['decision']) for item in job['reread_rows']],
@@ -215,7 +215,7 @@ class WorkerTests(unittest.TestCase):
         sample = [dict(row, source_unclear=True) for row in ROWS]
         with tempfile.NamedTemporaryFile(suffix='.mp4') as media:
             changed, rows = self.read_again({'id': 3, 'media_path': media.name},
-                                          lambda *args: {1: KOKUHO_DEAL[1], 2: KOKUHO_CLIPPED[1]}, rows=sample)
+                                          lambda *args: {1: SAMPLE_KAPPA_DEAL[1], 2: SAMPLE_KAPPA_CLIPPED[1]}, rows=sample)
         self.assertEqual(changed, [1])
         self.assertNotIn('source_unclear', rows[1])
         self.assertTrue(rows[0]['source_unclear'])
@@ -229,9 +229,9 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(self.read_again(job, broken)[0], [])
             self.assertIn('ffmpeg', job['reread_error'])
             with patch.object(worker, 'REREAD_ENABLED', False):
-                self.assertEqual(self.read_again(job, lambda *args: {1: KOKUHO_DEAL[1]})[0], [])
-        self.assertEqual(self.read_again({'id': 3}, lambda *args: {1: KOKUHO_DEAL[1]})[0], [], 'no media file, nothing to read')
-        self.assertEqual(self.read_again({'id': 3, 'media_path': '/no/such/file.mp4'}, lambda *args: {1: KOKUHO_DEAL[1]})[0], [])
+                self.assertEqual(self.read_again(job, lambda *args: {1: SAMPLE_KAPPA_DEAL[1]})[0], [])
+        self.assertEqual(self.read_again({'id': 3}, lambda *args: {1: SAMPLE_KAPPA_DEAL[1]})[0], [], 'no media file, nothing to read')
+        self.assertEqual(self.read_again({'id': 3, 'media_path': '/no/such/file.mp4'}, lambda *args: {1: SAMPLE_KAPPA_DEAL[1]})[0], [])
 
     def test_a_cancelled_job_stays_cancelled(self):
         def cancelled(*args):

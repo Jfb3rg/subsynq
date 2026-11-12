@@ -49,7 +49,7 @@ class LeadWordTests(unittest.TestCase):
         row = {'start': 48.14, 'end': 49.5, 'text': 'Film? Das ist eine fette Serie.'}
         heard = {name: [{'start': 46.3, 'end': 50.4, 'text': 'Ich will auch in den Film. Film? Das ist eine fette Serie.'}] for name in ('context', 'qwen', 'v2')}
         self.assertEqual(restore_lead_words([previous, row], heard)[1], [])
-        # Nelly Rapp (regression case): "vantarna på" is heard while the previous row is still running
+        # Sample Rho (regression case): "vantarna på" is heard while the previous row is still running
         previous = {'start': 40.13, 'end': 41.53, 'text': 'Objektet vi ska lägga vanten.'}
         row = {'start': 41.73, 'end': 43.77, 'text': 'är Plutons tron.'}
         words = [{'start': 40.06 + .3 * n, 'end': 40.3 + .3 * n, 'text': word, 'probability': .9}
@@ -71,7 +71,7 @@ class LeadWordTests(unittest.TestCase):
 
 class RemovalChoiceTests(unittest.TestCase):
     def test_dropping_a_word_needs_more_families_than_the_current_wording(self):
-        # SAMPLE GAMMA job 170: both large-v3 passes and large-v2 have "You"; only Qwen lacks it; supports 3 against 3
+        # SAMPLE GAMMA the test case: both large-v3 passes and large-v2 have "You"; only Qwen lacks it; supports 3 against 3
         self.assertFalse(acceptable_choice('You find me a tour guide yet?', 'Find me a tour guide yet?', 3, 3))
         self.assertFalse(acceptable_choice('Je ne supporte plus le regard des gens.', 'Je supporte plus le regard des gens.', 2, 2))
         self.assertTrue(acceptable_choice('You find me a tour guide yet?', 'Find me a tour guide yet?', 4, 3))
@@ -82,7 +82,7 @@ class RemovalChoiceTests(unittest.TestCase):
 
 class WordFamilyTests(unittest.TestCase):
     def test_a_word_only_one_reading_heard_may_be_dropped_one_that_several_heard_may_not(self):
-        # SAMPLE GAMMA job 180: "this" only in the long pass; job 170: "You" in both large-v3 passes and large-v2
+        # SAMPLE GAMMA the test case: "this" only in the long pass; the test case: "You" in both large-v3 passes and large-v2
         current = 'The way you make it your life all right lights on me this'
         chosen = 'The way you make it your life. All right, lights on me.'
         self.assertTrue(acceptable_choice(current, chosen, 3, 3, word_families={'this': 1, 'way': 3}))
@@ -183,7 +183,7 @@ class NeighbourSwallowTests(unittest.TestCase):
                 {'start': 43.43, 'end': 45.43, 'text': 'Du kommer ikke til å tro det!', 'confidence': .9}]
         readings = {'precision': [{'start': 42.56, 'end': 45.44, 'text': 'Ryza, du kommer ikke til å tro det!', 'confidence': .9}]}
         self.assertEqual([row['text'] for row in prefer_confident_reading(rows, readings)], ['Reisa!', 'Du kommer ikke til å tro det!'])
-        # Nelly Rapp (regression case): "Vad är det?" became a second "Är det Jönsson?"
+        # Sample Rho (regression case): "Vad är det?" became a second "Är det Jönsson?"
         rows = [{'start': 1.22, 'end': 2.09, 'text': 'Vad är det?', 'confidence': .32}, {'start': 2.09, 'end': 3.26, 'text': 'Är det Jönsson?', 'confidence': .75}]
         readings = {'v2': [{'start': 1.0, 'end': 3.46, 'text': 'Är det Jönsson?', 'confidence': .67}]}
         self.assertEqual([row['text'] for row in prefer_confident_reading(rows, readings)], ['Vad är det?', 'Är det Jönsson?'])
@@ -200,10 +200,10 @@ class AddedNeighbourWordsTests(unittest.TestCase):
         from source_judge import repeats_neighbour, acceptable_choice
         current = 'Det er faen meg ikke rart når de to mest populære bøkene'
         following = 'i tre siste runde av årene er Bibelen'
-        # SamplePerson mot verden (regression case): NB-Whisper's shortened reading added "er Bibelen og"
+        # Sample Iota (regression case): NB-Whisper's shortened reading added "er Bibelen og"
         self.assertTrue(repeats_neighbour('Det er ikke rart når de to mest populære bøkene er Bibelen og', current, '', following))
         self.assertFalse(acceptable_choice(current, 'Det er ikke rart når de to mest populære bøkene er Bibelen og', 3, 2, '', following))
-        # job 209: "de tre siste" is the next line's "i tre siste"
+        # the test case: "de tre siste" is the next line's "i tre siste"
         self.assertTrue(repeats_neighbour(current + ' de tre siste', current, '', following))
 
     def test_added_words_the_neighbours_do_not_hold_are_fine(self):

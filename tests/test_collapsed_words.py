@@ -10,7 +10,7 @@ from source_judge import acceptable_choice, complete_cut_off_rows, repeats_neigh
 
 
 def evidence():
-    # Actual raw job 186: both main passes heard up? but assigned it zero duration.
+    # Actual raw the test case: both main passes heard up? but assigned it zero duration.
     words = [dict(text="What's", start=53.29, end=53.77, probability=.715),
              dict(text='up?', start=53.77, end=53.77, probability=.999),
              dict(text='First', start=53.91, end=54.17, probability=.995)]

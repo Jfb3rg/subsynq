@@ -13,7 +13,7 @@ def judge_answer(choice, flawed=True, row_id=411):
     return lambda request: {'response': json.dumps({'rows': [{'id': row_id, 'a_has_error': flawed, 'choice': choice}]})}
 
 
-# The real readings of regression case(Example Series 4x02), row 411, read tightly and in wider windows (STATUS 2026-11-03).
+# The real readings of regression case(Example Series 4x02), row 411, read tightly and in wider windows.
 TIGHT = [{'name': 'precision', 'text': 'Yes, sir', 'confidence': .9}, {'name': 'v2', 'text': "Yes, sir, I'm three", 'confidence': .63},
          {'name': 'qwen', 'text': 'Yes, sir. On three.', 'confidence': .5}]
 WIDE = [{'name': 'context', 'text': 'Yes, sir. On three.', 'confidence': .7, 'window': [2, 1]},
@@ -102,7 +102,7 @@ class JudgedChoiceTests(unittest.TestCase):
 
 
 class OrthographyShiftTests(unittest.TestCase):
-    """TRANSFERVINDUE (Danish, regression case): two rows replaced by the readers' Swedish; replay: these 2 of 19 replacements, no other."""
+    """SAMPLE TAU (Danish, regression case): two rows replaced by the readers' Swedish; replay: these 2 of 19 replacements, no other."""
 
     def test_danish_or_norwegian_spelling_never_becomes_swedish_or_back(self):
         from reread import orthography_shift

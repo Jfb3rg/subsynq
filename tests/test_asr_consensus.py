@@ -7,7 +7,7 @@ from asr_consensus import compare_transcripts, is_more_complete_alternative, sum
 
 class AsrConsensusTests(unittest.TestCase):
     def test_exact_agreement_is_distinct_from_changed_word(self):
-        self.assertEqual(compare_transcripts('Father Daryl.', 'father daryl')['status'], 'agreement')
+        self.assertEqual(compare_transcripts('Father Riley.', 'father riley')['status'], 'agreement')
         result = compare_transcripts(
             'But the rest of us, our friends never came.',
             'But the rest of us, our parents never came.',

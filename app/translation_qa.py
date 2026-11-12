@@ -266,7 +266,7 @@ def swedish_rows_to_keep(batch, languages):
 
 
 # --- Review findings the text itself refutes --------------------------------------------------------------------------
-# regression caseand 44 (dev 2026-10-15, gemma4:26b reviewing): one such finding fails a whole job (it starts a repair that
+# regression case (dev 2026-10-15, gemma4:26b reviewing): one such finding fails a whole job (it starts a repair that
 # can make a good line worse, and any finding left after the repair stops the subtitle).
 
 _TARGET_SUBJECT = r'(?:översättningen|måltexten|målspråket|målraden|målet)'
@@ -413,8 +413,8 @@ _CORRECTION = re.compile(
 def is_self_contradiction(flag, target):
     """A finding that names a word as wrong and then gives the very same word as the right one.
 
-    regression case(Nelly Rapp): "Ordfel i 'stjärt'. Det korrekta ordet är 'stjärt'..." about "Men vems stjärt?", and
-    FRANCE (job 71): "Ordet 'Civila' är felstavat; det korrekta ordet är 'Civila'...". The claimed error and the claimed fix are identical
+    regression case(Sample Rho): "Ordfel i 'stjärt'. Det korrekta ordet är 'stjärt'..." about "Men vems stjärt?", and
+    FRANCE: "Ordet 'Civila' är felstavat; det korrekta ordet är 'Civila'...". The claimed error and the claimed fix are identical
     letter by letter (capitals count: 'sverige' -> 'Sverige' is a real finding), the word stands in the row as written, and the reason
     does not add another problem ("samt", "dessutom"...): there is nothing to repair and nothing to establish, so it is removed."""
     reason = str(flag.get('reason', ''))
@@ -528,7 +528,7 @@ def non_latin_runs(text):
     """The stretches of a text (words that hold a letter of another script, and the words between them) that are not written in Latin letters.
 
     A Swedish subtitle never holds Cyrillic, Chinese, Japanese, Korean, Arabic or other letters: names are written with Latin letters and proper nouns are
-    translated. The trailer Guardians (2017) had "det forna Советский Союз" and "Vi är precis som du, Лер."."""
+    translated. The trailer Sample Upsilon had "det forna Советский Союз" and "Vi är precis som du, Лер."."""
     runs, current = [], []
     for match in re.finditer(r'\S+', str(text)):
         token = match.group(0)
@@ -637,7 +637,7 @@ SWEDISH_MEANING_RULE = (
     'Never "avbryta" (that is to interrupt), and "avlyssna" only for a message. ')
 
 
-# Norwegian/Danish "må ikke" forbids ("must not"); Swedish "måste inte" means "need not" (SamplePerson mot verden, regression caseand 202:
+# Norwegian/Danish "må ikke" forbids ("must not"); Swedish "måste inte" means "need not" (Sample Iota, regression case:
 # "så må du ikke ta telefonen" -> "så måste du inte svara i telefonen").
 _MAA_IKKE = re.compile(r"\bmå(?:tte)?\s+(?:\w+\s+){0,2}?ikke\b", re.IGNORECASE)
 _NEED_NOT = re.compile(r"\b(?:måste|behöver)\s+(?:\w+\s+){0,2}?inte\b", re.IGNORECASE)

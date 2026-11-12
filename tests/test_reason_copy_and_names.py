@@ -14,7 +14,7 @@ REASON = ("Uttrycket 'Stay tuned' (håll med tittning/lyssning) har översatts t
 
 
 class ReasonCopyTests(unittest.TestCase):
-    """regression caseand 21: the repair copied "(håll med tittning/lyssning)" from the reviewer's remark."""
+    """regression case: the repair copied "(håll med tittning/lyssning)" from the reviewer's remark."""
 
     def test_wording_copied_from_the_remark_is_found(self):
         self.assertEqual(worker.reason_copy('Håll med tittning.', [REASON], ['Stay tuned.', 'Stanna kvar.']),

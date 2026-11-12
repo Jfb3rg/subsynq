@@ -45,7 +45,7 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(imperial_unit_flags([{'id': 1, 'source': 'He walked 10 miles.', 'sv': 'Han gick tio kilometer.'}]), [], 'a number in words is not judged')
 
     def test_cords_of_firewood_are_converted_to_cubic_meters(self):
-        # Wildlife Sample (job 146, row 699): "10 cords of wood" became "cirka 3,5 kubikmeter ved"; a cord is 3.62 cubic meters, so about 36
+        # Wildlife Sample (the test case, row 699): "10 cords of wood" became "cirka 3,5 kubikmeter ved"; a cord is 3.62 cubic meters, so about 36
         source = 'While James works to process 10 cords of wood,'
         wrong = {'id': 699, 'source': source, 'sv': 'Medan James arbetar för att bearbeta cirka 3,5 kubikmeter ved,'}
         flags = imperial_unit_flags([wrong])
@@ -56,7 +56,7 @@ class UnitTests(unittest.TestCase):
         self.assertEqual([flag['id'] for flag in imperial_unit_flags([{**wrong, 'sv': 'Medan James arbetar för att bearbeta 10 cords ved,'}])], [699])
 
     def test_feet_that_are_a_dogs_paws_are_not_a_length(self):
-        # Wildlife Sample (job 144): "eight dogs, so that's 32 extra feet" is "32 extra tassar"; the check refused the whole file for it
+        # Wildlife Sample: "eight dogs, so that's 32 extra feet" is "32 extra tassar"; the check refused the whole file for it
         self.assertEqual(imperial_unit_flags([{'id': 465, 'source': "We're going to have eight dogs, so that's 32 extra feet",
                                                'sv': 'Vi ska ha åtta hundar, så det är 32 extra tassar'}]), [])
         self.assertEqual([flag['id'] for flag in imperial_unit_flags([{'id': 1, 'source': 'That is 32 extra feet', 'sv': 'Det är 32 extra meter.'}])], [1], 'a metric word with the wrong number')

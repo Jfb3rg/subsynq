@@ -20,7 +20,7 @@ def flag(row, reason, **overrides):
 
 
 class SpokenSwedishFlagTests(unittest.TestCase):
-    """Real case: Nelly Rapp, regression caseand 62. The reviewer called "Men vems stjärt?" a word error in a Swedish line that is kept exactly as
+    """Real case: Sample Rho, regression case. The reviewer called "Men vems stjärt?" a word error in a Swedish line that is kept exactly as
     spoken. The repair cannot change such a line and the review of the same text said the same again, so the job failed four times on a valid line."""
 
     def setUp(self):

@@ -108,7 +108,7 @@ class AddressChoiceTests(unittest.TestCase):
         self.assertFalse(is_address_choice(finding, 'dass Sie sich in einen Mörder hineinversetzen', 'att du kan sätta dig in i en Mörder'))
 
 
-# Real findings: Nelly Rapp (regression case) and FRANCE (job 71). The reviewer calls a word wrong and then names the same word as right.
+# Real findings: Sample Rho (regression case) and FRANCE. The reviewer calls a word wrong and then names the same word as right.
 SELF_CONTRADICTING = [
     (row(22, 'Men vems stjärt?', 'Men vems stjärt?'),
      flag(22, "Ordfel i 'stjärt'. Det korrekta ordet är 'stjärt' (vilket redan finns i källan), men i målspråket är det stavat fel eller så är det en "
@@ -197,7 +197,7 @@ class UnfoundedFlagsTests(unittest.TestCase):
 
 
 class ReviewIgnoresUnfoundedFindingsTests(unittest.TestCase):
-    """The real assess_translation_quality with a reviewer that repeats the slips of jobs 43 and 44."""
+    """The real assess_translation_quality with a reviewer that repeats the slips of the test case and 44."""
 
     def setUp(self):
         for name in ('check_cancelled', 'update_job'):
@@ -271,7 +271,7 @@ class VerifiedRuleOverReviewTests(unittest.TestCase):
     SOURCE = '死ぬためだけに作られた兵器です'
 
     def test_a_review_asking_dying_to_become_killing_is_set_aside(self):
-        # SampleFilm (regression caseand 296)
+        # SampleFilm (regression case)
         from translation_qa import asks_dying_to_become_killing
         flag = {'id': 11, 'category': 'meaning', 'target_quote': 'för att dö',
                 'reason': 'Källtexten beskriver ett vapen skapat för att man ska dö (att döda), men översättningen säger att vapnet ska dö.'}

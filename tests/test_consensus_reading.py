@@ -14,7 +14,7 @@ def texts(rows):
     return [row['text'] for row in rows]
 
 
-# Real SAMPLE_ALPHA readings (job 33): the final cue came from one forced re-read, the other passes read it alike.
+# Real SAMPLE_ALPHA readings: the final cue came from one forced re-read, the other passes read it alike.
 SAMPLE_ALPHA = {
     'precision': [cue(30.1, 32.1, '대비군이라고 하자 8명인데요?', .44), cue(57.5, 58.8, '저희 집에 있다니까요', .18),
                   cue(67.8, 69.4, '우리가 아는 적은 아닙니다.', .55)],
@@ -113,7 +113,7 @@ class PlanConsensusWindowsTests(unittest.TestCase):
 
 
 
-# Real SAMPLE_ALPHA readings (job 36) of rows 1 and 2: the final cues came from the multilingual pass; the passes cut the
+# Real SAMPLE_ALPHA readings of rows 1 and 2: the final cues came from the multilingual pass; the passes cut the
 # same speech into pieces, and a forced-Korean reading without voice-activity filter read the right words.
 ROW_1 = cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55)
 ROW_2 = cue(13.1, 16.3, '갑자기 기증이.', .66)
@@ -209,7 +209,7 @@ class ForcedLanguageReadingTests(unittest.TestCase):
 
 
 
-# Real SAMPLE_ALPHA readings (job 38): the forced reading was the most confident one for the first cue but had dropped words.
+# Real SAMPLE_ALPHA readings: the forced reading was the most confident one for the first cue but had dropped words.
 OTHERS_38 = {
     'precision': [cue(0.8, 5.5, '며칠 전에 친구들이랑 사냥을 해나갔었어.', .61),
                   cue(6.2, 13.1, '삐꾸라지 마냥 삐끄러운 거를 20분쯤 걸었는데', .55), cue(13.1, 16.3, '갑자기 기증이.', .66)],
@@ -243,7 +243,7 @@ class ForcedReadingMustNotDropWordsTests(unittest.TestCase):
 
 
 
-# Real SampleEta readings (Tamil, job 41): the merge ended on a forced re-read at confidence 0.27-0.32 although other
+# Real SampleEta readings (Tamil, the test case): the merge ended on a forced re-read at confidence 0.27-0.32 although other
 # passes had read the same places at 0.75-0.8.
 SAMPLEETA_FINAL = [cue(16.2, 18.2, 'அப்பா பயமாறு பா சூலிடு பா', .29), cue(97.7, 99.0, 'நான் மிக்க தீவிக்கிறேன்.', .32),
                cue(99.2, 101.7, 'ஆனால் நான் உங்களின் வணக்கைகளை தண்டmedenmadு முட்ட விட்டிய பிடிய இருக்கிறேன்.', .27)]

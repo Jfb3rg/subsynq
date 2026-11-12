@@ -234,7 +234,7 @@ def reason_copy(candidate, reasons, allowed_texts, *, minimum_words=3):
     """First run of `minimum_words`+ consecutive words a repair shares with a reviewer's remark.
 
     A reviewer's `reason` describes a problem; wording it mentions in passing is not an approved
-    translation (regression caseand 21: "(håll med tittning/lyssning)" was copied into the subtitle
+    translation (regression case: "(håll med tittning/lyssning)" was copied into the subtitle
     "Håll med tittning."). Word runs that already stand in the source or in the refused target are
     not copies. Returns the phrase, or None.
     """
@@ -394,7 +394,7 @@ SOURCE_DOUBTFUL_SHARE = 1 / 3
 
 class RepairFailed(RuntimeError):
     """A repair step got no valid answer from the model twice (wrong ids, edits outside the quoted phrases, a missing row). It is no verdict on the subtitle: the
-    rows stay as they were, flagged, and the gate decides (job 145 died after 45 minutes of rented GPU on "Frasrättningen ändrar fel rad-ID")."""
+    rows stay as they were, flagged, and the gate decides (the test case died after 45 minutes of rented GPU on "Frasrättningen ändrar fel rad-ID")."""
 
 
 class OutputTruncated(RuntimeError):
@@ -628,7 +628,7 @@ def gpu_health(timeout=3):
 # qwen_asr_service.LANGUAGE_MODELS): the language clue sent with each window, and how many windows (every doubtful cue) it reads, because
 # this reading is cheap (1.7B) and the Whisper reading alone is what the Tamil trailers fail on (benchmark 2026-10-17).
 QWEN_LANGUAGE_HINTS = {'ta': 'tamil'}
-# Speech no final cue covers is added when two model families read it alike (app/asr_windows.py, STATUS 2026-10-20); 0/off switches it off.
+# Speech no final cue covers is added when two model families read it alike (app/asr_windows.py); 0/off switches it off.
 FAMILY_VOTE_ENABLED = os.environ.get('SUBSYNQ_FAMILY_VOTE', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
 # Replaces stretches the long pass wrote without sentence form by confirmed sentences (app/collapsed_runs.py). SUBSYNQ_COLLAPSED_RUNS=0
 # turns the step off without a code change: the pipeline then behaves exactly as in 0.8.383.
@@ -1018,8 +1018,7 @@ def cloud_base_url():
 
 def release_cloud_gpu_memory():
     """Ask the rented server to hand back the memory Whisper and Qwen3-ASR hold (`/release`, ai/cloud_cpu_service.py) before the translation
-    model loads: with them resident gemma3:27b got 16.7 GiB of a 24 GiB card, ran partly on the CPU and generated 4 tokens/s instead of 33
-    (STATUS natt 43). Returns the server's answer, or None when the job does not run on a rented server or the server cannot do it: it
+    model loads: with them resident gemma3:27b got 16.7 GiB of a 24 GiB card, ran partly on the CPU and generated 4 tokens/s instead of 33. Returns the server's answer, or None when the job does not run on a rented server or the server cannot do it: it
     then runs as before and the job is never failed by this."""
     base = cloud_base_url()
     if not base:
@@ -2454,7 +2453,7 @@ def warm_up_remote_reader(reader, folder):
 
 
 def prefer_swedish_reader(job, media, model, models, device, total, folder, *, probe=None, repository=None):
-    """KB-Whisper replaces Whisper large-v3 as the main reader when the speech is Swedish (STATUS 2026-10-19, night 29).
+    """KB-Whisper replaces Whisper large-v3 as the main reader when the speech is Swedish.
 
     Local CPU jobs and rented servers (CPU or GPU: the server downloads and runs the model itself); the local AMD and NVIDIA paths and the
     large-v2 retry after a rejected source keep their own models. The choice and its reasons are recorded on the job (`swedish_reader`).
@@ -4450,7 +4449,7 @@ def assess_translation_quality(rows, *, audit=None, target_key='sv', target_lang
                           'with exact source and target quotes.')
     if target_key == 'sv':
         # The translator is told to write metric units (SWEDISH_UNITS_RULE); without this the reviewer flagged "40 yards" -> "37 meter" as a changed value and
-        # the file was refused for following the rule (Wildlife Sample, job 136, row 755).
+        # the file was refused for following the rule (Wildlife Sample, the test case, row 755).
         request['system'] += (' A distance, length, weight or volume that the source gives in imperial units (miles, yards, feet, inches, gallons, pounds) '
                               'and the Swedish gives as the correct metric value is CORRECT and required: never flag the changed number or unit as a meaning '
                               'defect; flag only a conversion that is wrong.')
@@ -4735,7 +4734,7 @@ def repair_target_grammar(job, rows, ids, *, target_key='sv', target_language='S
     target_texts = {row['id']: row[target_key] for row in targets}
     # A meaning repair may have changed the target: do not reuse stale quotes.
     # Quote the defective target, not the reviewer's prose or suggested answer.
-    # Otherwise a legitimate inflection fix (kilas -> kila, job 152) is rejected
+    # Otherwise a legitimate inflection fix (kilas -> kila, the test case) is rejected
     # as copied commentary merely because the reviewer suggested it too.
     findings = [{'id': flag['id'], 'target_quote': flag['target_quote']}
                 for flag in flags if flag.get('category') == 'grammar'
@@ -5093,7 +5092,7 @@ def repair_flagged_translation(job, rows, flags, *, target_key='sv', target_lang
 
 
 def repair_flagged_translation_split(job, rows, flags, *, target_key='sv', target_language='Swedish', record=None):
-    """Repair the flagged rows. A model answer that is cut off at its token limit (job 104: 12 rows, 2048 tokens) or that is not valid twice (job 145) is asked
+    """Repair the flagged rows. A model answer that is cut off at its token limit (the test case: 12 rows, 2048 tokens) or that is not valid twice is asked
     again for each half of the rows; a single row that cannot be repaired stays as it was, still flagged, and the gate judges it (never a crash, never tolerated)."""
     try:
         return repair_flagged_translation_once(job, rows, flags, target_key=target_key, target_language=target_language, record=record)
@@ -5136,7 +5135,7 @@ def repair_flagged_translation_once(job, rows, flags, *, target_key='sv', target
                                          target_key=target_key, target_language=target_language, flags=flags, record=record,
                                          proposals=grammar_proposals)
         # The grammar task sees no remark and may not change the word count, so a wrong tense ("Jag önskar att vi hade haft tid" for
-        # "I wish we had time", NORTHFIELD job 218: returned unchanged four times and the file was refused) can never be repaired there.
+        # "I wish we had time", NORTHFIELD the test case: returned unchanged four times and the file was refused) can never be repaired there.
         # A row it leaves unchanged goes on to the ordinary repair below, which reads the remark (and refuses wording copied from it);
         # the independent final review still judges the result.
         before = {row['id']: row[target_key] for row in rows if row['id'] in ids}
@@ -5228,7 +5227,7 @@ def repair_flagged_translation_once(job, rows, flags, *, target_key='sv', target
         except (KeyError, TypeError, ValueError) as error:
             raise RepairFailed('Översättningens riktade rättning gav inget giltigt svar.') from error
         # Wording the reviewer mentioned in its remark is not an approved translation. An instruction
-        # alone was ignored (job 21 again produced "Håll med tittning."), so check the result itself.
+        # alone was ignored (the test case again produced "Håll med tittning."), so check the result itself.
         copied = [(row['id'], phrase) for row, item in zip(targets, ordered)
                   if (phrase := reason_copy(item[target_key], reasons_by_id.get(row['id'], []),
                                             [row.get('source', ''), row.get(target_key, ''),
@@ -5350,7 +5349,7 @@ def review_and_save_translation(job, rows, *, target_key='sv', target_language='
             quality_error = error
         flags = [flag for review in payload['reviews'] for flag in review.get('flags', [])]
         # Speech that is already Swedish is kept exactly as spoken (translate), so a remark about such a row can never be
-        # repaired: sending it to the repair and demanding a clean second review failed Nelly Rapp on the same valid line
+        # repaired: sending it to the repair and demanding a clean second review failed Sample Rho on the same valid line
         # ("Men vems stjärt?") in four jobs. The first review's block limit still counts these rows.
         spoken = set(job.get('spoken_swedish_ids') or ()) if target_key == 'sv' else set()
         repair_flags = [flag for flag in flags if flag['id'] not in spoken]
@@ -5668,7 +5667,7 @@ def rows_to_reread(job, spoken=()):
 def reread_language(job, rows):
     """The language to force when a row is read again, or None when it must be detected: the confirmed language of the file, the language its
     script gives (Hangul, Indian scripts; kana means Japanese, han only Chinese), else what the language probes of the first reading heard. A
-    language guessed on a two-second clip is often wrong (KOKUHO: Chinese, Maori and Spanish for one Japanese line), so it is forced."""
+    language guessed on a two-second clip is often wrong (SAMPLE KAPPA: Chinese, Maori and Spanish for one Japanese line), so it is forced."""
     policy = job.get('language_policy') or {}
     if policy.get('effective_language'):
         return policy['effective_language']
@@ -5811,12 +5810,12 @@ def redistribute_reread_groups(job, rows):
 def reread_readings(job, media, rows, ids):
     """Read the audio behind each row once more, tightly (the row's time ± 0.3 s), with Whisper large-v3, Whisper large-v2 and Qwen3-ASR:
     {row id: [{'name', 'text', 'confidence'}]} with the pass names the transcript's family vote uses ('precision', 'v2', 'qwen'). A reader that
-    is missing or fails gives no reading; the clips are tight because a longer window brings in the neighbouring lines (measured, STATUS natt 40)."""
+    is missing or fails gives no reading; the clips are tight because a longer window brings in the neighbouring lines (measured)."""
     by_id = {row['id']: row for row in rows}
     languages = {row_id: reread_row_language(job, rows, by_id[row_id]) for row_id in ids}
     readings = {row_id: [] for row_id in ids}
     # The previous translator/reviewer also occupies the rented GPU. Require
-    # its unload acknowledgement BEFORE either rereader can load (jobs 160/164:
+    # its unload acknowledgement BEFORE either rereader can load (the test case:
     # llama-server held 20 GiB and Qwen failed with CUDA out of memory).
     release_language_model_before_asr()
     with tempfile.TemporaryDirectory(prefix='subsynq-reread-') as folder:
@@ -6036,7 +6035,7 @@ def judge_conflicting_rows(job, rows, records, readings, *, call=None):
                 raise
             except (RuntimeError, OSError) as error:
                 raise EngineUnavailable(str(error)) from error
-    # The judge sees two more lines before the row: in job 64 "On three, everyone lays down fire." came two lines before "Yes, sir, I'm three."
+    # The judge sees two more lines before the row: in the test case "On three, everyone lays down fire." came two lines before "Yes, sir, I'm three."
     chosen, decisions = choose_readings(judged, call, MODEL_NAME, require_error_flag=True, earlier=2)
     changed = []
     for decision in decisions:
@@ -7026,7 +7025,7 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
         note += f' · {len(doubtful)} {"replik" if len(doubtful) == 1 else "repliker"} kan vara fel (se rapporten)'
     if include_english_subtitle():
         # English is always a bonus on top of a completed Swedish subtitle --
-        # svenska is the app's whole purpose (see CLAUDE.md), so an English
+        # svenska is the app's whole purpose, so an English
         # failure must never undo or fail the Swedish result that already
         # succeeded and was written above.
         try:
@@ -7076,7 +7075,7 @@ def name_witness_readings(job, media, rows, ids):
 
 
 def harmonize_names(job, media, rows, *, witness=None):
-    """One spelling for a name that KB-Whisper spelled several ways (Nelly Rapp: Häckla / Hekla / Ekla), taken from a large-v3 reading of just those rows.
+    """One spelling for a name that KB-Whisper spelled several ways (Sample Rho: Häckla / Hekla / Ekla), taken from a large-v3 reading of just those rows.
 
     Only conflicts cost anything: a transcript without them is returned at once. The second reading must repeat one spelling in at least two rows and a
     row is changed only when its own second reading has the name (app/name_harmony.py). Records what it did on the job (`name_harmony`) and never fails it."""
@@ -7299,7 +7298,7 @@ def main():
                             # Same second reading as the local CPU path, but run on
                             # the rented server -- never on this machine.
                             release_language_model_before_asr()
-                            # The reason used to be overwritten and lost (jobs 17 and 21): keep it.
+                            # The reason used to be overwritten and lost (the test case and 21): keep it.
                             job['fallback_reason'] = fallback_reason_text(error)
                             update_job(job['id'], 'transcribing', 1,
                                        'Källan underkändes med large-v3 - provar reservmodellen '

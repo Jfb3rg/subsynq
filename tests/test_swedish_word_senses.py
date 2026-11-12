@@ -325,7 +325,7 @@ class NorwegianPossessiveTests(unittest.TestCase):
 
 class NorwegianFalseFriendTests(unittest.TestCase):
     def test_maa_ikke_is_a_prohibition(self):
-        # SamplePerson mot verden (regression case)
+        # Sample Iota (regression case)
         rows = [{'id': 21, 'source': 'Hvis jeg ringer deg, så må du ikke ta telefonen.', 'sv': 'Om jag ringer dig, så måste du inte svara i telefonen.'}]
         self.assertEqual([flag['target_quote'] for flag in swedish_context_flags(rows)], ['måste du inte'])
         rows[0]['sv'] = 'Om jag ringer dig, får du inte svara.'
@@ -372,7 +372,7 @@ class EfterAndAlliesTests(unittest.TestCase):
         return [flag['target_quote'] for flag in swedish_grammar_flags([row(source, target)])]
 
     def test_efter_before_a_clause_needs_att(self):
-        # SamplePerson mot verden (regression caseand 246)
+        # Sample Iota (regression case)
         self.assertEqual(self.grammar('Ok, jeg ringer deg etter jeg blir voldtatt.', 'Okej, jag ringer dig efter jag blir våldtagen.'),
                          ['efter jag blir'])
         for fine in ('Okej, jag ringer dig efter att jag har blivit våldtagen.', 'Han kom efter de senaste åren.',
@@ -380,7 +380,7 @@ class EfterAndAlliesTests(unittest.TestCase):
             self.assertEqual(self.grammar('x', fine), [], fine)
 
     def test_the_allies_take_the_article(self):
-        # NORTHFIELD (regression caseand 248)
+        # NORTHFIELD (regression case)
         source = 'The Allies are gonna attack Hitler.'
         self.assertEqual(self.grammar(source, 'Allierade kommer att anfalla Hitler.'), ['Allierade'])
         for fine in ('De allierade kommer att anfalla Hitler.', 'Våra allierade kommer att anfalla Hitler.'):

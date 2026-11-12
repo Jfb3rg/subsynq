@@ -1,7 +1,7 @@
 """KB-Whisper reads Swedish speech instead of Whisper large-v3.
 
 KB-Whisper (Kungliga biblioteket, Apache-2.0, a fine-tune of Whisper large-v3 on Swedish) read three Swedish trailers with 12 clear corrections
-and 5 regressions against large-v3 at the same speed (STATUS 2026-10-19, night 29). It replaces large-v3 as the main reader of a local CPU job
+and 5 regressions against large-v3 at the same speed. It replaces large-v3 as the main reader of a local CPU job
 when the speech is Swedish; anything else, and every other device, keeps large-v3. The decision is made here from Whisper's own language guesses
 on a few short windows (taken by the worker); this module holds the pure parts so they can be tested without models.
 """
@@ -31,7 +31,7 @@ def model_present(models_dir, repo):
 
 def decide(readings):
     """(use, reason): Swedish when at least two windows had enough speech to judge and at least two thirds of them were heard as Swedish, and
-    none was heard surely as Danish or Norwegian (TRANSFERVINDUE, a Danish trailer, was read by KB-Whisper as Swedish: only 7 of 12 witnessed lines
+    none was heard surely as Danish or Norwegian (SAMPLE TAU, a Danish trailer, was read by KB-Whisper as Swedish: only 7 of 12 witnessed lines
     came out right against 10 of 10 with large-v3 told it was Danish).
 
     `readings` are {'language': 'sv', 'probability': 0.93, 'speech_seconds': 6.2} per window; a window without a language guess is ignored."""
