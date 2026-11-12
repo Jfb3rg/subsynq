@@ -101,7 +101,7 @@
     }
   ],
   "independent_alignment": {
-    "provenance": "dev-87ythV: same original audio, freely transcribed by Qwen and then aligned by existing Qwen3-ForcedAligner-0.6B; no supplied transcript",
+    "provenance": "recorded regression input: same original audio, freely transcribed by Qwen and then aligned by existing Qwen3-ForcedAligner-0.6B; no supplied transcript",
     "text": "Eventually, he found himself in hell.",
     "words": [
       {

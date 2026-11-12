@@ -1,8 +1,8 @@
 {
   "german": {
     "provenance": [
-      "dev-7TGiwh",
-      "dev-zXFUoT"
+      "recorded regression input",
+      "recorded regression input"
     ],
     "job": {
       "language_policy": {
@@ -558,7 +558,7 @@
         "window": 1
       }
     ],
-    "tight_provenance": "dev-OdRJR2: verified local English but tight row12 repeated neighbouring My job; this replacement must be refused",
+    "tight_provenance": "recorded regression input: verified local English but tight row12 repeated neighbouring My job; this replacement must be refused",
     "tight_readings": {
       "11": [
         {
@@ -898,8 +898,8 @@
   },
   "japanese": {
     "provenance": [
-      "dev-eOiyAy",
-      "dev-WCUmoT"
+      "recorded regression input",
+      "recorded regression input"
     ],
     "row": {
       "id": 5,

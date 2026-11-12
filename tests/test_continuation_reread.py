@@ -105,7 +105,7 @@ def flag(reason, target_quote=ROW['sv']):
 
 
 class WellIsJaTests(unittest.TestCase):
-    """Row 460: an opening "Ja," is natural Swedish for "Well,"; the four remarks of job 72 only quarrelled with that and refused the file."""
+    """Row 460: an opening "Ja," is natural Swedish for "Well,"; the four remarks of the test case only quarrelled with that and refused the file."""
 
     REMARKS = ["Källan säger 'Well' (väl/jo) men översättningen säger 'Ja', vilket ändrar innebörden av inledningen.",
                "Källan börjar med 'Well' (väl/jo/alltså) men översättningen har lagt till ett 'Ja' som inte finns i källan.",

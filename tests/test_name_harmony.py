@@ -42,7 +42,7 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(name_harmony.conflicts(texts), [], 'Släpp/släppa occur in lower case, Eva/Ida are two different short names')
 
     def test_words_that_only_start_a_sentence_are_never_names(self):
-        """Real run on Nelly Rapp: 'Stjärten.' / 'Skärten.' and 'Med ...' / 'Men ...' only ever start a sentence."""
+        """Real run on Sample Rho: 'Stjärten.' / 'Skärten.' and 'Med ...' / 'Men ...' only ever start a sentence."""
         texts = rows('Stjärten.', 'Skärten. Måste det vara.', 'Med krafter farligare än vi någonsin skådat.', 'Men vems stjärt?')
         self.assertEqual(name_harmony.conflicts(texts), [])
 

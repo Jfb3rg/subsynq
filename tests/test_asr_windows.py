@@ -152,19 +152,19 @@ class AsrWindowTests(unittest.TestCase):
         ]))
         with self.assertRaisesRegex(ValueError, 'orimligt lång'):
             validate_episode_segments([
-                {'start': 2.83, 'end': 337.73, 'text': 'Jag heter Daryl Dixon.'},
+                {'start': 2.83, 'end': 337.73, 'text': 'Jag heter Riley Mason.'},
             ])
 
     def test_long_segment_is_split_at_sentences_and_pauses(self):
         words = [
             SimpleNamespace(start=0.0, end=.4, probability=.9, word=' My'),
             SimpleNamespace(start=.5, end=1.0, probability=.9, word=' name'),
-            SimpleNamespace(start=1.1, end=1.6, probability=.9, word=' is Daryl.'),
+            SimpleNamespace(start=1.1, end=1.6, probability=.9, word=' is Riley.'),
             SimpleNamespace(start=5.0, end=5.4, probability=.9, word=' I'),
             SimpleNamespace(start=5.5, end=6.0, probability=.9, word=' tried.'),
         ]
         cues = split_word_cues(words)
-        self.assertEqual([cue['text'] for cue in cues], ['My name is Daryl.', 'I tried.'])
+        self.assertEqual([cue['text'] for cue in cues], ['My name is Riley.', 'I tried.'])
         self.assertTrue(all(cue['end'] - cue['start'] <= 7 for cue in cues))
 
     def test_word_group_near_the_duration_cap_is_kept_not_silently_dropped(self):
@@ -478,7 +478,7 @@ class AsrWindowTests(unittest.TestCase):
             rows, [[{'start': 833.4, 'end': 834.1, 'text': "I'm"}],
                    [], [{'start': 833.4, 'end': 834.1, 'text': "I'm"}]], []), rows)
 
-    def test_two_vad_whisper_passes_do_not_confirm_daryl_ghost_word(self):
+    def test_two_vad_whisper_passes_do_not_confirm_riley_ghost_word(self):
         rows = [{'start': 28.48, 'end': 29.0, 'text': "We're"}]
         profiles = [
             [{'start': 28.48, 'end': 29.0, 'text': "We're"}],
@@ -640,13 +640,13 @@ class AsrWindowTests(unittest.TestCase):
     def test_precision_pause_retains_same_words_with_later_timing(self):
         merged = [
             {'start': 336.68, 'end': 340.68,
-             'text': 'name is daryl dixon i come from a place'},
+             'text': 'name is riley mason i come from a place'},
             {'start': 340.68, 'end': 346.03,
-             'text': "called the commonwealth it's in america i"},
+             'text': "called the harborstead it's in america i"},
         ]
         precision = [
             {'start': 336.71, 'end': 341.66,
-             'text': 'name is daryl dixon i come from a place called the commonwealth'},
+             'text': 'name is riley mason i come from a place called the harborstead'},
             {'start': 344.58, 'end': 346.02,
              'text': "it's in america i"},
         ]
@@ -669,15 +669,15 @@ class AsrWindowTests(unittest.TestCase):
     def test_precision_sentences_fix_duration_split_when_words_agree(self):
         merged = [
             {'start': 336.66, 'end': 340.98,
-             'text': 'name is daryl dixon i come from a place called the', 'confidence': .72},
+             'text': 'name is riley mason i come from a place called the', 'confidence': .72},
             {'start': 340.98, 'end': 346.04,
-             'text': "commonwealth it's in america i", 'confidence': .55},
+             'text': "harborstead it's in america i", 'confidence': .55},
         ]
         precision = [
-            {'start': 336.28, 'end': 337.74, 'text': "My name's Daryl Dixon.",
+            {'start': 336.28, 'end': 337.74, 'text': "My name's Riley Mason.",
              'confidence': .75},
             {'start': 337.96, 'end': 341.41,
-             'text': 'I come from a place called the Commonwealth.', 'confidence': .86},
+             'text': 'I come from a place called the Harborstead.', 'confidence': .86},
             {'start': 344.44, 'end': 345.42, 'text': "It's in America.",
              'confidence': .99},
         ]
@@ -1075,7 +1075,7 @@ class AsrWindowTests(unittest.TestCase):
         self.assertEqual(extend_rescue_prefix(base, rescue), base)
 
     def test_restores_precision_subject_confirmed_by_independent_pass(self):
-        # Real numbers from a production trace (Daryl Dixon Official Trailer,
+        # Real numbers from a production trace (Riley Mason Official Trailer,
         # ~46.5s): the main pass dropped the subject "I"; the precision pass
         # heard the same sentence, with the same words after it, and high
         # confidence.
@@ -1134,7 +1134,7 @@ class AsrWindowTests(unittest.TestCase):
         self.assertEqual(result[0]['text'], 'paysans.')
 
     def test_v2_second_opinion_inserts_an_article_confirmed_by_v2(self):
-        # Real numbers from a production trace (Daryl Dixon Official
+        # Real numbers from a production trace (Riley Mason Official
         # Trailer): the main pass dropped "the"; the no-VAD rescue pass
         # heard it, and an independent v2 reading confirms the same word
         # sequence around it before it is trusted.
@@ -1403,7 +1403,7 @@ class AsrWindowTests(unittest.TestCase):
         self.assertEqual(plan_v2_word_check_windows(base, 120.0), [])
 
     def test_v2_substitution_swaps_the_one_mis_heard_word(self):
-        # Real numbers from a production trace (Daryl Dixon S.3, Italian
+        # Real numbers from a production trace (Riley Mason S.3, Italian
         # trailer): large-v3's own reading was grammatically broken Italian
         # ("sotto a sé"); an independent large-v2 reading of the same audio
         # heard "sotto assedio" ("under siege") with reasonable confidence,

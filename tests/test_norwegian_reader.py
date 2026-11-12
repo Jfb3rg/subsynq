@@ -10,7 +10,7 @@ import norwegian_reader
 import worker
 from asr_windows import _INDEPENDENT_FAMILIES, _family, reading_alternatives
 
-# The language probes of the real jobs (dev 202 SamplePerson mot verden, 203 Nordic Sample, 201 SAMPLE GAMMA, 135 a Danish trailer)
+# Language-detection regression inputs with different language probabilities.
 SAMPLEPERSON = [{'language': 'no', 'probability': .935, 'speech_seconds': 9.1}, {'language': 'no', 'probability': .953, 'speech_seconds': 11.0},
          {'language': 'no', 'probability': .937, 'speech_seconds': 8.2}]
 NORDIC_SAMPLE = [{'language': 'no', 'probability': .936, 'speech_seconds': 6.0}, {'language': 'nn', 'probability': .613, 'speech_seconds': 5.1},
@@ -45,7 +45,7 @@ class PackTests(unittest.TestCase):
         self.assertIn('nb-whisper', _INDEPENDENT_FAMILIES)
 
     def test_its_reading_becomes_a_supported_candidate(self):
-        # SamplePerson (job 202) row 33: the file has the short pass at 0.18; rescue, large-v2 and NB-Whisper read "Finn det du elsker."
+        # SamplePerson row 33: the file has the short pass at 0.18; rescue, large-v2 and NB-Whisper read "Finn det du elsker."
         row = {'start': 112.88, 'end': 114.4, 'text': 'Finn deg du elsker.', 'confidence': .18}
         readings = {'precision': [row], 'rescue': [{'start': 112.61, 'end': 114.23, 'text': 'Finn det du elsker.'}],
                     'v2': [{'start': 113.02, 'end': 114.62, 'text': 'Finn det du elsker.'}],
@@ -54,7 +54,7 @@ class PackTests(unittest.TestCase):
         self.assertEqual((candidates[0]['text'], candidates[0]['support']), ('Finn det du elsker.', 3))
 
     def test_a_swap_is_found_when_the_readings_hold_extra_words_at_the_start(self):
-        # SamplePerson mot verden (regression case): the long pass "hjemme", large-v2 and NB-Whisper "gjemt" with "har seriøst" in front
+        # Sample Iota (regression case): the long pass "hjemme", large-v2 and NB-Whisper "gjemt" with "har seriøst" in front
         from asr_windows import settle_v2_words_with_qwen, _single_word_swap
         row = {'start': 94.28, 'end': 98.8, 'text': 'en kilo heroin hjemme der, og så ber du meg om å bare være her.'}
         v2 = [{'start': 93.98, 'end': 98.96, 'text': 'har seriøst en kilo heroin gjemt der, og så ber du meg om å bare være her.'}]

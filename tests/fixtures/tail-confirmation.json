@@ -290,7 +290,7 @@
       "start": 36.712,
       "end": 37.4
     },
-    "provenance": "Actual Dev reread dev-przr2I: both Whisper first words begin at the tight clip edge; this rejected candidate must not remove the original prefix."
+    "provenance": "Actual Dev reread recorded regression input: both Whisper first words begin at the tight clip edge; this rejected candidate must not remove the original prefix."
   },
   "selected_anchor_case": {
     "base": [
@@ -537,6 +537,6 @@
       }
     ],
     "previous_edge": 48,
-    "provenance": "Full original CPU ASR dev-CgncU8 (547.0657 s), pre-tail selection replay dev-Qx038c: the 54.05 s planned anchor was dropped, then recovered at 54.08 s by final selection."
+    "provenance": "Full original CPU ASR recorded regression input (547.0657 s), pre-tail selection replay recorded regression input: the 54.05 s planned anchor was dropped, then recovered at 54.08 s by final selection."
   }
 }

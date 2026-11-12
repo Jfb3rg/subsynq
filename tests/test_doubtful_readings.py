@@ -63,7 +63,7 @@ class ReadingAlternativesTests(unittest.TestCase):
 
 
 class DoubtfulCueWindowTests(unittest.TestCase):
-    # Real cues 5 and 6 of job 49: confidence 0.35 and 0.22, only the short pass and Whisper v2 covered them, so
+    # Real cues 5 and 6 of the test case: confidence 0.35 and 0.22, only the short pass and Whisper v2 covered them, so
     # Qwen3-ASR never listened to the two least certain lines of the film.
     FINAL = [cue(25.1, 26.2, 'trouble we need your help', .958), cue(26.4, 27.5, 'Run! on, you niggas! Run!', .352),
              cue(27.6, 29.0, 'the f**k did I do that?', .218), cue(46.3, 47.9, 'You find me a tour guide yet?', .56),

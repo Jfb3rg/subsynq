@@ -70,7 +70,7 @@
   },
   "windows": [
     {
-      "provenance": "dev-3DPnv7 window 0",
+      "provenance": "recorded regression input window 0",
       "offset": 92.432,
       "readings": [
         {
@@ -312,7 +312,7 @@
       ]
     },
     {
-      "provenance": "dev-3DPnv7 window 1",
+      "provenance": "recorded regression input window 1",
       "offset": 91.432,
       "readings": [
         {
@@ -566,7 +566,7 @@
       ]
     },
     {
-      "provenance": "dev-3DPnv7 window 2",
+      "provenance": "recorded regression input window 2",
       "offset": 92,
       "readings": [
         {

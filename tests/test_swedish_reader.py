@@ -33,14 +33,14 @@ class DecisionTests(unittest.TestCase):
         # (language, probability, speech seconds) per window, from data/config/source-transcripts/job-N.json
         def windows(*items):
             return [{'language': language, 'probability': probability, 'speech_seconds': seconds} for language, probability, seconds in items]
-        swedish = {'Nelly Rapp': windows(('sv', .92, 8), ('sv', .95, 15), ('sv', .96, 11)),
+        swedish = {'Sample Rho': windows(('sv', .92, 8), ('sv', .95, 15), ('sv', .96, 11)),
                    'Beck 32': windows(('sv', .78, 8), ('sv', .92, 15), ('no', .47, 15)),
                    'Jönssonligan': windows(('sv', .96, 13), ('sv', .98, 15), ('sv', .94, 10))}
         for name, readings in swedish.items():
             self.assertTrue(swedish_reader.decide(readings)[0], name)
-        others = {'TRANSFERVINDUE (danska, job 127: KB-Whisper valdes av misstag)': windows(('da', .93, 12), ('sv', .73, 14), ('sv', .85, 5)),
+        others = {'Sample Tau': windows(('da', .93, 12), ('sv', .73, 14), ('sv', .85, 5)),
                   'Dobbeltfejl (danska)': windows(('da', .99, 8), ('da', .94, 13), ('da', .98, 11)),
-                  'SamplePerson mot verden (norska)': windows(('no', .94, 15), ('no', .95, 13), ('no', .94, 7)),
+                  'Sample Iota (norska)': windows(('no', .94, 15), ('no', .95, 13), ('no', .94, 7)),
                   'Nordic Sample (norska)': windows(('no', .94, 15), ('nn', .61, 2), ('no', .94, 15))}
         for name, readings in others.items():
             self.assertFalse(swedish_reader.decide(readings)[0], name)

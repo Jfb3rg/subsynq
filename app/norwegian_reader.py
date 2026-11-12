@@ -1,7 +1,7 @@
 """NB-Whisper reads Norwegian speech as an EXTRA reader next to Whisper large-v3, large-v2 and Qwen3-ASR.
 
 NB-Whisper (Nasjonalbiblioteket, Apache-2.0, a fine-tune of Whisper large on Norwegian) was read against large-v3 and large-v2 (both told the
-language was Norwegian) on SamplePerson mot verden and Nordic Sample (STATUS 2026-10-25). Where the Whisper models misheard Norwegian words it heard them
+language was Norwegian) on Sample Iota and Nordic Sample. Where the Whisper models misheard Norwegian words it heard them
 right or sensibly ("Etter hvert ser jeg for meg" for "Til hvert", "inni pæra mi" where the file had Qwen's Danish "indenfor mig", "Jeg må bli
 lykkelig", "gjemt der", "fullmåne", "minnedemon", "Bestevenner for alltid"), but it was trained on NRK subtitles: it shortens lines, tones down
 swearing ("senil i faen" -> "senil i lufta") and writes English lines in Norwegian. So it never replaces the main reader (unlike KB-Whisper for

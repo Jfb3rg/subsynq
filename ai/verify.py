@@ -5,7 +5,10 @@ from pathlib import Path
 from dataclasses import asdict
 from faster_whisper import WhisperModel
 
-folder = Path(os.environ.get('SUBSYNQ_ASR_RUN', '/config/asr-tests/20260909-160308'))
+run = os.environ.get('SUBSYNQ_ASR_RUN', '').strip()
+if not run:
+    raise SystemExit("Set SUBSYNQ_ASR_RUN to an existing diagnostic run.")
+folder = Path(run)
 original = json.loads((folder / 'result.json').read_text())
 model = WhisperModel('large-v3', device='cpu', compute_type='int8', cpu_threads=6, download_root='/models', local_files_only=True)
 result = {"method": "large-v3, no VAD, multilingual detection; automated comparison only", "samples": []}

@@ -80,7 +80,7 @@ def completion_rows(texts, alternatives):
 
 
 class CompletionTests(unittest.TestCase):
-    """Wildlife Sample (job 146, readers: large-v3, large-v2, Qwen3-ASR): a row cut off in the middle of a sentence is completed with words another reader heard."""
+    """Wildlife Sample (the test case, readers: large-v3, large-v2, Qwen3-ASR): a row cut off in the middle of a sentence is completed with words another reader heard."""
 
     def timed_sampleperson(self, next_start=27.59):
         rows = completion_rows(['Kan jeg levere en gang i måneden,', 'så kjenner jeg meg som Netflix-modell for noe.'],

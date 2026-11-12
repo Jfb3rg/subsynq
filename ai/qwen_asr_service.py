@@ -82,7 +82,7 @@ def restart_process():
     """Start this same service over again in the same process slot, as soon as no request is running. It is the only way to hand ALL of a CUDA
     process's memory back to the card (weights that stay referenced, the allocator's cache, the CUDA context): on a rented RTX 3090 this
     process kept 3.6 GiB after `release_model`, so the translation model got 16.7 GiB instead of the 18-20 it needs and generated 4 tokens/s
-    instead of 33 (STATUS natt 43). The models load again on the next request."""
+    instead of 33. The models load again on the next request."""
     def restart():
         with model_lock:
             time.sleep(0.3)                       # the answer to /unload has left

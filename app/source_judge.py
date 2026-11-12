@@ -181,7 +181,7 @@ def repeats_neighbour(chosen, current, previous, following, *, shortest=2):
                         return True
                     if not at_end and other[:size] == words[-size:] and not any(v[-size:] == words[-size:] for v in own_forms):
                         return True
-    # Words the choice ADDS that the neighbouring line already holds, anywhere in it: SamplePerson mot verden (regression case) took NB-Whisper's
+    # Words the choice ADDS that the neighbouring line already holds, anywhere in it: Sample Iota (regression case) took NB-Whisper's
     # "Det er ikke rart når de to mest populære bøkene er Bibelen og" right before "i tre siste runde av årene er Bibelen", so
     # "Bibelen" stood in two lines.
     words = _words(chosen)
@@ -271,11 +271,11 @@ def acceptable_choice(current, chosen, support=1, current_support=1, previous=''
     if repeats_neighbour(chosen, current, previous, following):
         return False
     # A choice that only DROPS words is never a "minimal repair": it needs more model families behind it than the current wording.
-    # SAMPLE GAMMA job 170: "You find me a tour guide yet?" (both large-v3 passes and large-v2) -> "Find me a tour guide yet?" (Qwen only),
+    # SAMPLE GAMMA the test case: "You find me a tour guide yet?" (both large-v3 passes and large-v2) -> "Find me a tour guide yet?" (Qwen only),
     # supports 3 against 3 and the judge itself saying the current wording had no error. Replay of 181 applied choices: 33 such removals, almost
     # all harmful ("Du behöver" -> "behöver", "Je ne supporte plus" -> "Je supporte plus", "C'est" -> "'est", "in OK shape" -> "in shape").
     # With `word_families` (how many model families heard each word of the current wording) it may drop words that at most one family heard:
-    # SAMPLE GAMMA job 180, "... lights on me this" (the long pass alone) -> "... lights on me." -- but never "You" (both large-v3 passes and large-v2).
+    # SAMPLE GAMMA the test case, "... lights on me this" (the long pass alone) -> "... lights on me." -- but never "You" (both large-v3 passes and large-v2).
     if len(chosen_words) < len(current_words) and _is_subsequence(chosen_words, current_words):
         removed = set(current_words) - set(chosen_words)
         lonely = bool(word_families) and all(word_families.get(word, 0) <= 1 for word in removed)

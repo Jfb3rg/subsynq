@@ -40,7 +40,7 @@ class FamilyVoteWordingTests(unittest.TestCase):
 class OutvotedSingleReadingTests(unittest.TestCase):
     """C: a doubtful row only one reading heard is replaced when three families heard the same other words."""
 
-    # Nordic Sample (regression caseand 216), 118-126 s.
+    # Nordic Sample (regression case), 118-126 s.
     READINGS = {'context': [cue(121.64, 123.32, 'Gjent mors', .43), cue(124.96, 126.16, 'grønn og vann', .49)],
                 'rescue': [cue(120.36, 122.38, 'Vi skal hjem.', .96)],
                 'v2': [cue(120.34, 122.52, 'Vi skal hjem!', .87)],
@@ -150,7 +150,7 @@ class ShownModelNameTests(unittest.TestCase):
 
 
 class LeadWordProbeTests(unittest.TestCase):
-    """NORTHFIELD (regression caseand 221): only the rescue pass heard "you" before the cut row "were arrested"; Qwen is asked once more."""
+    """NORTHFIELD (regression case): only the rescue pass heard "you" before the cut row "were arrested"; Qwen is asked once more."""
 
     FINAL = [cue(6.85, 8.01, 'Give me the code', .8), cue(11.4, 12.18, 'were arrested', .74),
              cue(12.76, 15.8, "Wearing a woman's skirt technically it's a dress.", .71)]

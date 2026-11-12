@@ -9,11 +9,14 @@ from faster_whisper import WhisperModel
 from faster_whisper.audio import decode_audio
 from faster_whisper.vad import get_speech_timestamps
 
+media_match = os.environ.get("SUBSYNQ_MEDIA_MATCH", "").strip()
+if not media_match:
+    raise SystemExit("Set SUBSYNQ_MEDIA_MATCH to identify one media item explicitly.")
+
 output = Path("/config/asr-tests") / time.strftime("%Y%m%d-%H%M%S")
 output.mkdir(parents=True, exist_ok=False)
 with sqlite3.connect("/config/subsynq.db") as db:
     library = json.loads(db.execute("SELECT value FROM metadata WHERE key='library_scan'").fetchone()[0])
-media_match = os.environ.get("SUBSYNQ_MEDIA_MATCH", "S01E01")
 matches = [item for item in library["items"] if media_match in item["name"]]
 if len(matches) != 1:
     raise RuntimeError(f"Expected exactly one media match for {media_match!r}, found {len(matches)}")

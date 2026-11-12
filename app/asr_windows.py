@@ -481,7 +481,7 @@ def refine_starts(cues, spans, *, lead=START_LEAD, minimum_change=.1, maximum_ch
 
     Whisper's first word of a sentence starts early after a pause: on Wildlife Sample S01E01 (44 min, 899 cues) the cue starts lay a median 0.45 s before
     the onset of the speech (voice detection with no padding), the same all through the file, and cutting the audio later proved the first word still
-    intact 0.4 s after the cue start (STATUS natt 47). `spans` are the voiced stretches [(start, end), ...] in seconds. Only a delay is made: a cue that
+    intact 0.4 s after the cue start. `spans` are the voiced stretches [(start, end), ...] in seconds. Only a delay is made: a cue that
     starts inside a voiced stretch (several cues in one breath), or whose next voiced stretch begins more than `maximum_change` later, is left alone,
     and a cue is never shortened below `minimum_duration`.
 
@@ -1122,7 +1122,7 @@ def prefer_precision_sentence_boundaries(merged, precision):
                                 for a, b in zip(candidates, candidates[1:]))
             # Without a pause, trust the short pass only for a run-on: the long pass has NO sentence
             # end at all, the short pass ends EVERY cue with one and is confident about each (real
-            # job 18: "...crooked game ray jump did you go and do the" = "...game." "Ray!" "Jump!"
+            # the test case: "...crooked game ray jump did you go and do the" = "...game." "Ray!" "Jump!"
             # "Did you go and do the right thing again?" with 0.04-0.7 s between them).
             # The LAST cue may lack one: it can be the first word of the next sentence ("will" of
             # "Will you be making a statement?"), cut off by the passage edge.
@@ -1264,7 +1264,7 @@ def prefer_precision_for_unpunctuated_runs(merged, precision, v2=(), corroborati
                     or (trail_extra and after[:len(trail_extra)] == trail_extra)):
                 continue
             # A small overlap with a neighbour is the passes' timing, not other speech: the edge is cut at the neighbour (SAMPLE EPSILON, dev
-            # job 185: "Move away and keep walking, sir." ends 0.31 s into the long pass's "Do you hear me?" and the split "Move away and keep" /
+            # the test case: "Move away and keep walking, sir." ends 0.31 s into the long pass's "Do you hear me?" and the split "Move away and keep" /
             # "walking." stayed). A larger overlap still refuses the replacement.
             if result and replacement[0]['start'] < result[-1]['end'] - .05:
                 if result[-1]['end'] - replacement[0]['start'] > MAXIMUM_EDGE_OVERLAP:
@@ -1373,7 +1373,7 @@ def _assemble_resegmented(block_tokens, tokens, collected, operations, v2):
         else:                                                 # delete / replace: the long pass's words stay
             if tag == 'delete' and 0 < b1 < len(tokens) and tokens[b1 - 1][1] != tokens[b1][1]:
                 # Words only the long pass heard, standing exactly between two of the short pass's sentences, belong to neither: appended to the first
-                # they came out as "He kept digging and digging. and." (DIALOGUE_SAMPLE AND DOG, job 154: the long pass wrote "digging, and" before a pause, the short
+                # they came out as "He kept digging and digging. and." (DIALOGUE_SAMPLE AND DOG, the test case: the long pass wrote "digging, and" before a pause, the short
                 # pass, Whisper large-v2 and Qwen3-ASR heard no "and", and neither did a clean reading of the clip). They are kept, and the run is left
                 # as the long pass wrote it, only when another reading has them between the same two neighbours; otherwise they are dropped.
                 around = [_word_key(tokens[b1 - 1][0]), *(_word_key(token) for token in block_tokens[a1:a2]), _word_key(tokens[b1][0])]
@@ -1711,7 +1711,7 @@ _STOCK_PHRASES = {
 _BOILERPLATE = ('한글자막', '자막 제공', '시청해 주셔서', '시청해주셔서', '구독과 좋아요', 'thanks for watching',
                 'thank you for watching', 'subtitles by', 'subtitled by', 'amara org', 'sous titrage', 'sous titres',
                 'ご視聴', '字幕', 'undertexter från', 'untertitel',
-                # the Nordic credits Whisper writes into music and silence ("Teksting av Nicolai Winther" in job 25, "Teksting av" in job 126)
+                # the Nordic credits Whisper writes into music and silence ("Teksting av Nicolai Winther" in the test case, "Teksting av" in the test case)
                 'teksting av', 'tekstet af', 'tekster af', 'textning av', 'undertextning', 'undertekster af')
 
 
@@ -2353,7 +2353,7 @@ def restore_lead_words(merged, readings, *, skip_indices=(), maximum_lead=2, max
             continue
         start = min(starts)
         if start < floor - .1:
-            continue                                   # the words are heard before the previous row ends: they belong to it (Nelly Rapp "vantarna på")
+            continue                                   # the words are heard before the previous row ends: they belong to it (Sample Rho "vantarna på")
         start = max(start, floor + .05)
         if start >= row['start'] or row['end'] - start > maximum_duration:
             continue
@@ -2373,7 +2373,7 @@ def restore_lead_words(merged, readings, *, skip_indices=(), maximum_lead=2, max
 def plan_lead_word_probes(merged, readings, duration, *, skip_indices=(), maximum=4):
     """Places where Qwen3-ASR should listen once more because ONE reading heard opening words a visibly cut row (it starts in lower case) lost.
 
-    NORTHFIELD (regression caseand 221): the row "were arrested" was translated "greps."; only the no-VAD rescue pass heard "you were arrested
+    NORTHFIELD (regression case): the row "were arrested" was translated "greps."; only the no-VAD rescue pass heard "you were arrested
     wearing a woman's skirt", and restore_lead_words rightly needs two readings. Qwen gives that second, independent opinion. Each window
     starts a second before the lead (`start` is the lead's measured time, `clip_start` where the clip begins) and ends half a second after the
     row, so Qwen hears the lead and the row's own words."""
@@ -3030,7 +3030,7 @@ def _same_length_reading(row, readings, size):
 
 def _single_word_swap(words, heard, *, minimum_letters=3):
     """(index, word) when `heard` holds the row's `words` with exactly ONE of them changed into another word (of at least `minimum_letters`
-    letters), other words around it unchanged and only extra words at the very start or end, else None. SamplePerson mot verden (regression case): the row
+    letters), other words around it unchanged and only extra words at the very start or end, else None. Sample Iota (regression case): the row
     "en kilo heroin hjemme der, og så ber du meg om å bare være her." against large-v2's and NB-Whisper's "har seriøst en kilo heroin gjemt der, …"
     gives (3, 'gjemt'): the readings hold two more words at the start, so the older equal-length comparison never saw them."""
     if not words or not heard:
@@ -3057,7 +3057,7 @@ def settle_v2_words_with_qwen(merged, qwen, v2=(), extra=()):
     2. A word large-v2 and Qwen BOTH hear, in readings with the same words as the row except that one, replaces the row's word: SAMPLE EPSILON
        (regression case) "Estamos en la plaza de Paros" (large-v3 alone) where large-v2 and Qwen hear "plaza de toros".
     `extra` are the readings of another independent family that count like Qwen's in both rules (NB-Whisper for Norwegian speech, app/norwegian_reader.py:
-    SamplePerson mot verden "Finn deg du elsker." from the short pass at 0.18, where large-v2 and NB-Whisper hear "Finn det du elsker.")."""
+    Sample Iota "Finn deg du elsker." from the short pass at 0.18, where large-v2 and NB-Whisper hear "Finn det du elsker.")."""
     qwen = list(qwen or ()) + list(extra or ())
     rows, changes = [dict(row) for row in merged], []
     for row in rows:
@@ -3941,7 +3941,7 @@ def correct_confirmed_word_onsets(base, rescue, v2, *, skip_indices=(), maximum_
             continue
         options = starts(row, rescue) + starts(row, v2)
         # Do not cherry-pick a later rescue pass when an equally well timed
-        # reading puts the first word earlier (Russian job 93's initial "А").
+        # reading puts the first word earlier (Russian the test case's initial "А").
         if not options or max(options) - min(options) > maximum_disagreement:
             continue
         onset = round(min(options), 3)

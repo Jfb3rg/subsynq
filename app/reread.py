@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 from asr_windows import _family, _is_boilerplate, _mean_agreement, _medoid, _normalized, _similarity
 
 MINIMUM_FAMILIES = 2
-MINIMUM_AGREEMENT = .9   # mean similarity between the families that read the same words: near-unanimity, since replacing a text that exists is riskier than adding missing speech (KOKUHO row 8: three families agreed at 0.77 on a reading the burned-in subtitles contradict; the four right corrections agreed at 0.96 or more)
+MINIMUM_AGREEMENT = .9   # mean similarity between the families that read the same words: near-unanimity, since replacing a text that exists is riskier than adding missing speech (SAMPLE KAPPA row 8: three families agreed at 0.77 on a reading the burned-in subtitles contradict; the four right corrections agreed at 0.96 or more)
 MINIMUM_GAIN = .1        # the agreed reading must fit the readings this much better than the current text does
 SAME_TEXT = .9           # near-text guard; exact word confirmation is recorded separately
 LENGTH_RANGE = (.4, 2.5)  # a reading this much shorter or longer than the current text is not the same utterance
@@ -308,7 +308,7 @@ def agreed_replacement(current, readings, *, minimum_families=MINIMUM_FAMILIES, 
     Every family that gave a usable reading casts one vote (its best reading) and ALL of them must agree (mean similarity ≥ `minimum_agreement`;
     at least `minimum_families` families): the medoid of their readings is the new text. It replaces the current text only when it is not the
     current text (similarity < `SAME_TEXT`) and fits the readings clearly better than the current text does (`minimum_gain`). A wrong word the
-    families all hear differently is left alone, and so is a case where two Whisper models agree and Qwen does not (measured: KOKUHO row 8, where
+    families all hear differently is left alone, and so is a case where two Whisper models agree and Qwen does not (measured: SAMPLE KAPPA row 8, where
     both Whisper models read "聖地の王国" and the current text was not clearly worse)."""
     usable = usable_readings(current, readings)
     by_family = {}
@@ -400,7 +400,7 @@ def wording_support(current, readings, *, first_family='whisper-v3', similar=.85
 
 
 def orthography_shift(current, candidate):
-    """A reading that turns Danish/Norwegian spelling into Swedish (or back) is a misheard language, not a better reading: TRANSFERVINDUE
+    """A reading that turns Danish/Norwegian spelling into Swedish (or back) is a misheard language, not a better reading: SAMPLE TAU
     (Danish, file language unconfirmed), row 11 "sikkert fremlæge. Et sted mellem liv og død." was replaced by the readers' Swedish
     "för att säkert framlega ett stöd mellan liv och död." (replay 2026-11-03, also with 0.8.360)."""
     import re

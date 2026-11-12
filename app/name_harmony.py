@@ -1,6 +1,6 @@
 """Names that one reading spells several ways, made consistent with an independent second reading.
 
-KB-Whisper spelled the invented name in Nelly Rapp three ways (Häckla, Hekla, Ekla) and the quality check, rightly, refused the subtitle. Whisper large-v3 spells it
+KB-Whisper spelled the invented name in Sample Rho three ways (Häckla, Hekla, Ekla) and the quality check, rightly, refused the subtitle. Whisper large-v3 spells it
 the same way every time. This module finds such conflicts in a transcript and, when a second reading of the same rows repeats a close spelling in at least two rows,
 makes the whole transcript use the spelling (one of the transcript's own) that the second reading is closest to. It never invents a spelling, only capitalised words that
 stand in the middle of a sentence count as names (so "Stjärten." or "Med ..." at a sentence start are left alone) and a row keeps its spelling when the second reading of THAT

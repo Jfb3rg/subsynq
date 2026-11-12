@@ -149,17 +149,17 @@ class WorkerTranslationTests(unittest.TestCase):
         def fake_call(request):
             requests.append(request)
             return {'done_reason': 'stop', 'response': json.dumps({'rows': [
-                {'id': 14, 'sv': 'Mitt namn är Daryl.'},
-                {'id': 15, 'sv': 'Commonwealth ligger i Amerika.'},
+                {'id': 14, 'sv': 'Mitt namn är Riley.'},
+                {'id': 15, 'sv': 'Harborstead ligger i Amerika.'},
             ]})}
 
         with patch.object(worker, 'call_ollama', side_effect=fake_call), \
                 patch.object(worker, 'check_cancelled'), \
                 patch.object(worker, 'update_job'):
             worker.translate({'id': 99}, [
-                {'id': 14, 'start': 1, 'end': 2, 'source': 'My name is Daryl.'},
+                {'id': 14, 'start': 1, 'end': 2, 'source': 'My name is Riley.'},
                 {'id': 15, 'start': 2, 'end': 3,
-                 'source': 'The Commonwealth is in America.'},
+                 'source': 'The Harborstead is in America.'},
             ])
 
         self.assertIn('Never move, repeat or anticipate words', requests[0]['system'])

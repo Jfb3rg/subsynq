@@ -6,8 +6,7 @@ per-window audio clips ever cross the network -- never the source video.
 Real money: every function that creates or destroys a billable instance
 talks to Vast.ai's live API. Nothing here is called automatically; the
 caller (the web UI or a manual script) must ask the user first, every time,
-until the app's own "Starta molnjobb" button becomes the agreed-on consent
-per SETTINGS-PLAN.md / STATUS.md.
+before requesting a rental.
 """
 import ast
 import base64
@@ -21,7 +20,7 @@ from urllib.request import Request, urlopen
 
 VAST_API = "https://console.vast.ai/api/v0"
 # A stock, publicly available CUDA+PyTorch image -- no custom image to build
-# or push. gpu_service.py itself has no ROCm-specific code (see STATUS.md);
+# or push. gpu_service.py itself has no ROCm-specific code;
 # it only ever calls generic torch.cuda.* APIs, so it runs unmodified here.
 # 2.4.0-cuda12.4 was built in 2024, before the Blackwell architecture (RTX
 # 50-series) existed, and failed live on a real RTX 5060 Ti with "CUDA

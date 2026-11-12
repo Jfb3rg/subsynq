@@ -97,14 +97,14 @@ class SpeechRateTests(unittest.TestCase):
     """A start is never moved so late that the words cannot be spoken. The voice detection lags behind speech over music or noise and behind a fast line."""
 
     def test_wife_and_dog_the_daddy_line_keeps_the_time_to_say_its_eight_words(self):
-        # job 154: spoken from about 45.1 s (a clean reading puts "did" at 45.22 s), the detector found a voice from 45.6 s (music underneath); the start went to 45.48 s
+        # the test case: spoken from about 45.1 s (a clean reading puts "did" at 45.22 s), the detector found a voice from 45.6 s (music underneath); the start went to 45.48 s
         cue = {'start': 44.42, 'end': 46.44, 'text': 'And what did he find in Hell, Daddy?', 'confidence': .67}
         refined, changed, shifts = refine_starts([cue], [(45.6, 46.4)])
         self.assertEqual((refined[0]['start'], changed, shifts), (45.107, 1, [.687]))
         self.assertEqual(refine_starts([cue], [(45.6, 46.4)], maximum_rate=None)[0][0]['start'], 45.48, 'without the limit: the old result')
 
     def test_wildlife_sample_men_the_fast_cues_the_old_shift_cut_into(self):
-        # job 89 cue starts, voice onsets and, in brackets, where a clean reading of the audio puts the first word
+        # the test case cue starts, voice onsets and, in brackets, where a clean reading of the audio puts the first word
         for start, end, onset, text, spoken_from in (
                 (2469.09, 2470.09, 2469.58, 'Did you guys hear that?', 2469.14), (1282.54, 1283.88, 1283.36, "And we're running out of wood.", 1282.66),
                 (2233.43, 2235.43, 2234.46, "Hey, let's get as close as we can.", 2233.86), (265.94, 267.28, 266.4, "A whiteout, it's when you can barely see", 265.96)):
