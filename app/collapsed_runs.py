@@ -25,7 +25,12 @@ MAXIMUM_ROWS = 30
 RUN_FAMILY = 'whisper-v3'
 WHISPER_FAMILIES = {'context': 'whisper-v3', 'precision': 'whisper-v3', 'rescue': 'whisper-v3',
                     'whispered_gap': 'whisper-v3', 'cluster_first': 'whisper-v3', 'cluster_second': 'whisper-v3',
-                    'v2': 'whisper-v2', 'cluster_v2': 'whisper-v2', 'cluster_qwen': 'qwen'}
+                    'v2': 'whisper-v2', 'cluster_v2': 'whisper-v2', 'cluster_qwen': 'qwen',
+                    'stretch_qwen': 'qwen', 'stretch_parakeet': 'parakeet'}
+STRETCH_MARGIN = .3
+MAXIMUM_STRETCH = 30.0
+MAXIMUM_STRETCH_SECONDS = 180.0
+MINIMUM_READ_SHARE = .8
 
 
 def _token(word):
@@ -224,6 +229,29 @@ def _replace_run(run, before, after, sources, witnesses):
         return result, {'start': start, 'end': end, 'source': name, 'old': [row['text'] for row in run],
                         'new': [row['text'] for row in result], 'replaced_rows': len(block)}
     return None
+
+
+def unread_run_windows(merged, sources, witnesses):
+    """Windows over the runs that are left where a sentence reading exists but no family outside Whisper has read the
+    stretch, so nothing could confirm the sentences. Read there, such a family is one more witness, never a source."""
+    rows = sorted(merged, key=lambda item: item['start'])
+    outside = [row for name, items in (witnesses or {}).items() if not WHISPER_FAMILIES.get(name, name).startswith('whisper')
+               for row in items or ()]
+    windows, seconds = [], 0.0
+    for first, last in collapsed_runs(rows):
+        start, end = rows[first]['start'], rows[last]['end']
+        length = end - start
+        if not 0 < length <= MAXIMUM_STRETCH or seconds + length > MAXIMUM_STRETCH_SECONDS:
+            continue
+        if not any(row['end'] > start and row['start'] < end and str(row.get('text', '')).rstrip()[-1:] in MARKS
+                   and not formless(row) for _, items in sources for row in items or ()):
+            continue
+        read = sum(max(0.0, min(end, row['end']) - max(start, row['start'])) for row in outside)
+        if read >= MINIMUM_READ_SHARE * length:
+            continue
+        windows.append({'start': max(0.0, start - STRETCH_MARGIN), 'end': end + STRETCH_MARGIN})
+        seconds += length
+    return windows
 
 
 def replace_collapsed_runs(merged, sources, witnesses):

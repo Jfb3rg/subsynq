@@ -18,7 +18,8 @@ from difflib import SequenceMatcher
 from collapsed_runs import MARKS, _token
 
 # Only languages where the second reading has been measured against real windows.
-FORM_PROMPTS = {'en': "Hello. How are you? I'm fine, thank you. Come in, please."}
+FORM_PROMPTS = {'en': "Hello. How are you? I'm fine, thank you. Come in, please.",
+                'de': 'Hallo. Wie geht es dir? Mir geht es gut, danke. Kommen Sie bitte herein.'}
 FORM_STRETCH_WORDS = 16
 MINIMUM_KEPT = .85
 SENTENCE_ENDS = '.?!…'
@@ -68,6 +69,17 @@ def row_words(rows):
     return [word for row in sorted(rows, key=lambda row: row['start']) for word in str(row.get('text', '')).split()]
 
 
+def row_openers(rows):
+    """The indices in row_words(rows) of the words that open a row."""
+    openers, count = set(), 0
+    for row in sorted(rows, key=lambda row: row['start']):
+        words = str(row.get('text', '')).split()
+        if words:
+            openers.add(count)
+        count += len(words)
+    return openers
+
+
 def lost_form(words):
     """True when the running text of one window holds a long stretch without any punctuation."""
     return bool(formless_words(words))
@@ -111,7 +123,7 @@ def _first_letter_lowered(word):
     return word
 
 
-def transfer_form(first, second, targets=None, before=None):
+def transfer_form(first, second, targets=None, before=None, openers=()):
     """(words, reason): the first reading's words with the second reading's capitals and punctuation on its words in
     stretches without punctuation (`targets`: their indices, where the caller measured them over more text than
     `first`), or (None, reason) where the second reading is not the same speech or brings no punctuation.
@@ -120,9 +132,11 @@ def transfer_form(first, second, targets=None, before=None):
     and marks differ). Where the readings differ the first reading's words stay, and a mark that closes the differing
     part in the second reading closes it in the first too, so a sentence still ends where the second reading ended it,
     and the word after such an end opens in upper case. A capital the second reading wrote because its own sentence
-    started there does not stand where the first reading's word before it does not end a sentence (a comma the first
-    reading keeps, or `before`: the word standing before `first`).
-    What the second reading holds before the first word and after the last is other speech and gives nothing."""
+    started there, or its own row (`openers`: the indices in `second` of the words that open a row), does not stand
+    where the first reading's word before it does not end a sentence (a comma the first reading keeps, or `before`:
+    the word standing before `first`).
+    What the second reading holds before the first word and after the last is other speech and gives nothing: that
+    holds for words the first reading opens or closes with that the second reading wrote differently, too."""
     first, second = [str(word) for word in first], [str(word) for word in second]
     targets = formless_words(first) if targets is None else set(targets)
     if not targets:
@@ -145,13 +159,14 @@ def transfer_form(first, second, targets=None, before=None):
                     result[index] = lead + word
                     ahead = second[new[new_start + place - 1][0]] if new_start + place else None
                     if _opens_sentence_only(first[index], word) and (
-                            ahead is None or _ends_sentence(ahead) and _token(ahead) not in TITLES):
+                            ahead is None or new[new_start + place][0] in openers
+                            or _ends_sentence(ahead) and _token(ahead) not in TITLES):
                         opened.add(index)
                 # The second reading wrote this word right after the one before it: its own choice of capital stands ("p.m. in").
                 if place:
                     settled.add(index)
             continue
-        if old_end == len(old) and new_end == len(new):
+        if old_end == len(old) and new_end == len(new) or not old_start and not new_start:
             continue
         theirs = [word for word in theirs if _token(word) not in TITLES]
         if ours and theirs:
@@ -203,9 +218,10 @@ def restore_rows_form(rows, readings):
         for run in runs:
             begin, end = offsets[run[0]], offsets[run[-1] + 1]
             start, stop = rows[run[0]]['start'] - READING_MARGIN, rows[run[-1]]['end'] + READING_MARGIN
-            second = row_words([row for row in reading['rows'] if row['end'] > start and row['start'] < stop])
+            held = [row for row in reading['rows'] if row['end'] > start and row['start'] < stop]
             inside_run = {position - begin for position in targets if begin <= position < end}
-            formed, reason = transfer_form(flat[begin:end], second, inside_run, flat[begin - 1] if begin else None)
+            formed, reason = transfer_form(flat[begin:end], row_words(held), inside_run, flat[begin - 1] if begin else None,
+                                           row_openers(held))
             if formed is not None and 0 in inside_run and (not begin or _ends_sentence(flat[begin - 1])):
                 formed[0] = _capitalised(formed[0])
             record = {'profile': reading.get('profile'), 'window': window, 'rows': [run[0], run[-1]],

@@ -10,6 +10,13 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.387
+
+- **Stycken som blev kvar utan meningsform.** Där ett stycke fortfarande står utan punkter och stor bokstav, och en läsning med hela meningar finns, läser Qwen3-ASR och Parakeet det korta klippet. De används bara som extra vittnen: stycket byts mot hela meningar först när varje ord som skiljer är bekräftat av två andra modellfamiljer. Högst 30 sekunder per stycke och tre minuter per fil. Kan stängas av med `SUBSYNQ_STRETCH_READINGS=0` för workern.
+- **Dubblerade ord i radskarvar.** En rad som slutar med samma ord som nästa rad börjar med får orden strukna på en sida, när minst två läsningar har dem en enda gång och ingen har dem två gånger. Kan stängas av med `SUBSYNQ_DOUBLED_EDGES=0`.
+- **Omläsning av en osäker rad** tar inte längre med grannradens sista eller första ord när ordets tid ligger utanför raden.
+- **Meningsform även för tyska.** Steget från 0.8.386 gäller nu engelska och tyska. Två fel är rättade för alla språk: ett skiljetecken från talet före stycket hamnar inte på styckets första ord, och en stor bokstav som bara kom av en radstart i den extra läsningen står inte kvar mitt i en mening.
+
 ## 0.8.386
 
 - **Meningsform där Whisper tappat den.** Ett stycke i huvudavlyssningen som Whisper skrivit utan punkter och stor bokstav läses en gång till, med en kort text i meningsform som föregående sammanhang. Den extra läsningen väljer varken ord eller rader: först när allt annat är klart får de rader som fortfarande saknar meningsform dess punkter, kommatecken och stora bokstäver, och bara på ord som båda läsningarna har. Ord och tider är exakt som förut. Bara engelska än så länge (andra språk läggs till när de är mätta).

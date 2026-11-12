@@ -92,7 +92,8 @@ from probe import probe_media
 from subtitle_layout import layout_cues
 from sentence_cuts import evidence_words, move_cuts_to_sentence_ends
 import dub_bed
-from collapsed_runs import replace_collapsed_runs, rows_inside_windows
+from collapsed_runs import replace_collapsed_runs, rows_inside_windows, unread_run_windows
+from doubled_edges import drop_doubled_edge_words
 from sentence_form import form_prompt, lost_form, restore_rows_form, row_words, unmarked_words
 from translation_qa import (might_be_swedish, dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
@@ -100,7 +101,7 @@ from translation_qa import (might_be_swedish, dominant_non_latin_script, filenam
                             quote_is_only_names, repair_hey_call, repair_intercept, repair_kept_names, repair_sir_address, restore_id_order, SOFT_FLAG_CATEGORIES, unfounded_flags, doubtful_limit, doubtful_rows, hard_flags,
                             swedish_rows_to_keep, whisper_language_label)
 from forced_reading import needs_second_reading, prefer_second_reading, reading_summary
-from source_judge import EngineUnavailable, choose_readings, complete_cut_off_rows, contradictory_rejected_choice, repeats_neighbour
+from source_judge import EngineUnavailable, choose_readings, complete_cut_off_rows, contradictory_rejected_choice, repeats_neighbour, without_neighbour_edge_word
 from collapsed_words import plan_collapsed_word_checks, restore_collapsed_words
 from glossary import apply_glossary, load_glossary
 from reread import agreed_replacement, confirmed_by_reread, confirmed_interior_insertion, conflicting_reread_rows, interior_insertion_slot, language_from_text, clipped_prefix_evidence
@@ -636,6 +637,12 @@ COLLAPSED_RUNS_ENABLED = os.environ.get('SUBSYNQ_COLLAPSED_RUNS', '1').strip().l
 # kept aside, and the finished rows that still lack sentence form take its capitals and punctuation (app/sentence_form.py).
 # SUBSYNQ_FORM_REREAD=0 turns the step off without a code change: the job then runs exactly as in 0.8.384.
 FORM_REREAD_ENABLED = os.environ.get('SUBSYNQ_FORM_REREAD', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
+# Qwen3-ASR and Parakeet read the stretches that are still without sentence form and that they have not read, as witnesses for the
+# sentences another reading wrote there (collapsed_runs.unread_run_windows). SUBSYNQ_STRETCH_READINGS=0 turns the reading off.
+STRETCH_READINGS_ENABLED = os.environ.get('SUBSYNQ_STRETCH_READINGS', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
+# Words that stand in two rows across a row boundary although every reading heard them once are removed from one of the rows
+# (app/doubled_edges.py). SUBSYNQ_DOUBLED_EDGES=0 turns the step off without a code change: the rows are then as in 0.8.386.
+DOUBLED_EDGES_ENABLED = os.environ.get('SUBSYNQ_DOUBLED_EDGES', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
 QWEN_HINTED_DOUBTFUL_WINDOWS = 40
 
 
@@ -1855,6 +1862,42 @@ def read_with_parakeet(job, media, windows, reader=None):
         reader.release()
     record.update(windows=len(readings), seconds=round(seconds, 1))
     return readings
+
+
+def read_formless_stretches(job, media, windows, models, hint=None):
+    """Qwen3-ASR's and Parakeet's readings of the stretches that are still without sentence form and that neither of them has read
+    (collapsed_runs.unread_run_windows). They are witnesses for the sentences another reading wrote there, never rows of their own and
+    never voters elsewhere. An optional opinion: a failure leaves the stretch as it was."""
+    qwen = []
+    if windows and QWEN_ASR_ENABLED:
+        try:
+            with tempfile.TemporaryDirectory() as clip_folder:
+                for index, window in enumerate(windows):
+                    check_cancelled(job['id'])
+                    update_job(job['id'], 'transcribing', 59, f'Qwen3-ASR läser stycken utan meningsform · {index + 1} av {len(windows)}')
+                    clip = Path(clip_folder) / 'stretch.wav'
+                    subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
+                                    '-t', str(window['end'] - window['start']), '-map', audio_map(job), '-ac', '1',
+                                    '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip)],
+                                   capture_output=True, timeout=90, check=True)
+                    reading = models.qwen(qwen_identify, clip, hint) if hint else models.qwen(qwen_identify, clip)
+                    text = reading.get('text', '').strip()
+                    if text:
+                        qwen.append({**window, 'text': text, 'confidence': .5})
+        except JobCancelled:
+            raise
+        except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+            print(f'VARNING: Qwen3-ASR kunde inte läsa stycken utan meningsform: {error!r}', flush=True)
+            qwen = []
+        finally:
+            models.release_qwen()
+    # read_with_parakeet records its outcome in job['parakeet_reader']: the record of the first reading stays, this one is kept beside it.
+    first_record = job.get('parakeet_reader')
+    parakeet = read_with_parakeet(job, media, windows)
+    job['stretch_parakeet_reader'] = job.get('parakeet_reader')
+    if first_record is not None:
+        job['parakeet_reader'] = first_record
+    return qwen, parakeet
 
 
 def read_lead_word_probes(job, media, merged, readings, models, total, skip_indices, hint=None):
@@ -3405,16 +3448,26 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         job['outvoted_rows_replaced'] = outvoted_rows
     # Stretches the long pass wrote in lower case without punctuation, cut in the middle of sentences ("...look I know he's a" + "major
     # donor but absolutely not"): the short pass's or a cluster reread's sentences, where two other model families confirm each differing word.
-    collapsed_runs_replaced = []
+    collapsed_runs_replaced, stretch_readings = [], {}
     if COLLAPSED_RUNS_ENABLED and focus_intervals is None:
-        merged, collapsed_runs_replaced = replace_collapsed_runs(
-            merged,
-            [('precision', precision_profile), ('cluster_first', rows_inside_windows(cluster_first, cluster_windows)),
-             ('cluster_second', rows_inside_windows(cluster_second, cluster_windows, shift=1)),
-             ('cluster_v2', rows_inside_windows(cluster_v2, cluster_windows))],
-            {'v2': v2_profile + late_v2, 'cluster_v2': cluster_v2, 'cluster_first': cluster_first, 'cluster_second': cluster_second,
-             'qwen': qwen_reading, 'cluster_qwen': [item for item in cluster_languages if item.get('text')],
-             parakeet_reader.READING_NAME: parakeet_reading})
+        run_sources = [('precision', precision_profile), ('cluster_first', rows_inside_windows(cluster_first, cluster_windows)),
+                       ('cluster_second', rows_inside_windows(cluster_second, cluster_windows, shift=1)),
+                       ('cluster_v2', rows_inside_windows(cluster_v2, cluster_windows))]
+        run_witnesses = {'v2': v2_profile + late_v2, 'cluster_v2': cluster_v2, 'cluster_first': cluster_first, 'cluster_second': cluster_second,
+                         'qwen': qwen_reading, 'cluster_qwen': [item for item in cluster_languages if item.get('text')],
+                         parakeet_reader.READING_NAME: parakeet_reading}
+        merged, collapsed_runs_replaced = replace_collapsed_runs(merged, run_sources, run_witnesses)
+        # A stretch that is left where the short pass has sentences but neither Qwen3-ASR nor Parakeet has read (they read the doubtful
+        # places, and a collapsed stretch is often confident): they read it now, as witnesses only, and the same rule is asked again.
+        stretch_windows = unread_run_windows(merged, run_sources, run_witnesses) if STRETCH_READINGS_ENABLED else []
+        if stretch_windows:
+            stretch_qwen, stretch_parakeet = read_formless_stretches(job, media, stretch_windows, models, qwen_hint)
+            stretch_readings = {'windows': stretch_windows, 'qwen': stretch_qwen, 'parakeet': stretch_parakeet}
+            if stretch_qwen or stretch_parakeet:
+                merged, confirmed_runs = replace_collapsed_runs(
+                    merged, run_sources, dict(run_witnesses, stretch_qwen=stretch_qwen, stretch_parakeet=stretch_parakeet))
+                collapsed_runs_replaced += [dict(item, stretch_reading=True) for item in confirmed_runs]
+            job['stretch_readings'] = {'windows': len(stretch_windows), 'qwen': len(stretch_qwen), 'parakeet': len(stretch_parakeet)}
         if collapsed_runs_replaced:
             job['collapsed_runs_replaced'] = collapsed_runs_replaced
     # A pass that swapped in a reading brings its own timing: a hair of overlap must not fail a whole job (regression case).
@@ -3477,6 +3530,15 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         merged, recovered_anchor = restore_tail_after_anchor_recovery(merged, tail_probes, before_tail_edge)
         if recovered_anchor:
             job['tail_confirmation'].update(restored=True, recovered_anchor=recovered_anchor)
+    # Two rows put together from different readings can both hold the word at their shared edge ("... and then we will" + "will walk
+    # down to the harbour"): where two readings hold it once and none twice, one of the rows gives it up.
+    doubled_edges = []
+    if DOUBLED_EDGES_ENABLED:
+        merged, doubled_edges = drop_doubled_edge_words(
+            merged, dict(vote_readings, late_v2=late_v2, cluster_first=cluster_first, cluster_second=cluster_second, cluster_v2=cluster_v2),
+            skip_indices=plan_replaced | {item['row'] for item in consensus_prefixes})
+        if doubled_edges:
+            job['doubled_edge_words_removed'] = doubled_edges
     # Last of all, so that every step above chooses words and rows from the first readings exactly as before: rows that still stand
     # without sentence form take the capitals and punctuation of the main-pass windows' second readings (app/sentence_form.py).
     form_before = unmarked_words(row_words(merged))
@@ -3493,7 +3555,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                          cluster_first=cluster_first,
                          cluster_second=cluster_second, cluster_v2=cluster_v2, final=merged,
                          final_before_reader_plan=before_reader_plan if plan_replaced else None, reader_plan=job.get('reader_plan'),
-                         family_vote_added=family_vote_added, outvoted_rows_replaced=outvoted_rows, collapsed_runs_replaced=collapsed_runs_replaced, form_rereads=form_rereads, consensus_prefixes=consensus_prefixes, repeated_starts_dropped=repeated_starts, credit_rows_dropped=credit_rows, glossary_changes=glossary_changes, title_rows_joined=title_rows_joined, names_harmonized=name_harmonized,
+                         family_vote_added=family_vote_added, outvoted_rows_replaced=outvoted_rows, collapsed_runs_replaced=collapsed_runs_replaced, stretch_readings=stretch_readings, doubled_edge_words_removed=doubled_edges, form_rereads=form_rereads, consensus_prefixes=consensus_prefixes, repeated_starts_dropped=repeated_starts, credit_rows_dropped=credit_rows, glossary_changes=glossary_changes, title_rows_joined=title_rows_joined, names_harmonized=name_harmonized,
                          late_titles=late_titles, late_languages=late_languages,
                          late_first=late_first, late_second=late_second, late_v2=late_v2)
     save_asr_trace(job, trace_payload)
@@ -6060,8 +6122,16 @@ def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, jud
             index=rows.index(row)
             previous=rows[index-1]['source'] if index else ''
             following=rows[index+1]['source'] if index+1<len(rows) else ''
+            # The clip starts .3 s before the row: one word the neighbour already holds, timed outside the row, is the neighbour's.
+            text,edge_word=without_neighbour_edge_word(text,row['source'],previous,following,readings[row['id']],
+                                                       float(row['start']),float(row['end']))
+            if edge_word:
+                record.update(candidate=text,neighbour_word_removed=edge_word)
             if repeats_neighbour(text,row['source'],previous,following):
                 record.update(decision='omläsningen innehåller redan skrivna grannord',candidate=text)
+                text=None
+            elif edge_word and normalized(text)==normalized(row['source']):
+                record.update(decision='omläsningen lade bara till grannradens ord')
                 text=None
         record.update(id=row['id'], start=row['start'], end=row['end'])
         if local_language_override(job,row):

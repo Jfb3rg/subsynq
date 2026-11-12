@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'app'))
 
-from collapsed_runs import collapsed_runs, formless, replace_collapsed_runs, rows_inside_windows
+from collapsed_runs import collapsed_runs, formless, replace_collapsed_runs, rows_inside_windows, unread_run_windows
 
 
 def row(start, end, text):
@@ -129,6 +129,32 @@ class CollapsedRunTests(unittest.TestCase):
         rows = [row(10.1, 12.0, 'cut at the start.'), row(12.5, 15.0, 'A whole sentence.'), row(18.0, 19.9, 'cut at the end.')]
         self.assertEqual(rows_inside_windows(rows, windows), [rows[1]])
         self.assertEqual(rows_inside_windows([row(10.6, 12.0, 'x')], windows, shift=1), [])
+
+    def test_a_stretch_no_family_outside_whisper_has_read_is_asked_for(self):
+        sources = [('precision', SHORT)]
+        self.assertEqual(unread_run_windows(RUN, sources, witnesses('v2')), [{'start': 9.7, 'end': 21.3}])
+        # Qwen3-ASR or Parakeet has read it already: a second reading would say the same.
+        self.assertEqual(unread_run_windows(RUN, sources, witnesses('v2', 'qwen')), [])
+        self.assertEqual(unread_run_windows(RUN, sources, {'parakeet': [row(10.0, 19.5, OTHER)]}), [])
+        self.assertEqual(len(unread_run_windows(RUN, sources, {'qwen': [row(10.0, 12.0, 'The old mill again.')]})), 1)
+        # No sentence reading to confirm, or a stretch too long for one clip: nothing to ask.
+        self.assertEqual(unread_run_windows(RUN, [('precision', [row(10.0, 21.0, RUN[0]['text'])])], {}), [])
+        self.assertEqual(unread_run_windows(RUN, [('precision', [])], {}), [])
+        long_run = [RUN[0], dict(RUN[1], end=30.0), dict(RUN[2], start=30.0, end=45.0)]
+        self.assertEqual(unread_run_windows(long_run, sources, {}), [])
+        self.assertEqual(unread_run_windows([row(1, 2, 'Good morning.')], sources, {}), [])
+
+    def test_the_readings_of_the_stretch_are_the_missing_families(self):
+        read = [row(9.7, 21.3, OTHER)]
+        rows, _ = replace_collapsed_runs(RUN, [('precision', SHORT)], witnesses('v2', 'cluster_v2'))
+        self.assertNotIn('Understood.', [item['text'] for item in rows])
+        rows, _ = replace_collapsed_runs(RUN, [('precision', SHORT)], dict(witnesses('v2'), stretch_qwen=read))
+        self.assertIn('Understood.', [item['text'] for item in rows])
+        rows, _ = replace_collapsed_runs(RUN, [('precision', SHORT)], {'stretch_qwen': read, 'stretch_parakeet': read})
+        self.assertIn('Understood.', [item['text'] for item in rows])
+        # Two readings of one family are one family.
+        rows, _ = replace_collapsed_runs(RUN, [('precision', SHORT)], {'qwen': read, 'stretch_qwen': read})
+        self.assertNotIn('Understood.', [item['text'] for item in rows])
 
 
 if __name__ == '__main__':

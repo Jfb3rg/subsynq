@@ -23,7 +23,8 @@ class StretchTests(unittest.TestCase):
     def test_a_prompt_exists_only_for_measured_languages(self):
         self.assertIn('.', sentence_form.form_prompt('en'))
         self.assertEqual(sentence_form.form_prompt('EN'), sentence_form.form_prompt('en'))
-        for language in ('sv', 'de', '', None):
+        self.assertIn('?', sentence_form.form_prompt('de'))
+        for language in ('sv', 'no', '', None):
             self.assertIsNone(sentence_form.form_prompt(language))
 
     def test_only_long_stretches_without_punctuation_count(self):
@@ -125,6 +126,35 @@ class TransferTests(unittest.TestCase):
             'We waited for hours, ok nobody came to the old house on the hill that night and we all went home'.split(),
             'We waited for hours. OK, nobody came to the old house on the hill that night, and we all went home.'.split())
         self.assertEqual(' '.join(formed[:6]), 'We waited for hours, OK, nobody')
+
+    def test_a_first_word_the_second_reading_wrote_differently_takes_no_mark_from_speech_before_it(self):
+        first = 'but Anna wanted to walk one more mile along the river before the sun went down behind the hills'.split()
+        second = ('They did everything for her. Anna wanted to walk one more mile along the river before the sun went '
+                  'down behind the hills.').split()
+        formed, _ = sentence_form.transfer_form(first, second)
+        self.assertEqual(' '.join(formed), 'but Anna wanted to walk one more mile along the river before the sun went '
+                                           'down behind the hills.')
+
+    def test_a_capital_that_only_opens_a_row_of_the_second_reading_does_not_stand_inside_a_sentence(self):
+        rows = [{'start': 0.0, 'end': 3.0, 'text': 'There they have a room of a fitting size'},
+                {'start': 3.5, 'end': 9.0, 'text': 'And a garden just as large behind the old house. Their life has changed since then.'}]
+        self.assertEqual(sentence_form.row_openers(rows), {0, 9})
+        first = ('there they have a room of a fitting size and a garden just as large behind the old house their life '
+                 'has changed since then').split()
+        formed, _ = sentence_form.transfer_form(first, sentence_form.row_words(rows), openers=sentence_form.row_openers(rows))
+        self.assertEqual(' '.join(formed), 'There they have a room of a fitting size and a garden just as large behind '
+                                           'the old house. Their life has changed since then.')
+        # Without the rows, the capital is the second reading's own spelling of the word.
+        formed, _ = sentence_form.transfer_form(first, sentence_form.row_words(rows))
+        self.assertIn('size And a garden', ' '.join(formed))
+
+    def test_a_german_reading_keeps_its_nouns_in_upper_case(self):
+        first = ('das wetter ist heute schön gehen wir später in den garten ich habe den schlüssel gefunden wir wollen '
+                 'doch nur etwas brot kaufen').split()
+        second = ('Das Wetter ist heute schön. Gehen wir später in den Garten? Ich habe den Schlüssel gefunden. Wir '
+                  'wollen doch nur etwas Brot kaufen.').split()
+        formed, _ = sentence_form.transfer_form(first, second)
+        self.assertEqual(formed, second)
 
     def test_the_word_before_the_stretch_decides_whether_its_first_word_opens_a_sentence(self):
         first = 'we walked down to the river and sat on the stones until the sun was gone and nobody said a word'.split()

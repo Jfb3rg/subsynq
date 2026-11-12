@@ -231,5 +231,36 @@ class ParakeetVoteTests(unittest.TestCase):
         self.assertEqual(replace_one_word_outvoted([ROW], readings)[1], [])
 
 
+class StretchReadingTests(unittest.TestCase):
+    WINDOWS = [{'start': 10.0, 'end': 20.0}, {'start': 40.0, 'end': 48.0}]
+
+    def read(self, job, qwen_texts, *, enabled=True, error=None):
+        models = MagicMock()
+        models.qwen.side_effect = error or [{'text': text} for text in qwen_texts]
+        with patch.object(worker, 'update_job'), patch.object(worker, 'check_cancelled'), patch.object(worker, 'audio_map', return_value='0:a:0'), \
+                patch.object(worker.subprocess, 'run'), patch.object(worker, 'QWEN_ASR_ENABLED', enabled), \
+                patch.object(worker, 'read_with_parakeet', side_effect=lambda job, media, windows: job.update(
+                    parakeet_reader={'state': 'used', 'windows': 1}) or [dict(windows[0], text='The door is open.', confidence=.5)]):
+            return worker.read_formless_stretches(job, 'film.mkv', self.WINDOWS, models, 'English'), models
+
+    def test_both_read_the_stretches_and_the_first_parakeet_record_stays(self):
+        job = {'id': 1, 'parakeet_reader': {'state': 'used', 'windows': 7}}
+        (qwen, parakeet), models = self.read(job, ['The door is open. ', ''])
+        self.assertEqual(qwen, [{'start': 10.0, 'end': 20.0, 'text': 'The door is open.', 'confidence': .5}])
+        self.assertEqual(parakeet, [{'start': 10.0, 'end': 20.0, 'text': 'The door is open.', 'confidence': .5}])
+        self.assertEqual(job['parakeet_reader'], {'state': 'used', 'windows': 7})
+        self.assertEqual(job['stretch_parakeet_reader'], {'state': 'used', 'windows': 1})
+        self.assertEqual(models.qwen.call_args[0][2], 'English')
+        models.release_qwen.assert_called_once()
+
+    def test_a_qwen_failure_or_qwen_switched_off_leaves_parakeet_alone(self):
+        (qwen, parakeet), models = self.read({'id': 1}, [], error=RuntimeError('borta'))
+        self.assertEqual((qwen, len(parakeet)), ([], 1))
+        models.release_qwen.assert_called_once()
+        (qwen, parakeet), models = self.read({'id': 1}, [], enabled=False)
+        self.assertEqual((qwen, len(parakeet)), ([], 1))
+        models.qwen.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

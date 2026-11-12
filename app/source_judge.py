@@ -117,6 +117,38 @@ def _similarity(a, b):
     return SequenceMatcher(None, ' '.join(_words(a)), ' '.join(_words(b))).ratio()
 
 
+def without_neighbour_edge_word(chosen, current, previous, following, readings, start, end):
+    """(`chosen` without ONE opening word that closes the previous line, or ONE closing word that opens the next, and that word) where
+    the timed readings place the word outside the row; otherwise (chosen, None). A reread clip is cut with a margin and hears the last
+    word of the line before it ("... we went quietly" before "quietly through the gate at night."). Two such words or more are refused
+    whole by repeats_neighbour; one word alone may be said twice ("No." / "No, not now."), so it goes only on the times: every reading
+    that holds the word at that edge and has word times puts its middle outside [start, end], and at least one does. The current wording
+    never held the word there."""
+    parts, words, own = str(chosen).split(), _words(chosen), _words(current)
+    for at_start, neighbour in ((True, previous), (False, following)):
+        other = _words(neighbour)
+        if len(words) < 3 or len(parts) < 3 or not other:
+            continue
+        word = words[0] if at_start else words[-1]
+        if (word != (other[-1] if at_start else other[0]) or own and (own[0] if at_start else own[-1]) == word
+                or _words(parts[0] if at_start else parts[-1]) != [word]):
+            continue
+        outside = []
+        for reading in readings or ():
+            heard = [item for item in reading.get('words') or () if _words(item.get('word', ''))]
+            edge = (heard[0] if at_start else heard[-1]) if heard else None
+            if edge and _words(edge['word']) == [word]:
+                middle = (float(edge['start']) + float(edge['end'])) / 2
+                outside.append(middle < start if at_start else middle > end)
+        if outside and all(outside):
+            kept = parts[1:] if at_start else parts[:-1]
+            # What is left opens a sentence where the previous line closed one ("Sorry, lads." / "Lads, time to go." -> "Time to go.").
+            if at_start and re.search(r'[.!?…]["\'”’»)\]]*$', str(previous).strip()):
+                kept[0] = kept[0][:1].upper() + kept[0][1:]
+            return ' '.join(kept), word
+    return chosen, None
+
+
 def repeats_neighbour(chosen, current, previous, following, *, shortest=2):
     """The chosen wording starts with the end of the previous line, or ends with the start of the next one, and the
     current wording does not: words that belong to the neighbouring cue (a Qwen clip or a joined piece that reached
