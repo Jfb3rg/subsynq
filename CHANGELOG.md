@@ -12,21 +12,21 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 ## 0.8.387
 
-- **Stycken som blev kvar utan meningsform.** Där ett stycke fortfarande står utan punkter och stor bokstav, och en läsning med hela meningar finns, läser Qwen3-ASR och Parakeet det korta klippet. De används bara som extra vittnen: stycket byts mot hela meningar först när varje ord som skiljer är bekräftat av två andra modellfamiljer. Högst 30 sekunder per stycke och tre minuter per fil. Kan stängas av med `SUBSYNQ_STRETCH_READINGS=0` för workern.
-- **Dubblerade ord i radskarvar.** En rad som slutar med samma ord som nästa rad börjar med får orden strukna på en sida, när minst två läsningar har dem en enda gång och ingen har dem två gånger. Kan stängas av med `SUBSYNQ_DOUBLED_EDGES=0`.
+- **Stycken som blev kvar utan meningsform.** Där ett stycke fortfarande står utan punkter och stor bokstav, och en läsning med hela meningar finns, läser Qwen3-ASR och Parakeet det korta klippet. De används bara som extra vittnen: stycket byts mot hela meningar först när varje ord som skiljer är bekräftat av två andra modellfamiljer. Högst 30 sekunder per stycke och tre minuter per fil.
+- **Dubblerade ord i radskarvar.** En rad som slutar med samma ord som nästa rad börjar med får orden strukna på en sida, när minst två läsningar har dem en enda gång och ingen har dem två gånger.
 - **Omläsning av en osäker rad** tar inte längre med grannradens sista eller första ord när ordets tid ligger utanför raden.
 - **Meningsform även för tyska.** Steget från 0.8.386 gäller nu engelska och tyska. Två fel är rättade för alla språk: ett skiljetecken från talet före stycket hamnar inte på styckets första ord, och en stor bokstav som bara kom av en radstart i den extra läsningen står inte kvar mitt i en mening.
 
 ## 0.8.386
 
 - **Meningsform där Whisper tappat den.** Ett stycke i huvudavlyssningen som Whisper skrivit utan punkter och stor bokstav läses en gång till, med en kort text i meningsform som föregående sammanhang. Den extra läsningen väljer varken ord eller rader: först när allt annat är klart får de rader som fortfarande saknar meningsform dess punkter, kommatecken och stora bokstäver, och bara på ord som båda läsningarna har. Ord och tider är exakt som förut. Bara engelska än så länge (andra språk läggs till när de är mätta).
-- Huvudavlyssningen tar längre tid, eftersom stycken utan meningsform läses två gånger (en femtedel till hälften av ljudet i de mätta avsnitten). Alla stycken får inte meningsform: där den extra läsningen inte heller har den, eller hörde för många andra ord, står raderna kvar som förut. Kan stängas av med `SUBSYNQ_FORM_REREAD=0`.
+- Huvudavlyssningen tar längre tid, eftersom stycken utan meningsform läses två gånger (en femtedel till hälften av ljudet i de mätta avsnitten). Alla stycken får inte meningsform: där den extra läsningen inte heller har den, eller hörde för många andra ord, står raderna kvar som förut.
 - En hyrd server som startats av en äldre version och står kvar tar inte emot den extra texten; då hoppas steget över för det jobbet och resten går som vanligt.
 
 ## 0.8.384
 
-- **Färre osäkra repliker i rapporten.** En replik som källkontrollen tvivlar på listas inte längre när alla modeller som läste om ljudet hörde exakt samma ord som redan står där. Repliker som bara den andra kontrollen pekar ut läses nu också om (förut listades de utan omläsning), och rapporten säger vad som faktiskt gjordes med varje replik. Gränsen som stoppar en fil (mer än en tredjedel osäkra) är oförändrad. Den extra omläsningen kan stängas av med `SUBSYNQ_SECOND_REREAD=0`.
-- **Stycken utan meningsform.** Där den långa avlyssningen skrivit ett stycke utan punkter och stor bokstav byts raderna mot hela meningar ur en annan avlyssning, men bara där de andra modellerna bekräftar varje ord som skiljer. Kan stängas av med `SUBSYNQ_COLLAPSED_RUNS=0`.
+- **Färre osäkra repliker i rapporten.** En replik som källkontrollen tvivlar på listas inte längre när alla modeller som läste om ljudet hörde exakt samma ord som redan står där. Repliker som bara den andra kontrollen pekar ut läses nu också om (förut listades de utan omläsning), och rapporten säger vad som faktiskt gjordes med varje replik. Gränsen som stoppar en fil (mer än en tredjedel osäkra) är oförändrad.
+- **Stycken utan meningsform.** Där den långa avlyssningen skrivit ett stycke utan punkter och stor bokstav byts raderna mot hela meningar ur en annan avlyssning, men bara där de andra modellerna bekräftar varje ord som skiljer.
 - "Intercept a convoy" blir "genskjuta en konvoj", inte "avbryta" eller "avlyssna".
 - "Hey" mitt i det någon säger, och "Hey, you there / listen / look! / excuse me", blir "Hallå" i stället för hälsningen "Hej".
 
@@ -38,7 +38,7 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 ## 0.8.381
 
 - Ny extra röst för engelska avsnitt: **Parakeet TDT 0.6B v3** (NVIDIA) lyssnar på samma oeniga ställen som Qwen3-ASR och är en egen modellfamilj i ordomröstningen. Den körs på CPU (cirka 2–3 gånger snabbare än ljudets längd med fyra trådar, 2,7 GB minne) även när huvudavlyssningen sker på en hyrd GPU, och ersätter ingen läsare. Saknas modellen, är språket inte godkänt eller misslyckas den, avgör de andra som förut.
-- Modellen ingår inte i SubSynq: den hämtas direkt från Hugging Face (`istupakov/parakeet-tdt-0.6b-v3-onnx`, cirka 2,4 GB) av modellhanteringen efter de andra modellerna och håller inte upp något jobb. Den visas under Inställningar > Modeller och uppdateras när en ny version finns. Stäng av med `SUBSYNQ_PARAKEET=0`. Har du en egen `/config/models.json` måste du lägga till posten själv (se `app/models.json`), annars hoppas Parakeet över.
+- Parakeet hämtas automatiskt efter de andra modellerna och blockerar inga jobb. Modellen visas under **Inställningar → Modeller** och uppdateras när en ny version finns. Installationer med en egen modellista behöver lägga till Parakeet där för att använda modellen.
 - Strängare ordomröstning: en kort rad får inte längre en hel mening som redan står i raden före eller efter, och ett ord stryks inte när två avlyssningar hört det på sin plats just intill raden (en rads slut kan vara avklippt).
 
 ## 0.8.380
@@ -420,7 +420,7 @@ Bättre hantering av tilltal, förlorade repliker och översättningsfel. Allt �
 
 ## 0.8.210
 
-- **Vilka modeller som används står nu i en egen fil, `models.json`** (ingen modelllista i koden). Filen följer med programmet (`app/models.json`); en egen kopia som `/config/models.json` har företräde. Workern hämtar Gemma-namnen för översättning och granskning därifrån (miljövariablerna `SUBSYNQ_TRANSLATION_MODEL`/`SUBSYNQ_REVIEW_MODEL` kan fortfarande åsidosätta men är borttagna ur compose-filerna). Ett felaktigt eget fil rapporteras tydligt och en annan giltig lista används.
+- **Modellvalen samlas i en separat lista.** En egen modellista kan åsidosätta standardvalen för bland annat översättning och granskning. Om listan är felaktig visas ett felmeddelande och programmet använder en giltig lista.
 - Ändras listan (ny eller bättre modell) hämtas den nya automatiskt. Den gamla ligger kvar tills du själv tar bort den under **Inställningar → Modeller**; bara modeller som SubSynq själv installerat (`/config/models-installed.json`) och som inte längre står i listan kan tas bort, och ingenting tas någonsin bort av sig självt. Ny sida `Inställningar → Modeller`, `POST /models/remove`. 16 nya tester.
 
 ## 0.8.209
