@@ -18,8 +18,8 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 ## 0.8.393
 
-- **Ny översättning av rader som fastnar.** En rad som granskningen nämner igen efter att rättningen har lämnat den orörd får en egen översättning av TranslateGemma 12B (modellen är en extra modell på 8,1 GB som modellhanteraren hämtar efter de obligatoriska). Förslaget granskas som varje annan rättning; avvisas det nekas filen som förut. På en hyrd GPU-server hämtas modellen i bakgrunden efter de obligatoriska modellerna och kan aldrig hindra servern från att bli klar. Av med `SUBSYNQ_CANDIDATE_TRANSLATION=0`.
-- **Sista ordet på en rad.** Ett sista ord som ingen omläsning hörde, eftersom klippet kapade det vid radens slut, läses om med lite ljud efter radens slut och byts bara om minst två läsare hör samma andra ord. Av med `SUBSYNQ_TAIL_WORD=0`.
+- **Ny översättning av rader som fastnar.** En rad som granskningen nämner igen efter att rättningen har lämnat den orörd får en egen översättning av TranslateGemma 12B (modellen är en extra modell på 8,1 GB som modellhanteraren hämtar efter de obligatoriska). Förslaget granskas som varje annan rättning; avvisas det nekas filen som förut. På en hyrd GPU-server hämtas modellen i bakgrunden efter de obligatoriska modellerna och kan aldrig hindra servern från att bli klar.
+- **Sista ordet på en rad.** Ett sista ord som ingen omläsning hörde, eftersom klippet kapade det vid radens slut, läses om med lite ljud efter radens slut och byts bara om minst två läsare hör samma andra ord.
 - **Långa repliker i rättningen.** En replik på tre meningar eller fler skrivs inte längre om från en enda mening betydelse; rättningens egen ändring står kvar.
 - Startskriptet för den hyrda servern skickar certifikat och nyckel som en fil och blev något kortare. Parakeets namn i modellistan är "Parakeet TDT 0.6B v3 (extra röst)".
 
