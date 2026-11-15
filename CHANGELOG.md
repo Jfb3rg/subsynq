@@ -10,6 +10,13 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.393
+
+- **Ny översättning av rader som fastnar.** En rad som granskningen nämner igen efter att rättningen har lämnat den orörd får en egen översättning av TranslateGemma 12B (modellen är en extra modell på 8,1 GB som modellhanteraren hämtar efter de obligatoriska). Förslaget granskas som varje annan rättning; avvisas det nekas filen som förut. På en hyrd GPU-server hämtas modellen i bakgrunden efter de obligatoriska modellerna och kan aldrig hindra servern från att bli klar. Av med `SUBSYNQ_CANDIDATE_TRANSLATION=0`.
+- **Sista ordet på en rad.** Ett sista ord som ingen omläsning hörde, eftersom klippet kapade det vid radens slut, läses om med lite ljud efter radens slut och byts bara om minst två läsare hör samma andra ord. Av med `SUBSYNQ_TAIL_WORD=0`.
+- **Långa repliker i rättningen.** En replik på tre meningar eller fler skrivs inte längre om från en enda mening betydelse; rättningens egen ändring står kvar.
+- Startskriptet för den hyrda servern skickar certifikat och nyckel som en fil och blev något kortare. Parakeets namn i modellistan är "Parakeet TDT 0.6B v3 (extra röst)".
+
 ## 0.8.387
 
 - **Stycken som blev kvar utan meningsform.** Där ett stycke fortfarande står utan punkter och stor bokstav, och en läsning med hela meningar finns, läser Qwen3-ASR och Parakeet det korta klippet. De används bara som extra vittnen: stycket byts mot hela meningar först när varje ord som skiljer är bekräftat av två andra modellfamiljer. Högst 30 sekunder per stycke och tre minuter per fil.

@@ -96,6 +96,35 @@ class MeaningRenderTests(unittest.TestCase):
             result = worker.render_whole_cue_meanings({'id': -1}, rows, flags, answer, 'sv', 'Swedish')
         self.assertEqual(result[0]['edits'], [{'before': 'Inte jag.', 'after': 'Inte mitt.'}])
 
+    def test_a_cue_of_three_sentences_keeps_the_repairs_own_edit_and_is_not_rendered_from_one_sentence_of_meaning(self):
+        """A one-sentence meaning cannot describe a cue of three sentences: the renderer rewrote such a cue freely (added an insult,
+        changed a noun) and discarded the repair's concrete edit."""
+        source = 'You owe me twice. I heard that Anna bought a bakery. Well, that is a fine price.'
+        rows = [{'id': 20, 'source': source, 'sv': 'Du är skyldig mig två gånger. Jag hörde att Anna köpte ett bageri. Det är ett fint pris.'}]
+        flags = [{'id': 20, 'category': 'meaning', 'source_quote': source, 'target_quote': rows[0]['sv']}]
+        edit = {'before': rows[0]['sv'], 'after': 'Du är skyldig mig två gånger. Jag hörde att Anna köpte ett bageri. Tja, det är ett fint pris.'}
+        answer = [{'id': 20, 'intended_meaning': 'The speaker says the listener owes them and comments on a purchase.', 'edits': [edit]}]
+        with patch.object(worker, 'call_ollama') as model:
+            result = worker.render_whole_cue_meanings({'id': -1}, rows, flags, answer, 'sv', 'Swedish')
+        model.assert_not_called()
+        self.assertEqual(result, answer)
+
+    def test_a_cue_of_two_sentences_is_still_rendered(self):
+        rows = [{'id': 21, 'source': 'You know what? You will find somebody else.', 'sv': 'Vet du vad? Du hittar någon annan.'}]
+        flags = [{'id': 21, 'category': 'meaning', 'source_quote': rows[0]['source'], 'target_quote': rows[0]['sv']}]
+        answer = [{'id': 21, 'intended_meaning': 'Someone else will do.', 'edits': [{'before': rows[0]['sv'], 'after': 'Vet du vad? Du hittar nån.'}]}]
+        rendered = {'response': json.dumps({'rows': [{'id': 21, 'after': 'Vet du vad? Du hittar någon annan än mig.'}]})}
+        with patch.object(worker, 'call_ollama', return_value=rendered) as model:
+            result = worker.render_whole_cue_meanings({'id': -1}, rows, flags, answer, 'sv', 'Swedish')
+        self.assertEqual(model.call_count, 1)
+        self.assertEqual(result[0]['edits'][0]['after'], 'Vet du vad? Du hittar någon annan än mig.')
+
+    def test_sentences_are_counted_at_a_mark_followed_by_more_text(self):
+        self.assertEqual(worker.sentence_count('Stay tuned.'), 1)
+        self.assertEqual(worker.sentence_count('Hello, Mr. Berg'), 1)
+        self.assertEqual(worker.sentence_count('One. Two? Three!'), 3)
+        self.assertEqual(worker.sentence_count('He said "go." Then he left'), 2)
+
     def test_a_placeholder_edit_that_changes_nothing_does_not_replace_an_unchanged_render(self):
         """The idiom path proposes edits whose after equals before on purpose (the renderer writes the line)."""
         repeated = {'response': json.dumps({'rows': [{'id': 7, 'after': 'Stanna kvar.'}]})}

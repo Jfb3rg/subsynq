@@ -175,5 +175,28 @@ class ActiveModelLabelTests(unittest.TestCase):
             self.assertIn(label, source)
 
 
+class OptionalModelTests(unittest.TestCase):
+    def test_an_optional_model_is_fetched_in_the_background_after_the_required_ones_and_is_not_required(self):
+        script = build(['gemma3:27b', 'gemma4:26b'], optional_models=['translategemma:12b'])
+        bootstrap = bootstrap_of(script)
+        self.assertIn('nohup ollama pull translategemma:12b > /root/pull-0.log 2>&1 &', bootstrap)
+        self.assertGreater(bootstrap.index('nohup ollama pull translategemma:12b'), bootstrap.index('wait "$PID_ollama"'))
+        self.assertLess(bootstrap.index('nohup ollama pull translategemma:12b'), bootstrap.rindex("step 'klart'"))
+        self.assertEqual(bootstrap.count('translategemma:12b'), 1)
+        self.assertIn('SUBSYNQ_CLOUD_OLLAMA_MODELS=gemma3:27b,gemma4:26b ', bootstrap)
+
+    def test_without_an_optional_model_nothing_changes_and_bad_names_are_refused(self):
+        self.assertNotIn('pull-0.log', bootstrap_of(build(['gemma3:27b', 'gemma4:26b'])))
+        with self.assertRaises(ValueError):
+            build(['gemma3:27b'], optional_models=['bad name; rm -rf /'])
+        script = bootstrap_of(build(['gemma3:27b'], optional_models=['gemma3:27b', 'a:1', 'a:1']))
+        self.assertEqual(script.count('nohup ollama pull'), 1)
+
+    def test_the_candidate_model_is_never_one_of_the_required_models(self):
+        self.assertTrue(worker.CANDIDATE_MODEL_NAME)
+        models, _, _ = worker.cloud_model_plan('cuda', 24)
+        self.assertNotIn(worker.CANDIDATE_MODEL_NAME, models)
+
+
 if __name__ == "__main__":
     unittest.main()

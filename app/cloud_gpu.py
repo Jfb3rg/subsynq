@@ -180,7 +180,7 @@ sleep 2
 @GATEWAY_ENV@ nohup /root/whisper-venv/bin/python -u /root/cloud_cpu_service.py > /root/gateway.log 2>&1 &
 step 'väntar på Ollama och Gemma-modellerna'
 wait "$PID_ollama"
-step 'klart'
+@OPTIONAL_PULLS@step 'klart'
 '''
 
 
@@ -384,7 +384,7 @@ def require_prepared_image():
 def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_key,
                                gateway_source, qwen_source,
                                qwen_constraints, whisper_constraints, prepared=False,
-                               model_aliases=None, min_vram_gib=None):
+                               model_aliases=None, min_vram_gib=None, optional_models=()):
     """Boot script for a rental running the whole AI chain on `device`
     ("cpu" or "cuda").
 
@@ -410,6 +410,14 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
             models.append(name)
     if not models:
         raise ValueError("Minst en Ollama-modell måste anges.")
+    # An optional model never keeps the server from being ready: it is fetched in the background once every required one is there, and a request
+    # for it before it is ready (or after a failed fetch) gets an HTTP error the worker treats as "no such helper".
+    optional = []
+    for name in optional_models or ():
+        if not _SAFE_MODEL.fullmatch(name or ""):
+            raise ValueError(f"Ogiltigt modellnamn för Ollama: {name!r}")
+        if name not in models and name not in optional:
+            optional.append(name)
     gpu = device == "cuda"
     if gpu:
         # The shared pin file names the CPU-only torch wheel; the CUDA wheel is
@@ -423,8 +431,7 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
         "/root/qwen_asr_service.py": compact_python(qwen_source),
         "/root/constraints-qwen.txt": compact_shell(qwen_constraints),
         "/root/constraints-worker.txt": compact_shell(whisper_constraints),
-        "/root/server.crt": tls_cert,
-        "/root/server.key": tls_key,
+        "/root/server.pem": tls_cert + tls_key,
     }
     torch_index = "cu128" if gpu else "cpu"
     # SEQUENTIAL=0 keeps the models loaded between requests on the rented server (plenty of
@@ -433,7 +440,7 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
                 else "SUBSYNQ_QWEN_DEVICE=cpu SUBSYNQ_QWEN_DTYPE=float32 SUBSYNQ_QWEN_SEQUENTIAL=0")
     gateway_env = (f"SUBSYNQ_CLOUD_TOKEN={token} SUBSYNQ_CLOUD_PORT={SERVICE_PORT} "
                    f"SUBSYNQ_CLOUD_DEVICE={device} "
-                   "SUBSYNQ_CLOUD_TLS_CERT=/root/server.crt SUBSYNQ_CLOUD_TLS_KEY=/root/server.key "
+                   "SUBSYNQ_CLOUD_TLS_CERT=/root/server.pem SUBSYNQ_CLOUD_TLS_KEY=/root/server.pem "
                    f"SUBSYNQ_CLOUD_OLLAMA_MODELS={','.join(models)}")
     # The worker keeps asking for its usual model names; the rented server answers with the (larger) ones it pulled.
     aliases = []
@@ -457,7 +464,9 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
     #             downloads inside its first request)
     # Each track keeps its own /root/step.<track> and /root/failed.<track>; /health shows all.
     bootstrap = BOOTSTRAP_TEMPLATE.replace("@TORCH_INDEX@", torch_index).replace(
-        "@PULLS@", pulls).replace("@GATEWAY_ENV@", gateway_env).replace(
+        "@PULLS@", pulls).replace("@OPTIONAL_PULLS@", "".join(
+            f"nohup ollama pull {name} > /root/pull-{number}.log 2>&1 &\n" for number, name in enumerate(optional))).replace(
+        "@GATEWAY_ENV@", gateway_env).replace(
         "@QWEN_ENV@", qwen_env).replace("@PIP_INSTALL@", CHAIN_PIP_INSTALL_SCRIPT).replace(
             "@OLLAMA_INSTALL@", CHAIN_OLLAMA_INSTALL_SCRIPT).replace("@PARALLEL@", str(llm_parallel()))
     bootstrap = compact_shell(bootstrap)

@@ -94,6 +94,7 @@ from sentence_cuts import evidence_words, move_cuts_to_sentence_ends
 import dub_bed
 from collapsed_runs import replace_collapsed_runs, rows_inside_windows, unread_run_windows
 from doubled_edges import drop_doubled_edge_words
+from tail_word import KEEP_AFTER as TAIL_KEEP_AFTER, settle_tail_word, TAIL_AFTER, TAIL_BEFORE, unheard_last_word
 from sentence_form import form_prompt, lost_form, restore_rows_form, row_words, unmarked_words
 from translation_qa import (might_be_swedish, dominant_non_latin_script, filename_language_hint,
                             forced_whisper_language, known_phrase_fallback,
@@ -640,6 +641,16 @@ FORM_REREAD_ENABLED = os.environ.get('SUBSYNQ_FORM_REREAD', '1').strip().lower()
 # Qwen3-ASR and Parakeet read the stretches that are still without sentence form and that they have not read, as witnesses for the
 # sentences another reading wrote there (collapsed_runs.unread_run_windows). SUBSYNQ_STRETCH_READINGS=0 turns the reading off.
 STRETCH_READINGS_ENABLED = os.environ.get('SUBSYNQ_STRETCH_READINGS', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
+# A row's last word that every tight reread cut off is read again with sound after the row's end (app/tail_word.py). SUBSYNQ_TAIL_WORD=0 turns it off.
+TAIL_WORD_ENABLED = os.environ.get('SUBSYNQ_TAIL_WORD', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
+# A line the final review names again after the repair has looked at it and left it as it was gets one more wording from a translation model
+# (TranslateGemma, role 'candidate' in models.json), which goes through the same review as any repair. A missing model gives no candidate, never a
+# failed job. SUBSYNQ_CANDIDATE_TRANSLATION=0 turns the step off.
+CANDIDATE_ENABLED = os.environ.get('SUBSYNQ_CANDIDATE_TRANSLATION', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
+CANDIDATE_MODEL_NAME = os.environ.get('SUBSYNQ_CANDIDATE_MODEL') or model_manager.configured_name('candidate', 'translategemma:12b')
+CANDIDATE_LANGUAGES = {'en': 'English', 'de': 'German', 'fr': 'French', 'es': 'Spanish', 'it': 'Italian', 'pt': 'Portuguese', 'nl': 'Dutch', 'da': 'Danish',
+                       'no': 'Norwegian', 'nb': 'Norwegian', 'fi': 'Finnish', 'pl': 'Polish', 'cs': 'Czech', 'ru': 'Russian', 'uk': 'Ukrainian',
+                       'tr': 'Turkish', 'ar': 'Arabic', 'hi': 'Hindi', 'ta': 'Tamil', 'ja': 'Japanese', 'ko': 'Korean', 'zh': 'Chinese'}
 # Words that stand in two rows across a row boundary although every reading heard them once are removed from one of the rows
 # (app/doubled_edges.py). SUBSYNQ_DOUBLED_EDGES=0 turns the step off without a code change: the rows are then as in 0.8.386.
 DOUBLED_EDGES_ENABLED = os.environ.get('SUBSYNQ_DOUBLED_EDGES', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
@@ -1293,7 +1304,8 @@ def rent_cloud_chain(job, provider, mode):
             gateway_source=sources['cloud_cpu_service.py'], qwen_source=sources['qwen_asr_service.py'],
             qwen_constraints=sources['constraints-qwen.txt'],
             whisper_constraints=sources['constraints-worker.txt'],
-            model_aliases=aliases or None, min_vram_gib=min_vram)
+            model_aliases=aliases or None, min_vram_gib=min_vram,
+            optional_models=[CANDIDATE_MODEL_NAME] if CANDIDATE_ENABLED else ())
         return script, models
     # Stock is thin (Runpod often shows `Low` for every cheap card) and offers disappear between
     # listing and ordering, so try the cheapest few in turn. A refused order creates nothing and
@@ -4868,6 +4880,23 @@ def editable_target_phrases(row, flags, target_key='sv'):
     return sorted(choices, key=lambda phrase: (len(phrase), phrase))
 
 
+# The renderer writes a whole cue from ONE English sentence of meaning. That fits a line with at most two sentences; a cue of three or
+# more cannot be summed up in one sentence, so the renderer rewrote it freely (it added "din jävla idiot" to "You fucking owe me.", turned
+# "valuable love" into "värdefull information") and threw away the repair's own concrete edit, which the next review then flagged again.
+MAXIMUM_RENDERED_SENTENCES = 2
+
+
+def sentence_count(text):
+    """Sentences in a cue: a mark followed by more text, except the full stop of a title ("Mr. Berg")."""
+    text = str(text)
+    count = 1
+    for match in re.finditer(r'[.!?…]+["\')\u201d\u2019]*\s+(?=\S)', text):
+        word = re.findall(r"[\w'’-]+$", text[:match.start()])
+        if not (word and word[0].lower() in ('mr', 'mrs', 'ms', 'dr', 'st', 'jr', 'sr', 'prof') and text[match.start()] == '.'):
+            count += 1
+    return count
+
+
 def render_whole_cue_meanings(job, rows, flags, answer, target_key, target_language, record=None):
     """Render explained short-line meaning without the misleading literal target as a template."""
     original = {row['id']: row for row in rows}
@@ -4875,7 +4904,7 @@ def render_whole_cue_meanings(job, rows, flags, answer, target_key, target_langu
         flag['id'] == item['id'] and flag['category'] == 'meaning'
         and flag['source_quote'] == original[item['id']]['source']
         and flag['target_quote'] == original[item['id']][target_key]
-        for flag in flags)]
+        for flag in flags) and sentence_count(original[item['id']]['source']) <= MAXIMUM_RENDERED_SENTENCES]
     if not requested:
         return answer
     ids = {item['id'] for item in requested}
@@ -5314,6 +5343,68 @@ def cluster_refused_targets(before, flagged_ids):
     return {row_id: [text] for row_id, text in before.items() if row_id in flagged_ids}
 
 
+def candidate_wordings(job, rows, ids, *, target_key='sv', target_language='Swedish', record=None):
+    """The rows with a new wording of `ids` from the candidate translation model: lines the review names again after the repair left them as they were
+    ("edits: []": the repair held the wording to be correct, the review held it to be wrong). The model translates the line on its own, so what the
+    repair and the review disagree about is not decided by either of them. Nothing is let through: the wording goes to the same review as any repair, a
+    wording already refused for the row is never taken back, and a row that gains a verified defect (deterministic_flags) keeps its old text. A model
+    that is not there, a language it does not list, or a failing request leaves every row as it was (recorded, never a failed job)."""
+    if not CANDIDATE_ENABLED or job.get('_candidate_unavailable') or target_key != 'sv':
+        return rows
+    language = str((job.get('language_policy') or {}).get('effective_language') or (job.get('audio_choice') or {}).get('language') or '').lower()
+    source_name = CANDIDATE_LANGUAGES.get(language)
+    targets = [row for row in rows if row['id'] in ids and row.get(target_key) and row.get('source')]
+    if not targets:
+        return rows
+    if not source_name:
+        if record is not None:
+            record({'stage': 'candidate_skipped', 'ids': sorted(row['id'] for row in targets), 'reason': f'språket ({language or "okänt"}) finns inte i kandidatmodellens lista'})
+        return rows
+    history = job.get('_refused_wordings') or {}
+    refused = {}
+    for row in targets:
+        seen = list(history.get(f"{target_key}:{row['id']}", []))
+        if wording_key(row[target_key]) not in {wording_key(text) for text in seen}:
+            seen.append(row[target_key])
+        refused[row['id']] = seen
+    wording = {}
+    for row in targets:
+        check_cancelled(job['id'])
+        prompt = (f'You are a professional {source_name} ({language}) to {target_language} (sv) translator. Your goal is to accurately convey the meaning and '
+                  f'nuances of the original {source_name} text while adhering to {target_language} grammar, vocabulary, and cultural sensitivities.\n'
+                  f'Produce only the {target_language} translation, without any additional explanations or commentary. Please translate the following '
+                  f'{source_name} text into {target_language}:\n\n\n{row["source"]}')
+        try:
+            result = call_ollama({'model': CANDIDATE_MODEL_NAME, 'think': False, 'stream': False, 'keep_alive': '5m', 'prompt': prompt,
+                                  'options': {'temperature': 0, 'num_ctx': 2048, 'num_predict': 400, 'num_thread': 6, 'seed': 61}})
+        except (RuntimeError, OutputTruncated, ValueError) as error:
+            job['_candidate_unavailable'] = True
+            if record is not None:
+                record({'stage': 'candidate_failed', 'ids': sorted(refused), 'reason': str(error)[:200]})
+            break
+        text = ' '.join(str(result.get('response', '')).split()).strip('"“”')
+        if text:
+            wording[row['id']] = text
+    if not wording:
+        return rows
+    known = {(flag['id'], flag.get('reason')) for flag in deterministic_flags(rows, target_key)}
+    result_rows, changes = [dict(row) for row in rows], []
+    for row in result_rows:
+        text = wording.get(row['id'])
+        if not text or wording_key(text) in {wording_key(old) for old in refused.get(row['id'], ())} or looks_untranslated(row.get('source', ''), text):
+            continue
+        changes.append({'id': row['id'], 'before': row[target_key], 'after': text})
+        row[target_key] = text
+    introduced = {flag['id'] for flag in deterministic_flags(result_rows, target_key) if (flag['id'], flag.get('reason')) not in known}
+    if introduced:
+        changes = [change for change in changes if change['id'] not in introduced]
+        result_rows = [row if row['id'] not in introduced else next(dict(old) for old in rows if old['id'] == row['id']) for row in result_rows]
+    if record is not None:
+        record({'stage': 'candidate_wording', 'model': CANDIDATE_MODEL_NAME, 'ids': sorted(refused), 'changes': changes,
+                **({'reverted': sorted(introduced)} if introduced else {})})
+    return result_rows
+
+
 def review_and_save_translation(job, rows, *, target_key='sv', target_language='Swedish', final=False):
     """Keep the exact candidate and decision, including rejected translations.
 
@@ -5415,12 +5506,19 @@ def review_and_save_translation(job, rows, *, target_key='sv', target_language='
                 hard = hard_flags(remaining, rows)
                 cut = [flag for flag in remaining if flag not in hard and flag['id'] not in tried and flag['id'] not in spoken
                        and flag.get('category') not in SOFT_FLAG_CATEGORIES]
+                again = {flag['id'] for flag in hard} & tried
                 tried |= {flag['id'] for flag in cut}
                 hard = hard + cut
                 if not hard:
                     break
                 check_cancelled(job['id'])
+                before = {row['id']: row[target_key] for row in candidate}
                 candidate = repair_flagged_translation(job, candidate, hard, target_key=target_key, target_language=target_language, record=record_repair)
+                # A line the review names again after an earlier repair, and that this repair also left as it was, gets a wording from the candidate
+                # translation model instead of the same two opinions repeating until the file is refused.
+                declined = {row['id'] for row in candidate if row['id'] in again and row[target_key] == before.get(row['id'])}
+                if declined:
+                    candidate = candidate_wordings(job, candidate, declined, target_key=target_key, target_language=target_language, record=record_repair)
                 payload['rows'] = candidate
                 again = []
                 payload.setdefault('extra_repair_reviews', []).append(again)
@@ -5904,6 +6002,58 @@ def reread_readings(job, media, rows, ids):
     return readings
 
 
+def read_row_tails(job, media, rows, ids):
+    """What each reader hears in the last seconds of the rows `ids`, with sound after the row's end: {row id: {'precision', 'v2', 'parakeet': text}}.
+    Whisper's words are cut at their middle (up to TAIL_KEEP_AFTER s after the row), Parakeet's text at the same time. A reader that is missing or
+    fails gives no reading."""
+    by_id = {row['id']: row for row in rows}
+    heard = {row_id: {} for row_id in ids}
+    with tempfile.TemporaryDirectory(prefix='subsynq-tail-') as folder:
+        clips, begins = {}, {}
+        for row_id in ids:
+            end = float(by_id[row_id]['end'])
+            begins[row_id] = max(0.0, end - TAIL_BEFORE)
+            clips[row_id] = Path(folder) / f'tail-{row_id}.wav'
+            subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(begins[row_id]), '-i', str(media), '-t', str(end + TAIL_AFTER - begins[row_id]),
+                            '-map', audio_map(job), '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clips[row_id])],
+                           capture_output=True, timeout=90, check=True)
+        for name, model_name in (('precision', 'large-v3'), ('v2', 'large-v2')):
+            try:
+                model = reread_whisper(model_name)
+            except Exception as error:
+                print(f'VARNING: ordläsningen vid radslut saknar {model_name}: {error!r}', flush=True)
+                continue
+            try:
+                for row_id, clip in clips.items():
+                    check_cancelled(job['id'])
+                    segments, _ = model.transcribe(str(clip), language=reread_row_language(job, rows, by_id[row_id]), beam_size=5,
+                                                   condition_on_previous_text=False, temperature=0, word_timestamps=True)
+                    limit = float(by_id[row_id]['end']) + TAIL_KEEP_AFTER - begins[row_id]
+                    words = [w for s in segments for w in (getattr(s, 'words', None) or []) if (w.start + w.end) / 2 <= limit]
+                    heard[row_id][name] = ''.join(w.word for w in words).strip()
+            finally:
+                del model
+                gc.collect()
+                trim_cpu_allocator()
+        usable, _ = parakeet_reader.usable_language(job.get('audio_choice')) if parakeet_reader.enabled() else (False, '')
+        if usable and parakeet_reader.model_present('/models'):
+            reader = parakeet_reader.Reader('/models')
+            try:
+                for row_id, clip in clips.items():
+                    check_cancelled(job['id'])
+                    limit = float(by_id[row_id]['end']) + TAIL_KEEP_AFTER - begins[row_id]
+                    try:
+                        text = reader.read(clip, (0.0, limit))
+                    except RuntimeError as error:
+                        print(f'VARNING: {parakeet_reader.LABEL} läste inte radslutet för rad {row_id}: {error!r}', flush=True)
+                        continue
+                    if text:
+                        heard[row_id]['parakeet'] = text
+            finally:
+                reader.release()
+    return heard
+
+
 def reread_foreign_context(job, media, rows, records):
     """At most four short wrong-script cases; no text or forced language in ASR input."""
     by_id = {r['id']: r for r in rows}
@@ -6050,7 +6200,51 @@ def judge_conflicting_rows(job, rows, records, readings, *, call=None):
     return changed
 
 
-def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, judge_call=None):
+def settle_tail_words(job, media, rows, readings, changed, tail_reader):
+    """The ids of rows whose last word, heard by no tight reread, is changed because the readings of the row's last seconds (with sound after the row's
+    end) settle another word (app/tail_word.py). Each row that was read is recorded under `tail_word`; the word is confirmed so that no later text
+    choice puts the old one back. Never fails the job."""
+    by_id = {row['id']: row for row in rows}
+    plans = {}
+    for record in job['reread_rows']:
+        row_id = record['id']
+        if row_id in changed or row_id not in by_id or record.get('decision') == 'ersatt' or record.get('continuation'):
+            continue
+        found = unheard_last_word(by_id[row_id]['source'], [str(reading.get('text', '')) for reading in readings.get(row_id) or []])
+        if found:
+            plans[row_id] = (record, *found)
+    if not plans:
+        return []
+    job['tail_word_rows'] = sorted(plans)
+    try:
+        tails = tail_reader(job, media, rows, sorted(plans))
+    except JobCancelled:
+        raise
+    except Exception as error:
+        job['tail_word_error'] = repr(error)[:300]
+        print(f'VARNING: radslutets sista ord lästes inte om: {error!r}', flush=True)
+        return []
+    done = []
+    for row_id, (record, before, last) in plans.items():
+        row = by_id[row_id]
+        text, detail = settle_tail_word(row['source'], before, last, tails.get(row_id) or {})
+        record['tail_word'] = detail
+        if not text:
+            continue
+        index = rows.index(row)
+        following = str(rows[index + 1]['source']).split()[:1] if index + 1 < len(rows) else []
+        if following and normalized(following[0]) == normalized(detail['now']):
+            detail['skipped'] = 'det är grannradens första ord'
+            continue
+        record.update(decision='ersatt', candidate=text)
+        row['confirmed_source_words'] = sorted(set(row.get('confirmed_source_words') or []) | {detail['now']})
+        row['source'] = text
+        row.pop('source_unclear', None)
+        done.append(row_id)
+    return done
+
+
+def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, judge_call=None, tail_reader=None):
     """Read the audio behind rows the review still doubts again and replace a row's SOURCE text where at least two model families agree on
     another text that fits their readings clearly better (app/reread.py). Returns the ids of the changed rows, which are changed in place;
     `job['reread_rows']` records every row that was read (the readings and why it was or was not replaced). The measured case: a source cut
@@ -6142,6 +6336,8 @@ def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, jud
             row['source'] = text
             row.pop('source_unclear', None)
             changed.append(row['id'])
+    if TAIL_WORD_ENABLED and (reader is None or tail_reader is not None):
+        changed.extend(settle_tail_words(job, Path(media), rows, readings, changed, tail_reader or read_row_tails))
     conflicting = [record for record in job['reread_rows'] if record['id'] not in changed and record.get('decision') == 'modellfamiljerna läste olika ord']
     if conflicting and (reader is None or context_reader is not None):
         try:

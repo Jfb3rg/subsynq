@@ -36,15 +36,15 @@ def entry(**fields):
 
 
 class CatalogueTests(unittest.TestCase):
-    def test_the_shipped_models_file_lists_the_nine_models_the_pipeline_loads(self):
+    def test_the_shipped_models_file_lists_the_ten_models_the_pipeline_loads(self):
         specs = parse_catalogue(json.loads(SHIPPED.read_text(encoding="utf-8")))
         self.assertEqual([s.name for s in specs],
                          ["large-v3", "large-v2", "KBLab/kb-whisper-large", "NbAiLab/nb-whisper-large", "Qwen/Qwen3-ASR-1.7B",
-                          "Qwen/Qwen3-ForcedAligner-0.6B", "istupakov/parakeet-tdt-0.6b-v3-onnx", "gemma3:12b", "gemma4:12b"])
+                          "Qwen/Qwen3-ForcedAligner-0.6B", "istupakov/parakeet-tdt-0.6b-v3-onnx", "gemma3:12b", "gemma4:12b", "translategemma:12b"])
         self.assertEqual({s.role: s.name for s in specs if s.role},
-                         {"translation": "gemma3:12b", "review": "gemma4:12b"})
+                         {"translation": "gemma3:12b", "review": "gemma4:12b", "candidate": "translategemma:12b"})
         self.assertEqual({s.kind for s in specs}, {"faster-whisper", "hf", "hf-files", "ollama"})
-        self.assertEqual(len({s.id for s in specs}), 9)
+        self.assertEqual(len({s.id for s in specs}), 10)
 
     def test_the_parakeet_entry_lists_exactly_the_files_the_reader_needs(self):
         import parakeet_reader
@@ -76,14 +76,14 @@ class CatalogueTests(unittest.TestCase):
             own.write_text("{trasig", encoding="utf-8")
             result = load_catalogue([own, SHIPPED], environ={})
             self.assertEqual(result.source, SHIPPED)
-            self.assertEqual(len(result.specs), 9)
+            self.assertEqual(len(result.specs), 10)
             self.assertIn("models.json", result.errors[0])
             self.assertEqual(load_catalogue([Path(folder) / "saknas.json"], environ={}).specs, [])
 
     def test_an_environment_variable_still_overrides_the_two_gemma_names(self):
         result = load_catalogue([SHIPPED], environ={"SUBSYNQ_TRANSLATION_MODEL": "gemma3:27b"})
         names = {s.role: s.name for s in result.specs if s.role}
-        self.assertEqual(names, {"translation": "gemma3:27b", "review": "gemma4:12b"})
+        self.assertEqual(names, {"translation": "gemma3:27b", "review": "gemma4:12b", "candidate": "translategemma:12b"})
         self.assertEqual(configured_name("translation", "x", config_dir="/finns-inte", environ={}), "gemma3:12b")
         self.assertEqual(configured_name("review", "x", config_dir="/finns-inte", environ={}), "gemma4:12b")
         self.assertEqual(configured_name("saknas", "standard", config_dir="/finns-inte", environ={}), "standard")

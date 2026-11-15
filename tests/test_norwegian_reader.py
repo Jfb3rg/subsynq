@@ -145,7 +145,7 @@ class BootScriptRoomTests(unittest.TestCase):
                     secrets.token_urlsafe(24), models, device='cuda', tls_cert=cert, tls_key=key,
                     gateway_source=sources['cloud_cpu_service.py'], qwen_source=sources['qwen_asr_service.py'],
                     qwen_constraints=sources['constraints-qwen.txt'], whisper_constraints=sources['constraints-worker.txt'],
-                    model_aliases=aliases or None, min_vram_gib=minimum)
+                    model_aliases=aliases or None, min_vram_gib=minimum, optional_models=[worker.CANDIDATE_MODEL_NAME])
                 longest = max(longest, len(script))
             self.assertLessEqual(longest, cloud_gpu.MAX_ONSTART_CHARS - 150, vram)
 

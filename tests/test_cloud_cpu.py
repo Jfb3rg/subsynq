@@ -157,7 +157,7 @@ class OnstartScriptTests(unittest.TestCase):
             files, modes = self.unpack(script)
             self.assertEqual(set(files), {'cloud_cpu_service.py', 'qwen_asr_service.py',
                                           'constraints-qwen.txt', 'constraints-worker.txt', 'bootstrap.sh',
-                                          'server.crt', 'server.key'})
+                                          'server.pem'})
             for name in ('cloud_cpu_service.py', 'qwen_asr_service.py'):
                 original = Path('/ai', name).read_text(encoding='utf-8')
                 # The server gets the same program, compacted: same code, no comments/docstrings.
@@ -166,7 +166,7 @@ class OnstartScriptTests(unittest.TestCase):
                 compile(files[name], name, 'exec')
             self.assertIn('class Handler', files['cloud_cpu_service.py'])
             self.assertIn('def child_main', files['qwen_asr_service.py'])
-            self.assertEqual(files['server.key'], PEM_KEY)
+            self.assertEqual(files['server.pem'], PEM_CERT + PEM_KEY)
             self.assertEqual(set(modes), {0o600})
             self.assertIn('tar -xzf /root/bundle.tgz -C /root', script)
             # No readable copy of the sources or the key is left in the script text.

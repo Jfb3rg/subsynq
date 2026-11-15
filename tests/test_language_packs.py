@@ -52,7 +52,7 @@ class CatalogueTests(unittest.TestCase):
         self.assertEqual({s.name: (s.optional, s.language) for s in specs if s.optional},
                          {"KBLab/kb-whisper-large": (True, "sv"), "NbAiLab/nb-whisper-large": (True, "no")})
         self.assertEqual(len([s for s in specs if not s.optional and not s.extra]), 6)
-        self.assertEqual([s.name for s in specs if s.extra], ["istupakov/parakeet-tdt-0.6b-v3-onnx"])
+        self.assertEqual([s.name for s in specs if s.extra], ["istupakov/parakeet-tdt-0.6b-v3-onnx", "translategemma:12b"])
 
 
 class PackFileTests(unittest.TestCase):
