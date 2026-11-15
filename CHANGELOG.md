@@ -10,6 +10,12 @@ rättelser gäller framför äldre slutsatser. Detta är inte en fullständig li
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.
 
+## 0.8.394
+
+- **Parakeet är borttagen.** Den var den enda modellen som alltid kördes på arbetarens egen CPU, också när hyrd GPU var vald. Nu körs allt som används där användaren valt: på den hyrda servern vid hyrd GPU, annars på arbetarens maskin. Modellen (2,5 GB) hämtas inte längre, och paketet `onnx-asr` ingår inte i avbilderna.
+- **Omläsningen av en rads sista ord** använder Qwen3-ASR med ordtider i stället för Parakeet som tredje röst, och körs där resten av jobbet körs.
+- Steget som läste kvarvarande stycken utan meningsform med Qwen och Parakeet är borttaget (det behövde båda läsarna för att kunna ändra något).
+
 ## 0.8.393
 
 - **Ny översättning av rader som fastnar.** En rad som granskningen nämner igen efter att rättningen har lämnat den orörd får en egen översättning av TranslateGemma 12B (modellen är en extra modell på 8,1 GB som modellhanteraren hämtar efter de obligatoriska). Förslaget granskas som varje annan rättning; avvisas det nekas filen som förut. På en hyrd GPU-server hämtas modellen i bakgrunden efter de obligatoriska modellerna och kan aldrig hindra servern från att bli klar. Av med `SUBSYNQ_CANDIDATE_TRANSLATION=0`.

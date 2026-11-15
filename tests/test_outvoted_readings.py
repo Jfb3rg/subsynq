@@ -88,7 +88,7 @@ class OutvotedSingleReadingTests(unittest.TestCase):
     TWO_ROWS_READINGS = {'context': [cue(881.6, 884.7, 'No, seriously, am I gonna forget where my hairbrush is?', .66), cue(884.7, 885.2, 'No.', .58)],
                          'v2': [cue(881.6, 884.9, 'No, seriously, am I gonna forget where my hairbrush is?', .58)],
                          'qwen': [cue(881.3, 885.0, 'No, seriously, am I gonna forget where my hairbrush is?')],
-                         'parakeet': [cue(881.3, 885.0, 'No seriously, am I gonna forget where my hairbrush is?')]}
+                         'nb': [cue(881.3, 885.0, 'No seriously, am I gonna forget where my hairbrush is?')]}
 
     def test_a_sentence_that_is_already_the_row_before_is_not_written_into_the_next_row(self):
         self.assertEqual(replace_outvoted_single_readings(self.TWO_ROWS, self.TWO_ROWS_READINGS)[1], [])
@@ -96,7 +96,7 @@ class OutvotedSingleReadingTests(unittest.TestCase):
     def test_the_same_vote_still_replaces_a_row_when_no_neighbour_holds_the_sentence(self):
         rows = [cue(870.0, 878.0, 'Something else entirely.', .9)] + self.TWO_ROWS[1:2]
         rows, changes = replace_outvoted_single_readings(rows, {'v2': [cue(884.7, 885.2, 'No, I am not.')], 'qwen': [cue(884.6, 885.3, 'No, I am not.')],
-                                                               'parakeet': [cue(884.6, 885.3, 'No, I am not.')]})
+                                                               'nb': [cue(884.6, 885.3, 'No, I am not.')]})
         self.assertEqual(rows[1]['text'], 'No, I am not.')
 
 

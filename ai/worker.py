@@ -80,7 +80,6 @@ import name_harmony
 import reader_plan
 import swedish_reader
 import norwegian_reader
-import parakeet_reader
 import cloud_session
 import opensubtitles
 from cloud_market import (CHAIN_GPU_DOWNLOAD_TIERS, CHAIN_GPU_MIN_DISK_GB, CHAIN_GPU_MIN_RELIABILITY,
@@ -92,7 +91,7 @@ from probe import probe_media
 from subtitle_layout import layout_cues
 from sentence_cuts import evidence_words, move_cuts_to_sentence_ends
 import dub_bed
-from collapsed_runs import replace_collapsed_runs, rows_inside_windows, unread_run_windows
+from collapsed_runs import replace_collapsed_runs, rows_inside_windows
 from doubled_edges import drop_doubled_edge_words
 from tail_word import KEEP_AFTER as TAIL_KEEP_AFTER, settle_tail_word, TAIL_AFTER, TAIL_BEFORE, unheard_last_word
 from sentence_form import form_prompt, lost_form, restore_rows_form, row_words, unmarked_words
@@ -638,9 +637,6 @@ COLLAPSED_RUNS_ENABLED = os.environ.get('SUBSYNQ_COLLAPSED_RUNS', '1').strip().l
 # kept aside, and the finished rows that still lack sentence form take its capitals and punctuation (app/sentence_form.py).
 # SUBSYNQ_FORM_REREAD=0 turns the step off without a code change: the job then runs exactly as in 0.8.384.
 FORM_REREAD_ENABLED = os.environ.get('SUBSYNQ_FORM_REREAD', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
-# Qwen3-ASR and Parakeet read the stretches that are still without sentence form and that they have not read, as witnesses for the
-# sentences another reading wrote there (collapsed_runs.unread_run_windows). SUBSYNQ_STRETCH_READINGS=0 turns the reading off.
-STRETCH_READINGS_ENABLED = os.environ.get('SUBSYNQ_STRETCH_READINGS', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
 # A row's last word that every tight reread cut off is read again with sound after the row's end (app/tail_word.py). SUBSYNQ_TAIL_WORD=0 turns it off.
 TAIL_WORD_ENABLED = os.environ.get('SUBSYNQ_TAIL_WORD', '1').strip().lower() not in ('0', 'off', 'false', 'nej')
 # A line the final review names again after the repair has looked at it and left it as it was gets one more wording from a translation model
@@ -1818,97 +1814,6 @@ def read_code_switch_checks(job, media, rows, readings, models, total):
     result, changes = apply_code_switch_checks(rows, plans, records)
     job['code_switch_checks']['changed'] = changes
     return result
-
-
-PARAKEET_MAXIMUM_SECONDS = 900          # of audio per file (about six minutes on four CPU threads); the longest saved episode has 776 s of consensus windows
-
-
-def read_with_parakeet(job, media, windows, reader=None):
-    """Parakeet's readings of the windows Qwen3-ASR reads, [] when it cannot or should not vote (recorded in job['parakeet_reader']).
-
-    An optional extra: a missing model, an unmeasured language or a failure means the other readers decide alone, never a failed job."""
-    record = job['parakeet_reader'] = {'state': 'skipped', 'reason': ''}
-    if not windows:
-        record['reason'] = 'inga oense ställen att läsa'
-    elif not parakeet_reader.enabled():
-        record['reason'] = 'avstängd (SUBSYNQ_PARAKEET=0)'
-    else:
-        usable, reason = parakeet_reader.usable_language(job.get('audio_choice'))
-        if not usable:
-            record['reason'] = reason
-        elif reader is None and not parakeet_reader.model_present('/models'):
-            record['reason'] = 'modellen är inte hämtad'
-    if record['reason']:
-        return []
-    reader = reader or parakeet_reader.Reader('/models')
-    pad = parakeet_reader.padding(job.get('audio_choice'))
-    readings, seconds = [], 0.0
-    try:
-        with tempfile.TemporaryDirectory() as clip_folder:
-            for index, window in enumerate(windows):
-                if seconds + (window['end'] - window['start']) > PARAKEET_MAXIMUM_SECONDS:
-                    record['reason'] = f'tak på {PARAKEET_MAXIMUM_SECONDS} s ljud nått'
-                    break
-                check_cancelled(job['id'])
-                update_job(job['id'], 'transcribing', 59, f'{parakeet_reader.LABEL} läser oense stycken · {index + 1} av {len(windows)}')
-                clip = Path(clip_folder) / 'parakeet.wav'
-                begin = max(0.0, window['start'] - pad)
-                subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(begin), '-i', str(media),
-                                '-t', str(window['end'] - begin + pad), '-map', audio_map(job), '-ac', '1',
-                                '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip)],
-                               capture_output=True, timeout=90, check=True)
-                text = reader.read(clip, (window['start'] - begin, window['end'] - begin)) if pad else reader.read(clip)
-                seconds += window['end'] - window['start']
-                if text:
-                    readings.append({'start': window['start'], 'end': window['end'], 'text': text,
-                                     'confidence': parakeet_reader.CONFIDENCE})
-        record['state'] = 'used'
-    except JobCancelled:
-        raise
-    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
-        record.update(state='failed', reason=repr(error)[:200])
-        print(f'VARNING: {parakeet_reader.LABEL} kunde inte läsa oense stycken: {error!r}', flush=True)
-        readings = []
-    finally:
-        reader.release()
-    record.update(windows=len(readings), seconds=round(seconds, 1))
-    return readings
-
-
-def read_formless_stretches(job, media, windows, models, hint=None):
-    """Qwen3-ASR's and Parakeet's readings of the stretches that are still without sentence form and that neither of them has read
-    (collapsed_runs.unread_run_windows). They are witnesses for the sentences another reading wrote there, never rows of their own and
-    never voters elsewhere. An optional opinion: a failure leaves the stretch as it was."""
-    qwen = []
-    if windows and QWEN_ASR_ENABLED:
-        try:
-            with tempfile.TemporaryDirectory() as clip_folder:
-                for index, window in enumerate(windows):
-                    check_cancelled(job['id'])
-                    update_job(job['id'], 'transcribing', 59, f'Qwen3-ASR läser stycken utan meningsform · {index + 1} av {len(windows)}')
-                    clip = Path(clip_folder) / 'stretch.wav'
-                    subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(window['start']), '-i', str(media),
-                                    '-t', str(window['end'] - window['start']), '-map', audio_map(job), '-ac', '1',
-                                    '-ar', '16000', '-c:a', 'pcm_s16le', '-y', str(clip)],
-                                   capture_output=True, timeout=90, check=True)
-                    reading = models.qwen(qwen_identify, clip, hint) if hint else models.qwen(qwen_identify, clip)
-                    text = reading.get('text', '').strip()
-                    if text:
-                        qwen.append({**window, 'text': text, 'confidence': .5})
-        except JobCancelled:
-            raise
-        except (RuntimeError, OSError, subprocess.SubprocessError) as error:
-            print(f'VARNING: Qwen3-ASR kunde inte läsa stycken utan meningsform: {error!r}', flush=True)
-            qwen = []
-        finally:
-            models.release_qwen()
-    # read_with_parakeet records its outcome in job['parakeet_reader']: the record of the first reading stays, this one is kept beside it.
-    first_record = job.get('parakeet_reader')
-    parakeet = read_with_parakeet(job, media, windows)
-    job['stretch_parakeet_reader'] = job.get('parakeet_reader')
-    if first_record is not None:
-        job['parakeet_reader'] = first_record
-    return qwen, parakeet
 
 
 def read_lead_word_probes(job, media, merged, readings, models, total, skip_indices, hint=None):
@@ -3422,9 +3327,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         finally:
             models.release_qwen()
         consensus_readings['qwen'] = qwen_reading
-    # Parakeet reads the same places on the CPU: one more family in the three word votes below (not in the other rules that count passes).
-    parakeet_reading = read_with_parakeet(job, media, qwen_windows) if focus_intervals is None else []
-    vote_readings = dict(consensus_readings, **{parakeet_reader.READING_NAME: parakeet_reading}) if parakeet_reading else consensus_readings
+    vote_readings = consensus_readings
     # Qwen settles single-word swaps: a large-v2 word it contradicts is taken back, a word large-v2 and Qwen both hear is taken.
     merged, qwen_word_changes = settle_v2_words_with_qwen(merged, qwen_reading, v2_profile, nb_profile)
     job['qwen_word_changes'] = qwen_word_changes
@@ -3459,26 +3362,14 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
         job['outvoted_rows_replaced'] = outvoted_rows
     # Stretches the long pass wrote in lower case without punctuation, cut in the middle of sentences ("...look I know he's a" + "major
     # donor but absolutely not"): the short pass's or a cluster reread's sentences, where two other model families confirm each differing word.
-    collapsed_runs_replaced, stretch_readings = [], {}
+    collapsed_runs_replaced = []
     if COLLAPSED_RUNS_ENABLED and focus_intervals is None:
         run_sources = [('precision', precision_profile), ('cluster_first', rows_inside_windows(cluster_first, cluster_windows)),
                        ('cluster_second', rows_inside_windows(cluster_second, cluster_windows, shift=1)),
                        ('cluster_v2', rows_inside_windows(cluster_v2, cluster_windows))]
         run_witnesses = {'v2': v2_profile + late_v2, 'cluster_v2': cluster_v2, 'cluster_first': cluster_first, 'cluster_second': cluster_second,
-                         'qwen': qwen_reading, 'cluster_qwen': [item for item in cluster_languages if item.get('text')],
-                         parakeet_reader.READING_NAME: parakeet_reading}
+                         'qwen': qwen_reading, 'cluster_qwen': [item for item in cluster_languages if item.get('text')]}
         merged, collapsed_runs_replaced = replace_collapsed_runs(merged, run_sources, run_witnesses)
-        # A stretch that is left where the short pass has sentences but neither Qwen3-ASR nor Parakeet has read (they read the doubtful
-        # places, and a collapsed stretch is often confident): they read it now, as witnesses only, and the same rule is asked again.
-        stretch_windows = unread_run_windows(merged, run_sources, run_witnesses) if STRETCH_READINGS_ENABLED else []
-        if stretch_windows:
-            stretch_qwen, stretch_parakeet = read_formless_stretches(job, media, stretch_windows, models, qwen_hint)
-            stretch_readings = {'windows': stretch_windows, 'qwen': stretch_qwen, 'parakeet': stretch_parakeet}
-            if stretch_qwen or stretch_parakeet:
-                merged, confirmed_runs = replace_collapsed_runs(
-                    merged, run_sources, dict(run_witnesses, stretch_qwen=stretch_qwen, stretch_parakeet=stretch_parakeet))
-                collapsed_runs_replaced += [dict(item, stretch_reading=True) for item in confirmed_runs]
-            job['stretch_readings'] = {'windows': len(stretch_windows), 'qwen': len(stretch_qwen), 'parakeet': len(stretch_parakeet)}
         if collapsed_runs_replaced:
             job['collapsed_runs_replaced'] = collapsed_runs_replaced
     # A pass that swapped in a reading brings its own timing: a hair of overlap must not fail a whole job (regression case).
@@ -3558,7 +3449,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                     'unmarked_before': form_before, 'unmarked_after': unmarked_words(row_words(merged))}
     trace_payload.update(timing_refinement=job.get('timing_refinement'), lead_word_probes=job.get('lead_word_probes'), confirmed_word_onsets=job.get('confirmed_word_onsets'), nb=nb_profile, norwegian_reader=job.get('norwegian_reader'), collapsed_words_restored=job.get('collapsed_words_restored'), collapsed_word_windows=collapsed_windows, qwen_word_changes=job.get('qwen_word_changes'), dub_bed=job.get('dub_bed'), lead_words_restored=job.get('lead_words_restored'), source_word_confirmations=short_word_checks, profile_evidence=profile_evidence, consensus_windows=consensus_windows,
                          code_switch_checks=job.get('code_switch_checks'), phrase_overlaps_removed=phrase_overlaps, consensus_qwen=consensus_readings.get("qwen", []),
-                         consensus_forced=consensus_readings.get("forced", []), consensus_parakeet=parakeet_reading, parakeet_reader=job.get('parakeet_reader'),
+                         consensus_forced=consensus_readings.get("forced", []), 
                          intervening_windows=intervening_windows, intervening_languages=intervening_languages,
                          intervening_first=intervening_first, intervening_second=intervening_second,
                          intervening_v2=intervening_v2,
@@ -3566,7 +3457,7 @@ def _transcribe(job, media, model, device='cpu', *, focus_intervals=None, models
                          cluster_first=cluster_first,
                          cluster_second=cluster_second, cluster_v2=cluster_v2, final=merged,
                          final_before_reader_plan=before_reader_plan if plan_replaced else None, reader_plan=job.get('reader_plan'),
-                         family_vote_added=family_vote_added, outvoted_rows_replaced=outvoted_rows, collapsed_runs_replaced=collapsed_runs_replaced, stretch_readings=stretch_readings, doubled_edge_words_removed=doubled_edges, form_rereads=form_rereads, consensus_prefixes=consensus_prefixes, repeated_starts_dropped=repeated_starts, credit_rows_dropped=credit_rows, glossary_changes=glossary_changes, title_rows_joined=title_rows_joined, names_harmonized=name_harmonized,
+                         family_vote_added=family_vote_added, outvoted_rows_replaced=outvoted_rows, collapsed_runs_replaced=collapsed_runs_replaced, doubled_edge_words_removed=doubled_edges, form_rereads=form_rereads, consensus_prefixes=consensus_prefixes, repeated_starts_dropped=repeated_starts, credit_rows_dropped=credit_rows, glossary_changes=glossary_changes, title_rows_joined=title_rows_joined, names_harmonized=name_harmonized,
                          late_titles=late_titles, late_languages=late_languages,
                          late_first=late_first, late_second=late_second, late_v2=late_v2)
     save_asr_trace(job, trace_payload)
@@ -6003,9 +5894,9 @@ def reread_readings(job, media, rows, ids):
 
 
 def read_row_tails(job, media, rows, ids):
-    """What each reader hears in the last seconds of the rows `ids`, with sound after the row's end: {row id: {'precision', 'v2', 'parakeet': text}}.
-    Whisper's words are cut at their middle (up to TAIL_KEEP_AFTER s after the row), Parakeet's text at the same time. A reader that is missing or
-    fails gives no reading."""
+    """What each reader hears in the last seconds of the rows `ids`, with sound after the row's end: {row id: {'precision', 'v2', 'qwen': text}}.
+    The words of every reader are cut at their middle (up to TAIL_KEEP_AFTER s after the row). The readers run where the rest of the job runs
+    (the rented server's Whisper and Qwen3-ASR for a rented GPU, this machine otherwise). A reader that is missing or fails gives no reading."""
     by_id = {row['id']: row for row in rows}
     heard = {row_id: {} for row_id in ids}
     with tempfile.TemporaryDirectory(prefix='subsynq-tail-') as folder:
@@ -6035,22 +5926,27 @@ def read_row_tails(job, media, rows, ids):
                 del model
                 gc.collect()
                 trim_cpu_allocator()
-        usable, _ = parakeet_reader.usable_language(job.get('audio_choice')) if parakeet_reader.enabled() else (False, '')
-        if usable and parakeet_reader.model_present('/models'):
-            reader = parakeet_reader.Reader('/models')
+        if qwen_health():
             try:
                 for row_id, clip in clips.items():
                     check_cancelled(job['id'])
+                    language = reread_row_language(job, rows, by_id[row_id])
+                    hint = QWEN_LANGUAGE_HINTS.get(language) or next((name.title() for name, code in QWEN_TO_WHISPER.items() if code == language), None)
                     limit = float(by_id[row_id]['end']) + TAIL_KEEP_AFTER - begins[row_id]
                     try:
-                        text = reader.read(clip, (0.0, limit))
-                    except RuntimeError as error:
-                        print(f'VARNING: {parakeet_reader.LABEL} läste inte radslutet för rad {row_id}: {error!r}', flush=True)
+                        aligned = qwen_transcribe(clip, hint, attempts=1)
+                    except (RuntimeError, OSError, ValueError, KeyError, http.client.HTTPException) as error:
+                        print(f'VARNING: Qwen läste inte radslutet för rad {row_id}: {error!r}', flush=True)
                         continue
+                    text = ' '.join(str(item['text']).strip() for item in aligned.get('items', []) if (item['start'] + item['end']) / 2 <= limit)
                     if text:
-                        heard[row_id]['parakeet'] = text
+                        heard[row_id]['qwen'] = text
             finally:
-                reader.release()
+                try:
+                    if release_cloud_gpu_memory() is None:
+                        qwen_unload()
+                except Exception:
+                    pass
     return heard
 
 

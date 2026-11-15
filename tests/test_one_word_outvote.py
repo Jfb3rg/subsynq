@@ -68,7 +68,7 @@ class OneWordOutvoteTests(unittest.TestCase):
     TRAILING = {'context': [r(864.9, 866.0, 'Honestly, really?', .27)], 'v2': [r(865.2, 865.8, 'Honestly.'), r(865.8, 866.2, 'Really?'), r(866.2, 866.5, 'Yeah.')],
                 'precision': [r(865.0, 865.6, 'Honestly.', .92), r(865.7, 866.1, 'Really?', .94), r(866.1, 866.4, 'Yes.', .76)],
                 'rescue': [r(865.7, 866.1, 'Really?', .84), r(866.1, 866.4, 'Yes.', .57)],
-                'qwen': [r(864.6, 866.3, 'Honestly.', .5)], 'parakeet': [r(864.6, 866.3, 'Honestly. Really?', .5)]}
+                'qwen': [r(864.6, 866.3, 'Honestly.', .5)], 'nb': [r(864.6, 866.3, 'Honestly. Really?', .5)]}
 
     def test_a_word_two_passes_heard_next_to_the_row_is_not_dropped_by_a_reading_that_stops_early(self):
         self.assertEqual(replace_one_word_outvoted([self.TRAILING_ROW], self.TRAILING)[1], [])

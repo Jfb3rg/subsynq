@@ -1813,8 +1813,7 @@ def span_readings(final, readings):
 # forced-language reading without voice-activity filter, Whisper v2 and Qwen3-ASR each vote as a family of their own.
 _FAMILIES = {'context': 'whisper-v3', 'precision': 'whisper-v3', 'rescue': 'whisper-v3',
              'whispered_gap': 'whisper-v3', 'v2': 'whisper-v2', 'qwen': 'qwen', 'forced': 'whisper-v3-forced',
-             'nb': 'nb-whisper',         # NB-Whisper, the optional Norwegian extra reader (app/norwegian_reader.py)
-             'parakeet': 'parakeet'}    # Parakeet TDT, the extra English reader on the CPU (app/parakeet_reader.py)
+             'nb': 'nb-whisper'}         # NB-Whisper, the optional Norwegian extra reader (app/norwegian_reader.py)
 
 
 def _family(name):
@@ -1822,7 +1821,7 @@ def _family(name):
 
 
 # Models other than Whisper large-v3 itself: what the v3 passes (also the forced re-read) agree on can be their shared mistake.
-_INDEPENDENT_FAMILIES = frozenset({'whisper-v2', 'qwen', 'nb-whisper', 'parakeet'})
+_INDEPENDENT_FAMILIES = frozenset({'whisper-v2', 'qwen', 'nb-whisper'})
 
 
 def _mean_agreement(text, cluster, skip=None):

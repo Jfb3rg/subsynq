@@ -3,8 +3,8 @@
 Nobody should have to fetch models by hand. Which models SubSynq uses is NOT decided
 in code: it is listed in a separate file, models.json (the copy shipped with the app,
 or /config/models.json if you put one there). The worker starts a ModelManager that
-compares that list with what is on disk, downloads whatever is missing (Whisper, Qwen
-and Parakeet from Hugging Face, Gemma through Ollama) and reports progress in
+compares that list with what is on disk, downloads whatever is missing (Whisper and Qwen
+from Hugging Face, Gemma and TranslateGemma through Ollama) and reports progress in
 /config/models-status.json, which the web interface shows.
 
 Change the list (a new model, or a better version of one) and the new model is
@@ -414,7 +414,7 @@ class HubBackend:
 class FilesBackend:
     """Whole Hugging Face repositories as plain files under <models>/hf-files/, newest revision straight from Hugging Face.
 
-    ONNX Runtime refuses to read weights through the symlinks of the Hugging Face cache, so a model it runs (Parakeet) is
+    ONNX Runtime refuses to read weights through the symlinks of the Hugging Face cache, so a model it runs is
     stored as real files. Nothing of it is ever part of the SubSynq repository: the files come from Hugging Face on the
     first start, and an update re-downloads only the files that changed (the revision is recorded in REVISION_MARKER,
     written last, so a half-finished download is never taken for a finished one)."""

@@ -8,7 +8,6 @@
     {"id": "whisper-nb-norwegian", "kind": "faster-whisper", "name": "NbAiLab/nb-whisper-large", "label": "NB-Whisper large (norska)", "size_gb": 6.2, "used_by": "worker", "optional": true, "language": "no"},
     {"id": "qwen3-asr", "kind": "hf", "name": "Qwen/Qwen3-ASR-1.7B", "label": "Qwen3-ASR 1.7B", "size_gb": 4.4, "used_by": "qwen-asr"},
     {"id": "qwen3-aligner", "kind": "hf", "name": "Qwen/Qwen3-ForcedAligner-0.6B", "label": "Qwen3-ForcedAligner 0.6B", "size_gb": 1.8, "used_by": "qwen-asr"},
-    {"id": "parakeet-tdt-v3", "kind": "hf-files", "name": "istupakov/parakeet-tdt-0.6b-v3-onnx", "label": "Parakeet TDT 0.6B v3 (extra röst)", "size_gb": 2.5, "used_by": "worker", "extra": true, "files": ["config.json", "vocab.txt", "encoder-model.onnx", "encoder-model.onnx.data", "decoder_joint-model.onnx"]},
     {"id": "gemma-translation", "kind": "ollama", "role": "translation", "name": "gemma3:12b", "label": "Gemma 3 12B (översättning)", "size_gb": 8.1, "used_by": "translate-engine"},
     {"id": "gemma-review", "kind": "ollama", "role": "review", "name": "gemma4:12b", "label": "Gemma 4 12B (granskning)", "size_gb": 8.0, "used_by": "translate-engine"},
     {"id": "translategemma-candidate", "kind": "ollama", "role": "candidate", "name": "translategemma:12b", "label": "TranslateGemma 12B (ny översättning av rader som fastnar)", "size_gb": 8.1, "used_by": "translate-engine", "extra": true}
