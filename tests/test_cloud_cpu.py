@@ -327,7 +327,7 @@ class BootstrapPipRetryTests(unittest.TestCase):
             boot = bootstrap_of(OnstartScriptTests().build(device=device))
             self.assertIn(cloud_gpu.CHAIN_PIP_INSTALL_SCRIPT, boot)
             # Qwen torch, qwen-asr, faster-whisper and the Hugging Face client.
-            self.assertEqual(boot.count('pip_install /root/'), 4)
+            self.assertEqual(boot.count('pip_install /root/'), 5 if device == 'cuda' else 4)
             self.assertNotIn('--no-cache-dir', boot)
             result = subprocess.run(['bash', '-n'], input=boot, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -906,7 +906,7 @@ class TlsTests(unittest.TestCase):
 
     def test_certificate_is_a_pem_pair_and_unique_per_rental(self):
         self.assertIn('BEGIN CERTIFICATE', self.cert)
-        self.assertIn('BEGIN PRIVATE KEY', self.key)
+        self.assertTrue(self.key.startswith(('-----BEGIN PRIVATE KEY-----', '-----BEGIN EC PRIVATE KEY-----')))
         self.assertNotEqual(self.cert, self.other_cert)
 
     def test_pinned_certificate_connects_and_reaches_the_token_check(self):

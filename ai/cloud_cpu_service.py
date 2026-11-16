@@ -77,6 +77,29 @@ whisper = None
 whisper_loaded = None
 whisper_state = {"status": "loading", "error": None}
 whisper_lock = threading.Lock()
+vad_lock = threading.Lock()
+
+
+def configure_vad():
+    """Use the bundled Silero weights on the selected device, with no CPU fallback on CUDA."""
+    import numpy as np
+    import faster_whisper.vad as vad
+    if DEVICE == "cuda":
+        import onnxruntime as ort
+        options = ort.SessionOptions()
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        session = ort.InferenceSession(
+            os.path.join(vad.get_assets_path(), "silero_vad_v6.onnx"),
+            sess_options=options, providers=["CUDAExecutionProvider"])
+        session.disable_fallback()
+        if session.get_providers()[0] != "CUDAExecutionProvider":
+            raise RuntimeError("Silero VAD kräver CUDA; CPU-reserv är inte tillåten.")
+        model = vad.SileroVADModel.__new__(vad.SileroVADModel)
+        model.session = session
+        vad.get_vad_model = lambda: model
+    # Exercise the actual backend before the server can report ready.
+    vad.get_speech_timestamps(np.zeros(1024, dtype=np.float32))
+
 
 
 def available_memory_bytes():
@@ -278,10 +301,11 @@ def release_gpu_memory():
 
 def load_whisper():
     try:
+        configure_vad()
         with whisper_lock:
             activate_whisper(WHISPER_NAME)
         whisper_state.update(status="ready", error=None)
-        print(f"Whisper {WHISPER_NAME} redo på CPU", flush=True)
+        print(f"Whisper {WHISPER_NAME} och Silero VAD redo på {DEVICE}", flush=True)
     except Exception as error:  # reported through /health, never hidden
         whisper_state.update(status="error", error=str(error)[:300])
         print(f"Whisper kunde inte laddas: {error!r}", flush=True)
@@ -300,6 +324,7 @@ def local_json(port, path, timeout=5, method="GET"):
         return None
     finally:
         connection.close()
+
 
 
 STATE_DIR = os.environ.get("SUBSYNQ_CLOUD_STATE_DIR", "/root")
@@ -466,6 +491,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/health":
             self.respond(200, health_report())
+        elif path == "/ollama/api/ps":
+            self.forward("GET", OLLAMA_PORT, "/api/ps")
         elif path == "/qwen/health":
             self.forward("GET", QWEN_PORT, "/health")
         elif path == "/log":
@@ -482,6 +509,22 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/transcribe":
                 self.transcribe()
+            elif path == "/vad":
+                if whisper_state["status"] != "ready":
+                    self.respond(503, {"status": "error", "error": "VAD är inte redo."})
+                    return
+                try:
+                    import numpy as np
+                    from faster_whisper.vad import VadOptions, get_speech_timestamps
+                    audio = np.frombuffer(self.read_body(64 * 1024 * 1024), dtype="<f4")
+                    if not np.isfinite(audio).all():
+                        raise ValueError("Ogiltigt VAD-underlag.")
+                    options = json.loads(self.headers.get("X-SubSynq-Vad-Options", "{}"))
+                    with vad_lock, track("silero-vad"):
+                        spans = get_speech_timestamps(audio, VadOptions(**options))
+                    self.respond(200, {"status": "ok", "device": DEVICE, "segments": spans})
+                except Exception as error:
+                    self.respond(500, {"status": "error", "error": f"VAD misslyckades: {str(error)[:300]}"})
             elif path == "/release":
                 self.respond(200, release_gpu_memory())
             elif path.startswith("/qwen/"):

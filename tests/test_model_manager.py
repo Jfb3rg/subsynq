@@ -36,15 +36,16 @@ def entry(**fields):
 
 
 class CatalogueTests(unittest.TestCase):
-    def test_the_shipped_models_file_lists_the_nine_models_the_pipeline_loads(self):
+    def test_the_shipped_models_file_lists_all_pipeline_models(self):
         specs = parse_catalogue(json.loads(SHIPPED.read_text(encoding="utf-8")))
         self.assertEqual([s.name for s in specs],
                          ["large-v3", "large-v2", "KBLab/kb-whisper-large", "NbAiLab/nb-whisper-large", "Qwen/Qwen3-ASR-1.7B",
-                          "Qwen/Qwen3-ForcedAligner-0.6B", "gemma3:12b", "gemma4:12b", "translategemma:12b"])
+                          "Qwen/Qwen3-ForcedAligner-0.6B", "lemuralabs/tamil-asr-qwen3", "silero_vad_v6.onnx",
+                          "gemma3:12b", "gemma4:12b", "translategemma:12b"])
         self.assertEqual({s.role: s.name for s in specs if s.role},
                          {"translation": "gemma3:12b", "review": "gemma4:12b", "candidate": "translategemma:12b"})
-        self.assertEqual({s.kind for s in specs}, {"faster-whisper", "hf", "ollama"})
-        self.assertEqual(len({s.id for s in specs}), 9)
+        self.assertEqual({s.kind for s in specs}, {"faster-whisper", "hf", "ollama", "bundled"})
+        self.assertEqual(len({s.id for s in specs}), 11)
 
     def test_a_files_model_needs_a_list_of_files(self):
         for data in ({"models": [entry(kind="hf-files")]}, {"models": [entry(kind="hf-files", files="a.onnx")]},
@@ -71,7 +72,7 @@ class CatalogueTests(unittest.TestCase):
             own.write_text("{trasig", encoding="utf-8")
             result = load_catalogue([own, SHIPPED], environ={})
             self.assertEqual(result.source, SHIPPED)
-            self.assertEqual(len(result.specs), 9)
+            self.assertEqual(len(result.specs), 11)
             self.assertIn("models.json", result.errors[0])
             self.assertEqual(load_catalogue([Path(folder) / "saknas.json"], environ={}).specs, [])
 

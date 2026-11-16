@@ -27,7 +27,7 @@ import psutil
 import native_whisper
 from faster_whisper import WhisperModel
 from faster_whisper.audio import decode_audio
-from faster_whisper.vad import VadOptions, get_speech_timestamps
+from faster_whisper.vad import VadOptions, get_speech_timestamps as local_speech_timestamps
 
 sys.path.insert(0, '/app')
 from asr_windows import (replace_outvoted_single_readings, replace_one_word_outvoted, replace_outvoted_word, plan_lead_word_probes, refine_starts, corroborate_rescue, correct_rescue_onset_drift,
@@ -976,7 +976,11 @@ def make_chain_certificate():
         cert, key = Path(folder, 'cert.pem'), Path(folder, 'key.pem')
         subprocess.run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt',
                         'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', str(key),
-                        '-out', str(cert), '-days', '2', '-subj', '/CN=subsynq-cloud'],
+                        '-out', str(cert), '-days', '2', '-config', '/dev/null', '-subj', '/CN=subsynq-cloud'],
+                       capture_output=True, check=True, timeout=30)
+        # The certificate already carries the public key. Omit its duplicate in
+        # the private-key encoding; OpenSSL reconstructs it from the same scalar.
+        subprocess.run(['openssl', 'ec', '-in', str(key), '-no_public', '-out', str(key)],
                        capture_output=True, check=True, timeout=30)
         return cert.read_text(encoding='ascii'), key.read_text(encoding='ascii')
 
@@ -1022,6 +1026,21 @@ def cloud_base_url():
     """The rented server's address while a job runs on it (see cloud_chain_endpoints), else None."""
     suffix = '/ollama/api/generate'
     return TRANSLATE_URL[:-len(suffix)] if TRANSLATE_URL.startswith('https://') and TRANSLATE_URL.endswith(suffix) else None
+
+
+
+def get_speech_timestamps(audio, vad_options=None, sampling_rate=16000, **kwargs):
+    """Run VAD on the rented server for cloud jobs; never fall back locally."""
+    from vad_router import cloud_speech_timestamps
+    base = cloud_base_url()
+    device = getattr(MODEL_JOB, 'device', None) or ''
+    if base:
+        expected = 'cpu' if is_cloud_cpu(device) else 'cuda'
+        return cloud_speech_timestamps(base, audio, vad_options or VadOptions(**kwargs),
+                                       expected_device=expected, sampling_rate=sampling_rate)
+    if device.startswith('cloud-'):
+        raise RuntimeError('Moln-VAD saknar anslutning; lokal CPU-reserv är inte tillåten.')
+    return local_speech_timestamps(audio, vad_options, sampling_rate=sampling_rate, **kwargs)
 
 
 def release_cloud_gpu_memory():
@@ -3605,6 +3624,12 @@ def call_ollama(request):
         # servers (device 'cloud-*') and GPU runs do not pass through this branch.
         request = {**request, 'options': {**request.get('options', {}), 'num_gpu': 0,
                                           'use_mmap': True}}
+    device = getattr(MODEL_JOB, 'device', None) or ''
+    if device.startswith('cloud-') and not is_cloud_cpu(device):
+        from gpu_policy import require_cloud_gpu
+        if not cloud_base_url():
+            raise RuntimeError('Moln-GPU saknar anslutning; lokal CPU-reserv är inte tillåten.')
+        request = require_cloud_gpu(TRANSLATE_URL, request, shown_model_name(request.get('model')))
     if getattr(MODEL_JOB, 'job_id', None) is not None and request.get('keep_alive') != 0:
         check_cancelled(MODEL_JOB.job_id)
         previous = getattr(MODEL_JOB, 'active_model', None)

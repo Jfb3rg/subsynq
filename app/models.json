@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "note": "Vilka AI-modeller SubSynq använder. Den här filen följer med programmet. Lägg en egen kopia som /config/models.json för att byta modell: SubSynq laddar då ner den nya, och den gamla kan tas bort under Inställningar > Modeller. Fälten: kind = faster-whisper | hf | hf-files (vanliga filer, kräver files = lista med filnamn) | ollama, name = modellens namn, optional = true för ett frivilligt språkpaket som bara hämtas när du slår på det under Inställningar > Modeller (language = språkkod), extra = true för en extra röst som hämtas sist och aldrig håller upp ett jobb, role (valfri) = translation eller review för de Gemma-modeller som översätter och granskar.",
+  "note": "Vilka AI-modeller SubSynq använder. Den här filen följer med programmet. Lägg en egen kopia som /config/models.json för att byta modell: SubSynq laddar då ner den nya, och den gamla kan tas bort under Inställningar > Modeller. Fälten: kind = faster-whisper | hf | bundled (ingår i programmet, ingen separat hämtning) | hf-files (vanliga filer, kräver files = lista med filnamn) | ollama, name = modellens namn, optional = true för ett frivilligt språkpaket som bara hämtas när du slår på det under Inställningar > Modeller (language = språkkod), extra = true för en extra röst som hämtas sist och aldrig håller upp ett jobb, role (valfri) = translation eller review för de Gemma-modeller som översätter och granskar.",
   "models": [
     {"id": "whisper-large-v3", "kind": "faster-whisper", "name": "large-v3", "label": "Whisper large-v3", "size_gb": 2.9, "used_by": "worker"},
     {"id": "whisper-large-v2", "kind": "faster-whisper", "name": "large-v2", "label": "Whisper large-v2", "size_gb": 2.9, "used_by": "worker"},
@@ -8,6 +8,8 @@
     {"id": "whisper-nb-norwegian", "kind": "faster-whisper", "name": "NbAiLab/nb-whisper-large", "label": "NB-Whisper large (norska)", "size_gb": 6.2, "used_by": "worker", "optional": true, "language": "no"},
     {"id": "qwen3-asr", "kind": "hf", "name": "Qwen/Qwen3-ASR-1.7B", "label": "Qwen3-ASR 1.7B", "size_gb": 4.4, "used_by": "qwen-asr"},
     {"id": "qwen3-aligner", "kind": "hf", "name": "Qwen/Qwen3-ForcedAligner-0.6B", "label": "Qwen3-ForcedAligner 0.6B", "size_gb": 1.8, "used_by": "qwen-asr"},
+    {"id": "qwen3-tamil", "kind": "hf", "name": "lemuralabs/tamil-asr-qwen3", "label": "Qwen3-ASR för tamil", "size_gb": 4.4, "used_by": "qwen-asr", "extra": true},
+    {"id": "silero-vad", "kind": "bundled", "name": "silero_vad_v6.onnx", "label": "Silero VAD (talpartier, ingår i programmet)", "size_gb": 0.002, "used_by": "worker"},
     {"id": "gemma-translation", "kind": "ollama", "role": "translation", "name": "gemma3:12b", "label": "Gemma 3 12B (översättning)", "size_gb": 8.1, "used_by": "translate-engine"},
     {"id": "gemma-review", "kind": "ollama", "role": "review", "name": "gemma4:12b", "label": "Gemma 4 12B (granskning)", "size_gb": 8.0, "used_by": "translate-engine"},
     {"id": "translategemma-candidate", "kind": "ollama", "role": "candidate", "name": "translategemma:12b", "label": "TranslateGemma 12B (ny översättning av rader som fastnar)", "size_gb": 8.1, "used_by": "translate-engine", "extra": true}

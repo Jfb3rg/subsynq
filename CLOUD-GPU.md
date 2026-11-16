@@ -54,6 +54,8 @@ dess administratör från att behandla de skickade uppgifterna.
 
 ## Modeller och felsökning
 
+Valt moln-GPU-läge gäller även KB-Whisper för svenska, NB-Whisper för norska, tamilmodellen och Silero VAD när de används. Talintervallsanrop skickas till molnservern och Silero kräver CUDA. Översättnings- och granskningsmodeller måste vara helt laddade på GPU före textgenerering. Saknas rätt backend stoppas jobbet; ingen lokal CPU-modell används som reserv.
+
 - Se [README](README.md#modeller-och-körsätt) för produktionsmodeller.
   Större molnmodeller kan väljas separat; automatvalet beror på GPU-minnet.
   Modellernas egna licenser gäller även på hyrda servrar.

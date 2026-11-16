@@ -56,10 +56,14 @@ class DeviceSelectionTests(unittest.TestCase):
         self.assertEqual(request['options'], {'num_ctx': 8192, 'num_gpu': 20})
 
     def send(self, device, request):
+        gpu = bool(device and device.startswith('cloud-') and not device.startswith('cloud-cpu-'))
+        replies = ([{'done': True}, {'models': [{'name': 'reviewer', 'size': 1000, 'size_vram': 1000}]}]
+                   if gpu else []) + [{'done_reason': 'stop', 'response': '{}'}]
         with patch.object(worker.MODEL_JOB, 'device', device, create=True), \
                 patch.object(worker.MODEL_JOB, 'job_id', None, create=True), \
-                patch.object(worker.urllib.request, 'urlopen', return_value=io.BytesIO(
-                    b'{"done_reason":"stop","response":"{}"}')) as opening, patch('builtins.print'):
+                patch.object(worker, 'TRANSLATE_URL', 'https://example/token/ollama/api/generate'), \
+                patch.object(worker.urllib.request, 'urlopen', side_effect=[
+                    io.BytesIO(json.dumps(reply).encode()) for reply in replies]) as opening, patch('builtins.print'):
             worker.call_ollama(request)
         return json.loads(opening.call_args.args[0].data)
 
@@ -68,7 +72,10 @@ class DeviceSelectionTests(unittest.TestCase):
         for device in ('cloud-vast', 'cloud-cpu-vast', 'cloud-runpod', 'cloud-cpu-runpod',
                        'amd-rx-9070-xt', 'nvidia-cuda', None):
             sent = self.send(device, dict(base))
-            self.assertEqual(sent['options'], {'num_ctx': 8192}, device)
+            expected = {'num_ctx': 8192}
+            if device and device.startswith('cloud-') and not device.startswith('cloud-cpu-'):
+                expected['num_gpu'] = 999
+            self.assertEqual(sent['options'], expected, device)
         self.assertEqual(self.send('cpu', dict(base))['options']['use_mmap'], True)
 
     def test_unload_requests_carry_no_extra_options(self):

@@ -10,6 +10,7 @@ before requesting a rental.
 """
 import ast
 import base64
+import gzip
 import io
 import json
 import os
@@ -128,6 +129,7 @@ track_whisperpy() {
   tstep 'pip: Whisper-miljö'
   python3 -m venv /root/whisper-venv
   pip_install /root/whisper-venv/bin/pip -c /root/constraints-worker.txt faster-whisper==1.2.1 av==18.1.0
+@VAD_INSTALL@
 }
 track_ollama() {
   tstep 'installerar Ollama'
@@ -398,6 +400,8 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
     if device not in CHAIN_DEVICES:
         raise ValueError("Ogiltig enhet för molntjänsten.")
     for pem, label in ((tls_cert, "CERTIFICATE"), (tls_key, "PRIVATE KEY")):
+        if label == "PRIVATE KEY" and isinstance(pem, str) and "-----BEGIN EC PRIVATE KEY-----" in pem:
+            continue
         if not isinstance(pem, str) or f"-----BEGIN {label}-----" not in pem:
             raise ValueError("Ogiltigt TLS-certifikat eller -nyckel för molntjänsten.")
     if not _SAFE_TOKEN.fullmatch(token or ""):
@@ -430,7 +434,9 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
         "/root/cloud_cpu_service.py": compact_python(gateway_source),
         "/root/qwen_asr_service.py": compact_python(qwen_source),
         "/root/constraints-qwen.txt": compact_shell(qwen_constraints),
-        "/root/constraints-worker.txt": compact_shell(whisper_constraints),
+        # Compression runs only in the home worker, never on the rental.
+        "/root/constraints-worker.txt": compact_shell('\n'.join(
+            line for line in whisper_constraints.splitlines() if not line.startswith('zopfli=='))),
         "/root/server.pem": tls_cert + tls_key,
     }
     torch_index = "cu128" if gpu else "cpu"
@@ -463,7 +469,9 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
     #   models    Whisper v3/v2 and Qwen ASR/aligner from Hugging Face (so Qwen no longer
     #             downloads inside its first request)
     # Each track keeps its own /root/step.<track> and /root/failed.<track>; /health shows all.
-    bootstrap = BOOTSTRAP_TEMPLATE.replace("@TORCH_INDEX@", torch_index).replace(
+    vad_install = ("  /root/whisper-venv/bin/pip uninstall -y onnxruntime\n"
+                   "  pip_install /root/whisper-venv/bin/pip onnxruntime-gpu==1.30.0") if gpu else ""
+    bootstrap = BOOTSTRAP_TEMPLATE.replace("@VAD_INSTALL@", vad_install).replace("@TORCH_INDEX@", torch_index).replace(
         "@PULLS@", pulls).replace("@OPTIONAL_PULLS@", "".join(
             f"nohup ollama pull {name} > /root/pull-{number}.log 2>&1 &\n" for number, name in enumerate(optional))).replace(
         "@GATEWAY_ENV@", gateway_env).replace(
@@ -497,12 +505,22 @@ def build_chain_onstart_script(token, ollama_models, *, device, tls_cert, tls_ke
     # and unpacked on the server.
     archive = io.BytesIO()
     with tarfile.open(fileobj=archive, mode="w:gz", compresslevel=9) as bundle:
-        for path, source in files.items():
+        # Related code first and high-entropy certificate data last compress better.
+        order = ('cloud_cpu_service.py', 'qwen_asr_service.py', 'bootstrap.sh',
+                 'constraints-qwen.txt', 'constraints-worker.txt', 'server.pem')
+        for name in order:
+            path, source = '/root/' + name, files['/root/' + name]
             data = source.encode("utf-8")
             info = tarfile.TarInfo(name=path.rsplit("/", 1)[1])
             info.size, info.mode, info.mtime = len(data), 0o600, 0
             bundle.addfile(info, io.BytesIO(data))
-    encoded = base64.b64encode(archive.getvalue()).decode("ascii") + "\n"
+    compressed = archive.getvalue()
+    # Keep the same gzip/tar format and complete sources within Vast's fixed limit.
+    # Zopfli is only a compressor; the rental still needs ordinary tar/gzip.
+    if len(compressed) > 10500:
+        import zopfli.gzip
+        compressed = zopfli.gzip.compress(gzip.decompress(compressed), numiterations=30)
+    encoded = base64.b64encode(compressed).decode("ascii") + "\n"
     parts = ["mkdir -p /root\numask 077\n",
              f"base64 -d > /root/bundle.tgz <<'SUBSYNQ_BUNDLE_EOF'\n{encoded}SUBSYNQ_BUNDLE_EOF\n",
              "tar -xzf /root/bundle.tgz -C /root && rm -f /root/bundle.tgz\n"]

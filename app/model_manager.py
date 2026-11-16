@@ -34,7 +34,7 @@ POLL_SECONDS = 2.0
 RECHECK_SECONDS = 600       # re-verify once ready (cheap: only looks at the disk)
 RETRY_MIN, RETRY_MAX = 60, 900
 WAIT_STEP = 5               # while waiting, look for a removal request this often
-KINDS = ("faster-whisper", "hf", "hf-files", "ollama")
+KINDS = ("faster-whisper", "hf", "hf-files", "ollama", "bundled")
 CATALOGUE_FILE = "models.json"
 STATUS_FILE = "models-status.json"
 LEDGER_FILE = "models-installed.json"
@@ -343,6 +343,30 @@ class _Watcher:
 
 
 # ---------------------------------------------------------------------- backends
+
+class BundledBackend:
+    """Silero ships with faster-whisper; it has no independent download or deletion."""
+    def is_present(self, spec):
+        from faster_whisper.utils import get_assets_path
+        return spec.name == "silero_vad_v6.onnx" and (Path(get_assets_path()) / spec.name).is_file()
+
+    def download(self, spec, report):
+        if not self.is_present(spec):
+            raise RuntimeError("Silero VAD saknas i programbilden; uppdatera SubSynq.")
+
+    def remove(self, spec):
+        raise RuntimeError("Silero VAD ingår i programmet och kan inte tas bort separat.")
+
+    def installed_version(self, spec):
+        from importlib.metadata import version
+        return version("faster-whisper") if self.is_present(spec) else None
+
+    def latest_version(self, spec):
+        return self.installed_version(spec)
+
+    def update(self, spec, report):
+        self.download(spec, report)
+
 
 class FasterWhisperBackend:
     """Whisper models in the format faster-whisper reads from /models (same call the worker uses)."""
@@ -912,6 +936,6 @@ def build_manager(*, config_dir="/config", models_dir="/models", ollama_url=None
     base = base.split("/api/")[0]
     hub_dir = Path(os.environ.get("HF_HOME", f"{models_dir}/huggingface")) / "hub"
     backends = {"faster-whisper": FasterWhisperBackend(models_dir), "hf": HubBackend(hub_dir),
-                "hf-files": FilesBackend(models_dir), "ollama": OllamaBackend(base)}
+                "hf-files": FilesBackend(models_dir), "ollama": OllamaBackend(base), "bundled": BundledBackend()}
     return ModelManager(lambda: load_catalogue(catalogue_paths(config_dir)), backends, config_dir, models_dir,
                         log=log, is_busy=is_busy)

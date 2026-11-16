@@ -283,10 +283,14 @@ STRINGS = {
     "models_page_intro": {
         "sv": "Så här vet SubSynq vilka modeller som behövs: de står i en egen fil, models.json. Vill du byta eller "
               "uppgradera en modell lägger du en egen kopia av filen som /config/models.json och ändrar raden. "
-              "Då hämtas den nya modellen automatiskt, och den gamla kan tas bort här nedan.",
+              "Då hämtas den nya modellen automatiskt, och den gamla kan tas bort här nedan. "
+              "Vid molnjobb körs modellerna på den hyrda servern. Svenska och norska språkpaket används även där när språket matchar. "
+              "Tamilmodellen används för tamil. Silero VAD hittar talpartier och ingår i programmet.",
         "en": "This is how SubSynq knows which models it needs: they are listed in a file of their own, models.json. "
               "To swap or upgrade a model, put your own copy of the file at /config/models.json and change the "
-              "line. The new model is then downloaded automatically, and the old one can be removed below."},
+              "line. The new model is then downloaded automatically, and the old one can be removed below. "
+              "Cloud jobs run the models on the rented server, including enabled Swedish and Norwegian packs when the language matches. "
+              "The Tamil model reads Tamil. Silero VAD locates speech and ships with the application."},
     "models_page_source": {"sv": "Aktuell lista: {path}", "en": "Current list: {path}"},
     "models_page_no_status": {
         "sv": "Workern har inte rapporterat modellstatus än. Vänta en minut och ladda om sidan.",

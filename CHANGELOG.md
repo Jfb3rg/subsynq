@@ -6,6 +6,13 @@ De äldre posterna nedan beskriver läget vid respektive version. Senare
 rättelser gäller framför äldre slutsatser. Detta är inte en fullständig lista
 över varje version; mellanliggande ändringar finns i Git-historiken.
 
+## 0.8.401
+
+- Moln-GPU skickar även talintervallsdetekteringen till den hyrda servern och stoppar om rätt GPU-stöd saknas.
+- Översättning, granskning och alternativa översättningsförslag kräver att modellen är helt laddad på GPU före textgenerering. Ingen CPU-reserv används i dessa steg.
+- Modellistan visar även tamilmodellen och Silero VAD. Svenska och norska språkpaket använder fortsatt molnservern när respektive språk behövs.
+- Den nya GPU-vägen för talintervallsdetektering har ännu inte verifierats på en hyrd server. Godkännandekrav och stoppgränser är oförändrade.
+
 ## 0.8.400
 
 - Osäkerhetslistan kan nu bekräfta fler rader där alla omläsare stöder samma ord. Bekräftelsen jämförs med den slutliga källtexten och kräver giltiga tidsbelägg för att undanta ord från grannrader.
