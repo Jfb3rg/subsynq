@@ -1,5 +1,6 @@
 """A reread clip starts before its row: one word it hears from the row before is not written twice."""
 import sys
+import copy
 import unittest
 from unittest.mock import patch
 
@@ -21,6 +22,68 @@ QWEN = {'name': 'qwen', 'language': 'English', 'confidence': .5, 'text': 'Quietl
 
 
 class NeighbourEdgeWordTests(unittest.TestCase):
+    def dual_edge_sample(self, current='were never even'):
+        rows = [{'id': 1, 'start': 8., 'end': 10., 'source': 'They.'},
+                {'id': 2, 'start': 10., 'end': 11., 'source': current, 'source_unclear': True},
+                {'id': 3, 'start': 11., 'end': 12., 'source': 'There.'}]
+        words = [dict(word=word, start=start, end=end, probability=.9) for word, start, end in
+                 [(' They', 9.7, 9.9), (' were', 10.15, 10.3), (' never', 10.3, 10.55),
+                  (' even', 10.55, 10.75), (' there.', 11.05, 11.25)]]
+        readings = [dict(name=name, language='en', confidence=.9, text='They were never even there.',
+                         words=copy.deepcopy(words)) for name in ('precision', 'v2')]
+        readings.append(dict(name='qwen', language='English', confidence=.5, text='They were never even there.'))
+        return rows, readings
+
+    def run_saved_readings(self, rows, readings):
+        job = {'id': 5, 'media_path': '/dev/null'}
+        with patch.object(worker, 'REREAD_ENABLED', True), patch.object(worker, 'local_language_override', return_value=None), \
+                patch.object(worker, 'check_cancelled'), patch.object(worker, 'call_ollama', side_effect=AssertionError('No models')), \
+                patch.object(worker, 'reread_whisper', side_effect=AssertionError('No models')):
+            changed = worker.reread_flagged_rows(job, rows, [2], reader=lambda *args: {2: readings})
+        return changed, job
+
+    def test_words_from_both_neighbours_refuse_the_entire_replacement(self):
+        rows, readings = self.dual_edge_sample()
+        before = copy.deepcopy((rows, readings))
+        changed, job = self.run_saved_readings(rows, readings)
+        self.assertEqual(changed, [])
+        self.assertEqual((rows, readings), before)
+        record = job['reread_rows'][0]
+        self.assertEqual(record['decision'], 'omläsningen innehåller redan skrivna grannord')
+        self.assertEqual(record['candidate'], 'They were never even there.')
+        self.assertEqual(record['neighbour_edge_conflicts'], {'previous': 'they', 'following': 'there'})
+        self.assertNotIn('neighbour_word_removed', record)
+
+    def test_the_veto_does_not_apply_an_interior_change_from_the_spanning_candidate(self):
+        rows, readings = self.dual_edge_sample('were hardly seen')
+        before = copy.deepcopy(rows)
+        changed, job = self.run_saved_readings(rows, readings)
+        self.assertEqual(changed, [])
+        self.assertEqual(rows, before)
+        self.assertIn('neighbour_edge_conflicts', job['reread_rows'][0])
+
+    def test_a_word_inside_the_row_at_either_edge_can_still_be_a_real_repetition(self):
+        for position, start, end, expected in ((0, 10.01, 10.1, 'They were never even'),
+                                               (-1, 10.8, 10.95, 'Were never even there.')):
+            with self.subTest(edge=position):
+                rows, readings = self.dual_edge_sample()
+                for reading in readings[:2]:
+                    reading['words'][position].update(start=start, end=end)
+                changed, job = self.run_saved_readings(rows, readings)
+                self.assertEqual(changed, [2])
+                self.assertEqual(rows[1]['source'], expected)
+                self.assertNotIn('neighbour_edge_conflicts', job['reread_rows'][0])
+                self.assertEqual([(r['start'], r['end']) for r in rows], [(8., 10.), (10., 11.), (11., 12.)])
+
+    def test_one_timed_reader_inside_an_edge_prevents_a_unanimous_outside_claim(self):
+        rows, readings = self.dual_edge_sample()
+        readings[1]['words'][0].update(start=10.01, end=10.1)
+        changed, job = self.run_saved_readings(rows, readings)
+        self.assertEqual(changed, [2])
+        self.assertEqual(rows[1]['source'], 'They were never even')
+        self.assertEqual(job['reread_rows'][0]['neighbour_word_removed'], 'there')
+        self.assertNotIn('neighbour_edge_conflicts', job['reread_rows'][0])
+
     def test_a_word_timed_before_the_row_that_closes_the_previous_line_is_taken_away(self):
         readings = [timed(HEARD, 11.72), timed(HEARD, 11.7, name='v2'), QWEN]
         self.assertEqual(without_neighbour_edge_word(HEARD, CURRENT, PREVIOUS, '', readings, 12.0, 15.5),

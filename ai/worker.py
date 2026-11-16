@@ -105,6 +105,7 @@ from source_judge import EngineUnavailable, choose_readings, complete_cut_off_ro
 from collapsed_words import plan_collapsed_word_checks, restore_collapsed_words
 from glossary import apply_glossary, load_glossary
 from reread import agreed_replacement, confirmed_by_reread, confirmed_interior_insertion, conflicting_reread_rows, interior_insertion_slot, language_from_text, clipped_prefix_evidence
+from reread import confirmation_comparison
 from reread import foreign_context_plan, foreign_context_reading, foreign_context_replacement, CONTEXT_WINDOWS, words_inside, wording_support, orthography_shift
 from reread_boundaries import (language_group_plans, confirmed_group_language, local_language_override,
                                kana_slot, confirmed_kana_insertion, confirmed_group_partition, confirmed_continuation)
@@ -3982,8 +3983,17 @@ def assess_source_with_reread(job, rows, media_name='', **options):
     job['source_reread']['not_read_again'] = [row_id for row_id in still if row_id not in read_again]
     # The gate above counts every unclear row. A row the audit doubts although every model family that read it again heard exactly its
     # words is not listed for the user (the proof that already clears a rejected source choice); conflicts and unsettled choices stay.
+    comparisons = []
+    # Keep raw conflicts in the audit and refusal count. An all-reader proof
+    # that their difference is outside this row can only clear the list entry.
+    by_id = {row['id']: row for row in rows}
+    comparison_ids = {record['id'] for record in job['source_reread']['readings']
+                      if record.get('id') in by_id and confirmation_comparison(by_id[record['id']], record)}
     job['source_reread']['confirmed_by_reread'] = confirmed_by_reread(
-        rows, job['source_reread']['readings'], set(still) - {item['id'] for item in conflicts} - choice_unclear)
+        rows, job['source_reread']['readings'],
+        (set(still) - ({item['id'] for item in conflicts} - comparison_ids)) - choice_unclear,
+        comparisons=comparisons)
+    job['source_reread']['confirmation_comparisons'] = comparisons
     return sorted(set(still))
 
 
@@ -6211,17 +6221,32 @@ def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, jud
             index=rows.index(row)
             previous=rows[index-1]['source'] if index else ''
             following=rows[index+1]['source'] if index+1<len(rows) else ''
-            # The clip starts .3 s before the row: one word the neighbour already holds, timed outside the row, is the neighbour's.
-            text,edge_word=without_neighbour_edge_word(text,row['source'],previous,following,readings[row['id']],
-                                                       float(row['start']),float(row['end']))
-            if edge_word:
-                record.update(candidate=text,neighbour_word_removed=edge_word)
-            if repeats_neighbour(text,row['source'],previous,following):
-                record.update(decision='omläsningen innehåller redan skrivna grannord',candidate=text)
+            # Inspect both edges on the full candidate. Removing just the first
+            # neighbour's word must not let the other neighbour's word through.
+            edge_conflicts = {}
+            for side, left, right in (('previous', previous, ''), ('following', '', following)):
+                _, word = without_neighbour_edge_word(text, row['source'], left, right, readings[row['id']],
+                                                       float(row['start']), float(row['end']))
+                if word:
+                    edge_conflicts[side] = word
+            if len(edge_conflicts) == 2:
+                # Refuse the entire substitution; do not infer a new source by
+                # trimming both ends or changing the existing words/times.
+                record.update(decision='omläsningen innehåller redan skrivna grannord', candidate=text,
+                              neighbour_edge_conflicts=edge_conflicts)
                 text=None
-            elif edge_word and normalized(text)==normalized(row['source']):
-                record.update(decision='omläsningen lade bara till grannradens ord')
-                text=None
+            else:
+                # The clip margin may hold one timed word from a neighbour.
+                text,edge_word=without_neighbour_edge_word(text,row['source'],previous,following,readings[row['id']],
+                                                           float(row['start']),float(row['end']))
+                if edge_word:
+                    record.update(candidate=text,neighbour_word_removed=edge_word)
+                if repeats_neighbour(text,row['source'],previous,following):
+                    record.update(decision='omläsningen innehåller redan skrivna grannord',candidate=text)
+                    text=None
+                elif edge_word and normalized(text)==normalized(row['source']):
+                    record.update(decision='omläsningen lade bara till grannradens ord')
+                    text=None
         record.update(id=row['id'], start=row['start'], end=row['end'])
         if local_language_override(job,row):
             record['local_language']=local_language_override(job,row)
@@ -6279,6 +6304,34 @@ def reread_flagged_rows(job, rows, ids, *, reader=None, context_reader=None, jud
     return changed
 
 
+def source_punctuation_call(request):
+    if getattr(MODEL_JOB, 'device', None) == 'cpu':
+        release_language_model_before_asr()
+    return call_ollama(request)
+
+
+def prepare_source_for_review(job, rows):
+    """Set sentence boundaries before source auditing binds its decisions to rows.
+
+    Preserve the existing punctuation and timed-cut rules. Translation preparation
+    may later punctuate new ASR wordings, but cannot apply formatting cuts after
+    the source audit. Later acoustic corrections keep their existing proof rules.
+    """
+    restore_source_punctuation(rows, source_punctuation_call)
+    cut_words = job.pop('_sentence_cut_words', None)
+    proofs = []
+    if cut_words:
+        moved, proofs = move_cuts_to_sentence_ends(rows, cut_words)
+        rows[:] = moved
+        job['sentence_cuts'] = proofs
+        if proofs:
+            print(f'Meningsgränser: {len(proofs)} radgräns(er) flyttade till ett meningsslut', flush=True)
+    # Include the result of the cuts, so unchanged rows aren't punctuated twice,
+    # including after an optional punctuation attempt that couldn't be applied.
+    job['_source_punctuation_texts'] = {row['id']: row['source'] for row in rows}
+    return bool(proofs)
+
+
 def translate_and_review(job, rows, *, announce=lambda stage: None):
     """Translate and review. If the final review fails, translate ONCE more without the refused wordings.
 
@@ -6286,23 +6339,16 @@ def translate_and_review(job, rows, *, announce=lambda stage: None):
     of them agree on another text: that row is then translated afresh from the new source. A second failure is a TranslationQualityError:
     preserve the source and stop instead of substituting another ASR reading. The first attempt's report is kept as job-N-attempt1.json.
     """
-    def punctuation_call(request):
-        if getattr(MODEL_JOB, 'device', None) == 'cpu':
-            release_language_model_before_asr()
-        return call_ollama(request)
-
     job['spoken_swedish_ids'] = []
     job['doubtful_rows'] = []
     job['reread_rows'] = []
-    # Unpunctuated rows are given punctuation first, so that sentence fragments are not translated as sentences.
-    restore_source_punctuation(rows, punctuation_call)
-    # Example Series 4x02 (regression case): a boundary inside a sentence moves to a sentence end of the same two rows, timed by Whisper's words.
-    cut_words = job.pop('_sentence_cut_words', None)
-    if cut_words:
-        moved, job['sentence_cuts'] = move_cuts_to_sentence_ends(rows, cut_words)
-        rows[:] = moved
-        if job['sentence_cuts']:
-            print(f"Meningsgränser: {len(job['sentence_cuts'])} radgräns(er) flyttade till ett meningsslut", flush=True)
+    prepared = job.pop('_source_punctuation_texts', None)
+    if prepared is None:
+        restore_source_punctuation(rows, source_punctuation_call)
+    else:
+        changed = {row['id'] for row in rows if prepared.get(row['id']) != row['source']}
+        if changed:
+            restore_source_punctuation(rows, source_punctuation_call, only_ids=changed)
     translated = translate(job, rows)
     check_cancelled(job['id'])
     announce('review')
@@ -6457,7 +6503,7 @@ def split_punctuated_text(rows, punctuated):
     return [' '.join(piece) for piece in pieces]
 
 
-def restore_source_punctuation(rows, call, *, batch_size=40):
+def restore_source_punctuation(rows, call, *, batch_size=40, only_ids=None):
     """Give unpunctuated source rows punctuation and capitals before they are translated.
 
     A translator cannot tell where a sentence ends in "...from the planet" + "ahead how old is it" and renders
@@ -6467,11 +6513,14 @@ def restore_source_punctuation(rows, call, *, batch_size=40):
     are never touched. Timing, ids and row order are never touched. Any failure of this optional step means
     "unchanged" (a cancelled job still stops). Returns the number of rows that were changed.
     """
+    # A restricted retry retains the full batch as context and the same minimum
+    # of two unpunctuated rows, but changes only the new source wordings.
     changed = 0
     for start in range(0, len(rows), batch_size):
         batch = rows[start:start + batch_size]
-        wanted = {row['id'] for row in batch if lacks_punctuation(row.get('source'))}
-        if len(wanted) < 2:
+        eligible = {row['id'] for row in batch if lacks_punctuation(row.get('source'))}
+        wanted = eligible if only_ids is None else eligible & set(only_ids)
+        if len(eligible) < 2 or not wanted:
             continue
         joined = ' '.join(' '.join(str(row.get('source', '')).split()) for row in batch)
         request = {
@@ -7019,6 +7068,10 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
     if (job.get('swedish_reader') or {}).get('chosen'):
         raw_rows = harmonize_names(job, media, raw_rows)
     rows, reviewed = apply_verified_source_edits(raw_rows, media, Path('/config'))
+    validate_episode_segments(rows)
+    MODEL_JOB.phase = 'source_review'
+    if prepare_source_for_review(job, rows):
+        validate_episode_segments(rows)
     save_source_transcript(job, media, rows, hardware_name, asr_name, source_choices=source_choices,
                            verified_edits=reviewed)
     if reviewed:
@@ -7028,8 +7081,6 @@ def work(job, model, device, health, *, asr_label='Whisper large-v3'):
     update_job(job['id'], 'verifying', 60,
                f'Kvalitetskontrollerar tider och {len(rows)} repliker',
                model=f'Källkontroll med {active_gemma_models()[0]}')
-    validate_episode_segments(rows)
-    MODEL_JOB.phase = 'source_review'
     policy = job.get('language_policy') or {}
     confirmed = policy.get('status') == 'confirmed'
     source_doubtful = assess_source_with_reread(job, rows, media.name, use_filename_hint=confirmed,

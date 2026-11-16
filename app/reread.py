@@ -188,19 +188,157 @@ def confirmed_interior_insertion(row, readings, neighbours=()):
                   'cue_times_preserved': True}
 
 
-def confirmed_by_reread(rows, records, ids):
-    """The ids among `ids` whose words the reread confirmed: the row still has the text that was read again, and every model family that
-    read it (at least two) heard exactly those words. The same proof that clears a rejected source choice; a similar text with another word,
-    too few families or diverging readings confirm nothing."""
-    current = {row['id']: row['source'] for row in rows if row['id'] in ids}
+_ENGLISH_SPOKEN_SPELLINGS = {
+    "goin'": 'going', "doin'": 'doing', "gettin'": 'getting', "makin'": 'making',
+    "takin'": 'taking', "tryin'": 'trying', "lookin'": 'looking', "workin'": 'working',
+    "talkin'": 'talking', "thinkin'": 'thinking', "sayin'": 'saying', "comin'": 'coming',
+    "nothin'": 'nothing', "somethin'": 'something', "anythin'": 'anything',
+    "everythin'": 'everything', "fuckin'": 'fucking', "vibin'": 'vibing',
+    'motherfucka': 'motherfucker',
+}
+
+
+def confirmation_words(text, *, english=False):
+    """Spelling only, for confirming kept words; never an ASR replacement or a vote."""
+    if english:
+        text = str(text).lower().replace('’', "'")
+        # The apostrophe is required: the noun "cause" is not "because".
+        text = re.sub(r"(?<![\w'])'cause\b(?!')", 'because', text)
+        for spelling, word in _ENGLISH_SPOKEN_SPELLINGS.items():
+            text = re.sub(r"(?<![\w'])" + re.escape(spelling) + r"(?![\w'])", word, text)
+    return _normalized(text)
+
+
+def confirmation_comparison(row, record):
+    """Proof for the uncertainty list only: all readers heard the kept words in this row.
+
+    Retain the raw readings. Only complete, ordered, positive word times from
+    the tight reread may exclude words wholly outside the row. Missing or bad
+    times cannot remove anything. Neither source text nor refusal gates change.
+    """
+    current = row.get('source', '')
+    if (record.get('id') != row.get('id') or record.get('decision') == 'ersatt'
+            or _normalized(str(record.get('current', ''))) != _normalized(current)):
+        return None
+    try:
+        start = float(row['start'])
+        end = float(row.get('reading_time_source_end', row['end']))
+        a, b = float(record['start']), float(record['end'])
+        if (not all(math.isfinite(t) for t in (start, end, a, b)) or not 0 <= start < end
+                or abs(a-start) > .02 or abs(b-end) > .02):
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    readings = record.get('readings') or []
+    if (not readings or any(not r.get('text') for r in readings)
+            or len(usable_readings(current, readings)) != len(readings)
+            or len({r['name'] for r in readings}) != len(readings)
+            or len({_family(r['name']) for r in readings}) < MINIMUM_FAMILIES):
+        return None
+    languages = {str(r.get('language') or '').lower() for r in readings} - {''}
+    english = bool(languages) and languages <= {'en', 'english'}
+    expected = confirmation_words(current, english=english)
+    comparisons = []
+    for reading in readings:
+        text = reading['text']
+        removed = []
+        words = reading.get('words')
+        if words:
+            try:
+                times = [(float(w['start']), float(w['end'])) for w in words]
+                if (any(not all(math.isfinite(t) for t in (a, b)) or not 0 <= a < b
+                        or a < max(0., start-.3)-.02 or b > end+.3+.02 for a, b in times)
+                        or any(a[1] > b[0]+.02 for a, b in zip(times, times[1:]))):
+                    return None
+                separator = next((sep for sep in ('', ' ') if _normalized(
+                    sep.join(str(w['word']) for w in words)) == _normalized(text)), None)
+                if separator is None:
+                    return None
+                inside = []
+                for word, (a, b) in zip(words, times):
+                    # A word with no overlap belongs outside, even when its
+                    # midpoint is within the margin for a straddling word.
+                    # The epsilon handles floating-point subtraction only.
+                    if b <= start+1e-6 or a >= end-1e-6:
+                        removed.append(dict(word))
+                    elif start-.15 <= (a+b)/2 <= end+.15:
+                        inside.append(str(word['word']))
+                    else:
+                        return None
+                text = separator.join(inside).strip()
+            except (KeyError, TypeError, ValueError):
+                return None
+        if not text or confirmation_words(text, english=english) != expected:
+            return None
+        comparisons.append(dict(name=reading['name'], text=text, excluded_words=removed))
+    return dict(id=row['id'], source=current, start=start, end=end,
+                english_spelling_comparison=english, readings=comparisons)
+
+
+def replacement_confirmation(row, record):
+    """Bind an applied replacement to its final words, rather than its old text.
+
+    This is list evidence only. Require the complete unchanged text from both
+    Whisper versions and Qwen, including every additional participating reader.
+    No trimming, spelling aliases, inferred application or moved audio bounds.
+    """
+    source = row.get('source', '')
+    if (record.get('id') != row.get('id') or record.get('decision') != 'ersatt'
+            or not _normalized(source)
+            or _normalized(str(record.get('candidate', ''))) != _normalized(source)):
+        return None
+    try:
+        start = float(row['start'])
+        end = float(row.get('reading_time_source_end', row['end']))
+        a, b = float(record['start']), float(record['end'])
+        if (not all(math.isfinite(t) for t in (start, end, a, b)) or not 0 <= start < end
+                or abs(a-start) > 1e-6 or abs(b-end) > 1e-6):
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    readings = record.get('readings') or []
+    names = [reading.get('name') for reading in readings]
+    if (not {'precision', 'v2', 'qwen'} <= set(names) or len(set(names)) != len(names)
+            or len(usable_readings(source, readings)) != len(readings)
+            or any(_normalized(str(reading.get('text', ''))) != _normalized(source) for reading in readings)):
+        return None
+    return dict(id=row['id'], source=source, start=start, end=end,
+                applied_replacement=True, previous_source=record.get('current', ''),
+                readings=[dict(name=r['name'], text=r['text'], excluded_words=[]) for r in readings])
+
+
+def confirmed_by_reread(rows, records, ids, *, comparisons=None):
+    """Ids whose final words are supported by the reread, for the uncertainty list.
+
+    Kept text uses its original all-reader proof. An explicitly applied change
+    must bind its candidate and audio bounds to the final row, with complete
+    matching text from both Whisper versions, Qwen and every other reader.
+    """
+    by_id = {row['id']: row for row in rows if row['id'] in ids}
+    current = {row_id: row['source'] for row_id, row in by_id.items()}
     confirmed = set()
     for record in records:
         row_id = record.get('id')
-        if row_id not in current or _normalized(str(record.get('current', ''))) != _normalized(str(current[row_id])):
+        if row_id not in current:
+            continue
+        if record.get('decision') == 'ersatt':
+            proof = replacement_confirmation(by_id[row_id], record)
+            if proof:
+                confirmed.add(row_id)
+                if comparisons is not None:
+                    comparisons.append(proof)
+            continue
+        if _normalized(str(record.get('current', ''))) != _normalized(str(current[row_id])):
             continue
         _, verdict = agreed_replacement(current[row_id], record.get('readings') or [])
         if verdict['decision'] == 'läsningen stämmer med nuvarande text' and verdict.get('same_words'):
             confirmed.add(row_id)
+        else:
+            proof = confirmation_comparison(by_id[row_id], record)
+            if proof:
+                confirmed.add(row_id)
+                if comparisons is not None:
+                    comparisons.append(proof)
     return sorted(confirmed)
 
 

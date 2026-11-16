@@ -176,6 +176,55 @@ class EdgeOverlapTests(unittest.TestCase):
 
 
 class NeighbourSwallowTests(unittest.TestCase):
+    def test_a_missing_article_does_not_hide_that_a_reading_spans_the_next_cue(self):
+        from asr_windows import prefer_confident_reading
+        rows = [{'start': 10., 'end': 10.8, 'text': 'Well, you...', 'confidence': .31},
+                {'start': 10.8, 'end': 13.5, 'text': 'you are almost a chemist, right?', 'confidence': .58}]
+        readings = {'precision': [{'start': 10., 'end': 13.5,
+                     'text': 'Well you you are almost chemist, right?', 'confidence': .7}]}
+        self.assertEqual(prefer_confident_reading(rows, readings), rows)
+        self.assertEqual(rows[0]['text'], 'Well, you...')
+        self.assertEqual(readings['precision'][0]['end'], 13.5)
+
+    def test_different_neighbour_words_do_not_make_a_long_reading_belong_to_a_short_cue(self):
+        from asr_windows import prefer_confident_reading
+        rows = [{'start': 10., 'end': 10.8, 'text': 'Wait...', 'confidence': .31},
+                {'start': 10.8, 'end': 13.5, 'text': 'The train leaves soon.', 'confidence': .9}]
+        readings = {'v2': [{'start': 10., 'end': 13.5,
+                     'text': 'Wait the bus arrives later.', 'confidence': .9}]}
+        self.assertEqual(prefer_confident_reading(rows, readings), rows)
+
+    def test_a_reading_spanning_the_previous_cue_is_also_refused(self):
+        from asr_windows import prefer_confident_reading
+        rows = [{'start': 7., 'end': 10., 'text': 'Call the professor.', 'confidence': .9},
+                {'start': 10., 'end': 10.8, 'text': 'Now...', 'confidence': .31}]
+        readings = {'precision': [{'start': 7.1, 'end': 10.8,
+                     'text': 'Call a professor now.', 'confidence': .9}]}
+        self.assertEqual(prefer_confident_reading(rows, readings), rows)
+
+    def test_the_existing_half_neighbour_limit_is_preserved(self):
+        from asr_windows import prefer_confident_reading
+        rows = [{'start': 10., 'end': 12., 'text': 'Unclear words.', 'confidence': .31},
+                {'start': 12., 'end': 14., 'text': 'Next sentence.', 'confidence': .9}]
+        for end, expected in ((12.999999, 'Clear words here.'), (13., 'Unclear words.')):
+            with self.subTest(end=end):
+                readings = {'precision': [{'start': 10., 'end': end,
+                             'text': 'Clear words here.', 'confidence': .9}]}
+                result = prefer_confident_reading(rows, readings)
+                self.assertEqual(result[0]['text'], expected)
+                self.assertEqual([(r['start'], r['end']) for r in result], [(10., 12.), (12., 14.)])
+
+    def test_a_bounded_alternative_can_still_win_after_a_longer_one_is_refused(self):
+        from asr_windows import prefer_confident_reading
+        rows = [{'start': 10., 'end': 10.8, 'text': 'Unclear.', 'confidence': .31},
+                {'start': 10.8, 'end': 13.5, 'text': 'The train leaves soon.', 'confidence': .9}]
+        readings = {'precision': [{'start': 10., 'end': 13.5,
+                     'text': 'Clear the train leaves later.', 'confidence': .95}],
+                    'v2': [{'start': 10., 'end': 10.8, 'text': 'Clear words.', 'confidence': .8}]}
+        result = prefer_confident_reading(rows, readings)
+        self.assertEqual(result[0]['text'], 'Clear words.')
+        self.assertEqual(result[1], rows[1])
+
     def test_a_confident_reading_that_holds_the_next_cue_is_not_taken(self):
         from asr_windows import prefer_confident_reading
         # Nordic Sample (regression case)

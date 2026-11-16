@@ -57,6 +57,7 @@ dess administratör från att behandla de skickade uppgifterna.
 - Se [README](README.md#modeller-och-körsätt) för produktionsmodeller.
   Större molnmodeller kan väljas separat; automatvalet beror på GPU-minnet.
   Modellernas egna licenser gäller även på hyrda servrar.
+  Den extra översättningsmodellen (TranslateGemma) hämtas av servern i bakgrunden efter de obligatoriska modellerna och kan aldrig hindra att servern blir klar; är den inte hämtad ännu hoppas steget över.
 - Vanlig installation kräver ingen egen förberedd molnimage. Lämna
   inställningen SUBSYNQ_CLOUD_IMAGE tom om du inte byggt och verifierat en.
 - Kontrollera hårdvaruval, API-nyckel, saldo, tillgängliga erbjudanden,

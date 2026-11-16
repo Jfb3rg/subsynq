@@ -6,6 +6,12 @@ De äldre posterna nedan beskriver läget vid respektive version. Senare
 rättelser gäller framför äldre slutsatser. Detta är inte en fullständig lista
 över varje version; mellanliggande ändringar finns i Git-historiken.
 
+## 0.8.400
+
+- Osäkerhetslistan kan nu bekräfta fler rader där alla omläsare stöder samma ord. Bekräftelsen jämförs med den slutliga källtexten och kräver giltiga tidsbelägg för att undanta ord från grannrader.
+- Hindrar att en lång grannreplik kopieras till en kort rad och avvisar byten som innehåller ord från båda grannraderna.
+- Meningsanpassar radgränser före källgranskningen, så att rätt radindelning granskas. Godkännandekrav och stoppgränser är oförändrade; ändringen garanterar inte färre osäkra rader i varje fil.
+
 ## Utan versionshöjning (compose.yaml)
 
 - `compose.yaml` (vanliga installationen): `subsynq`-tjänsten monterar `/movies`, `/tv` och `/extra` skrivbart så att fliken Städa undertexter kan flytta `.srt`-filer till papperskorgen. Workern och övriga tjänster är oförändrade. Containerns användare (`SUBSYNQ_UID`/`SUBSYNQ_GID`, standard 1000:1000) måste ha skrivrätt i mediamapparna.

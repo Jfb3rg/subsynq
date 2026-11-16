@@ -2562,23 +2562,21 @@ def prefer_confident_reading(merged, readings, *, maximum_confidence=.4, minimum
     at 0.75). A cue with a recorded confidence below `maximum_confidence` (0 means "not recorded", never "bad")
     takes the most confident reading of the passes (joined pieces too) that covers most of the cue's time, is at
     least `minimum_confidence` and `minimum_gain` better, and is not much shorter (a piece of the speech with a
-    higher confidence must not cost words; a garbled cue that mixes scripts may be replaced by a shorter one). Only
-    the text changes, never the timing, and boilerplate is never used.
+    higher confidence must not cost words; a garbled cue that mixes scripts may be replaced by a shorter one).
+    A reading that also covers at least half of a neighbouring cue cannot be copied whole into this cue.
+    Only the text changes, never the timing, and boilerplate is never used.
     """
     final = [dict(item) for item in sorted(merged, key=lambda item: item['start'])]
     everything = dict(readings)
     everything.update(span_readings(final, readings))
-    def holds_neighbour(other, index):
-        # Nordic Sample (regression case): "Reisa!" (0.76 s) took a 3 s reading that also held the whole next cue and became "Ryza, du kommer
-        # ikke til å tro det!" right before "Du kommer ikke til å tro det!": a reading that covers most of a neighbouring cue AND holds its
-        # words would put them in two cues.
-        words = _normalized(str(other.get('text', ''))).split()
+    def covers_neighbour(other, index):
+        # This step copies the reading's entire text without changing the target's
+        # times. It cannot borrow the neighbouring speech even when the readings
+        # disagree on an article or word, so text equality cannot guard the span.
         for neighbour in (final[index - 1] if index else None, final[index + 1] if index + 1 < len(final) else None):
             if neighbour is None or neighbour['end'] <= neighbour['start']:
                 continue
-            theirs = _normalized(str(neighbour.get('text', ''))).split()
-            if (theirs and _overlap_seconds(neighbour, other) >= .5 * (neighbour['end'] - neighbour['start'])
-                    and any(words[start:start + len(theirs)] == theirs for start in range(len(words) - len(theirs) + 1))):
+            if _overlap_seconds(neighbour, other) >= .5 * (neighbour['end'] - neighbour['start']):
                 return True
         return False
 
@@ -2593,7 +2591,7 @@ def prefer_confident_reading(merged, readings, *, maximum_confidence=.4, minimum
                   and _overlap_seconds(row, other) >= .7 * (row['end'] - row['start'])
                   and len(_normalized(str(other['text'])).replace(' ', '')) >= needed * size
                   and float(other.get('confidence', 0)) >= max(minimum_confidence, confidence + minimum_gain)
-                  and not holds_neighbour(other, index)]
+                  and not covers_neighbour(other, index)]
         if better:
             best = max(better, key=lambda other: (float(other.get('confidence', 0)), _span_overlap_ratio(row, other)))
             text = str(best['text']).strip()

@@ -31,6 +31,90 @@ class ConfirmedByRereadTests(unittest.TestCase):
 
 
 class SecondRereadTests(unittest.TestCase):
+    def test_applied_unanimous_replacement_clears_only_the_list_and_is_rechecked_at_the_end(self):
+        for late in (False, True):
+            for conflict in (False, True):
+                with self.subTest(late=late, conflict=conflict):
+                    sample = rows(20)
+                    job = {'id': 5}
+                    target = 7 if late else 2
+
+                    def read(job, source, ids, **kwargs):
+                        job['reread_rows'] = []
+                        if target not in ids:
+                            return []
+                        row = source[target]
+                        text = 'Another sentence was heard here.'
+                        evidence = record(row, [text] * 3)
+                        evidence.update(decision='ersatt', candidate=text, start=row['start'], end=row['end'])
+                        job['reread_rows'].append(evidence)
+                        row['source'] = text
+                        return [target]
+
+                    findings = [[2], [2, 7]] if late else [[2], [2]]
+                    with self.audit(findings), patch.object(worker, 'reread_flagged_rows', side_effect=read), \
+                            patch.object(worker, 'update_job'), patch.object(worker, 'REREAD_ENABLED', True), \
+                            patch.object(worker, 'SECOND_REREAD_ENABLED', True), \
+                            patch.object(worker, 'unresolved_source_choice_ids', return_value=[9] if conflict else []):
+                        unclear = worker.assess_source_with_reread(job, sample)
+                    self.assertEqual(unclear, sorted(({2, 7} if late else {2}) | ({9} if conflict else set())))
+                    self.assertEqual(job['source_reread']['still_unclear'], unclear)
+                    self.assertEqual(job['source_reread']['unresolved_source_choices'], [9] if conflict else [])
+                    expected = [target]
+                    self.assertEqual(job['source_reread']['confirmed_by_reread'], expected)
+                    # The final report must recompute against the actual source, not trust saved ids.
+                    ids = set(job['source_reread']['confirmed_by_reread'])
+                    self.assertEqual(reread.confirmed_by_reread(sample, job['source_reread']['readings'], ids), expected)
+                    sample[target]['source'] += ' Never.'
+                    self.assertEqual(reread.confirmed_by_reread(sample, job['source_reread']['readings'], ids), [])
+
+    def test_timed_edge_proof_can_clear_the_list_but_not_a_raw_conflict_or_source_choice(self):
+        for choice in (False, True):
+            sample = rows(20)
+            sample[2]['source'] = 'Go now.'
+            job = {'id': 5}
+
+            def read(job, source, ids, **kwargs):
+                row = source[2]
+                evidence = record(row, ['Please, go now.', 'Go now.', 'Go now.'])
+                evidence.update(start=row['start'], end=row['end'])
+                evidence['readings'][0]['words'] = [dict(word='Please, ', start=5.9, end=6.),
+                    dict(word='go ', start=6., end=6.2), dict(word='now.', start=6.4, end=6.7)]
+                job['reread_rows'] = [evidence]
+                return []
+
+            with self.audit([[2], [2]]), patch.object(worker, 'reread_flagged_rows', side_effect=read), \
+                    patch.object(worker, 'update_job'), patch.object(worker, 'REREAD_ENABLED', True), \
+                    patch.object(worker, 'unresolved_source_choice_ids', return_value=[2] if choice else []):
+                self.assertEqual(worker.assess_source_with_reread(job, sample), [2])
+            self.assertEqual(job['source_reread']['still_unclear'], [2])
+            self.assertEqual([r['id'] for r in job['source_reread']['unresolved_conflicts']], [2])
+            self.assertEqual(job['source_reread']['confirmed_by_reread'], [] if choice else [2])
+            self.assertEqual(job['source_reread']['unresolved_source_choices'], [2] if choice else [])
+
+    def test_time_comparison_changes_the_list_but_not_the_audit_count_or_raw_readings(self):
+        sample = rows(20)
+        sample[2]['source'] = 'Because we need more time.'
+        job = {'id': 5}
+
+        def read(job, source, ids, **kwargs):
+            row = source[2]
+            evidence = record(row, [row['source'], row['source'], "'Cause we need more time."])
+            evidence.update(start=row['start'], end=row['end'])
+            for reading in evidence['readings']:
+                reading['language'] = 'English'
+            job['reread_rows'] = [evidence]
+            return []
+
+        with self.audit([[2], [2]]), patch.object(worker, 'reread_flagged_rows', side_effect=read), \
+                patch.object(worker, 'update_job'), patch.object(worker, 'REREAD_ENABLED', True):
+            self.assertEqual(worker.assess_source_with_reread(job, sample), [2])
+        self.assertEqual(job['source_reread']['still_unclear'], [2])
+        self.assertEqual(job['source_reread']['confirmed_by_reread'], [2])
+        self.assertEqual(job['source_reread']['confirmation_comparisons'][0]['id'], 2)
+        self.assertEqual(job['source_reread']['readings'][0]['readings'][2]['text'], "'Cause we need more time.")
+        self.assertEqual(sample[2]['source'], 'Because we need more time.')
+
     def audit(self, verdicts):
         """Each call of the whole-file audit names the next list of ids."""
         calls = iter(verdicts)

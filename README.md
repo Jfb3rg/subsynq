@@ -121,7 +121,7 @@ spår själv; det valet används alltid, även vid omförsök och omkörning.
 
 Whisper large-v3 används för taligenkänning. Qwen3-ASR och selektiva Whisper
 large-v2-pass kontrollerar osäkra delar. Gemma 3 12B används för
-källgranskning och översättning, Gemma 4 12B för slutgranskning och rättning.
+källgranskning och översättning, Gemma 4 12B för slutgranskning och rättning. TranslateGemma 12B (en extra modell) skriver en ny översättning av rader där rättningen och granskningen inte kommer överens; den nya översättningen granskas som alla andra. Alla modeller körs där du valt att köra: på din egen maskin, eller på den hyrda servern om du valt hyrd GPU.
 
 **Modellerna laddas ner automatiskt** första gången workern startar (cirka 28 GB:
 Whisper och Qwen från Hugging Face, Gemma via Ollama). Det kräver internet och
